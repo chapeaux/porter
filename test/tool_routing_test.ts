@@ -8,8 +8,8 @@
 import {
   assertEquals,
   assertStringIncludes,
-} from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
+} from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
 import { ToolRegistry, type ToolEntry, type ToolResult } from "../src/tools/mod.ts";
 import { applyRoleFilter } from "../src/runtime/agent.ts";
 import { getBus, resetBus } from "../src/runtime/bus.ts";

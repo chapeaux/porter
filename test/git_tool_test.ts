@@ -6,7 +6,7 @@
  * whether the working directory itself is a git repo.
  */
 
-import { assertEquals, assertStringIncludes, assertExists } from "jsr:@std/assert";
+import { assertEquals, assertStringIncludes, assertExists } from "@std/assert";
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -1,4 +1,4 @@
-import { dirname } from "jsr:@std/path@^1";
+import { dirname } from "@std/path";
 import { isPathEscapeError, validatePath } from "../sandbox/mod.ts";
 import type { ToolEntry } from "./mod.ts";
 

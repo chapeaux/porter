@@ -5,7 +5,7 @@
 import {
   assertEquals,
   assertExists,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { ModelRegistry } from "../src/core/model_registry.ts";
 import type { ModelConfig } from "../src/auth/model_store.ts";
 import type { ProviderConfig } from "../src/providers/types.ts";

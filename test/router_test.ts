@@ -8,7 +8,7 @@
 import {
   assertEquals,
   assertExists,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { PodRegistry, type PodEntry } from "../src/router/pod_registry.ts";
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@
 import {
   assertEquals,
   assertExists,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { ToolRegistry, type ToolEntry, buildRegistry } from "../src/tools/mod.ts";
 
 function makeToolEntry(name: string): ToolEntry {

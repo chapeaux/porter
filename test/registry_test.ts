@@ -2,7 +2,7 @@
  * Tests for registry.ts — session CRUD, stale PID pruning, concurrent write safety.
  */
 
-import { assertEquals, assertNotEquals, assertExists } from "jsr:@std/assert";
+import { assertEquals, assertNotEquals, assertExists } from "@std/assert";
 import {
   registerSession,
   unregisterSession,

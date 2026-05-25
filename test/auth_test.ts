@@ -8,7 +8,7 @@ import {
   assertExists,
   assertNotEquals,
   assertRejects,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import {
   initSessionKey,
   createSessionCookie,

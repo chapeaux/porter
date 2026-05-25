@@ -5,7 +5,7 @@
  * across logins. Stored as plain JSON files under ~/.porter/users/{sub}/teams/.
  */
 
-import { dirname } from "jsr:@std/path@^1";
+import { dirname } from "@std/path";
 import type { PorterConfig } from "../core/config.ts";
 
 export interface SavedTeam {

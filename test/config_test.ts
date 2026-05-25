@@ -1,7 +1,7 @@
 import {
   assertEquals,
   assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+} from "@std/assert";
 import { loadConfig } from "../src/core/config.ts";
 
 const TEST_DIR = await Deno.makeTempDir({ prefix: "porter-config-test-" });

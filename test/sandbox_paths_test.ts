@@ -1,7 +1,7 @@
 import {
   assertEquals,
   assertRejects,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { PathEscapeError, validatePath } from "../src/sandbox/paths.ts";
 
 Deno.test("validatePath - relative path within workspace", async () => {

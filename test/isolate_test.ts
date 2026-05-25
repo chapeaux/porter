@@ -8,7 +8,7 @@
  *   3. Verifying that proxy class contracts match their interfaces
  */
 
-import { assertEquals, assertExists } from "jsr:@std/assert";
+import { assertEquals, assertExists } from "@std/assert";
 
 // ---------------------------------------------------------------------------
 // 1. Module importability

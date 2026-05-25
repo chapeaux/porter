@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 
 import readFile, { setWorkingDir as setReadWorkingDir } from "../src/tools/read_file.ts";
 import writeFile, { setWorkingDir as setWriteWorkingDir } from "../src/tools/write_file.ts";

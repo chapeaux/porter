@@ -1,10 +1,10 @@
-# Pullman Porter
+# Porter
 
 <p align="center">
   <img src="src/ui/porter.svg" alt="Porter" width="120">
 </p>
 
-A pure-Deno multi-agent orchestration platform. Porter runs Claude agents as V8-isolated workers with crash containment, coordinates them through an in-process message bus, and exposes a browser-based dashboard for real-time monitoring and team management.
+A pure-Deno multi-agent orchestration platform. Porter runs agents as V8-isolated workers with crash containment, coordinates them through an in-process message bus, and exposes a browser-based dashboard for real-time monitoring and team management.
 
 Named in honor of the historic United States railroad Pullman Porters, who coordinated the seamless operation of passenger rail cars.
 

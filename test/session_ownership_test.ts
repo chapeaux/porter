@@ -9,7 +9,7 @@
 import {
   assertEquals,
   assertThrows,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import {
   registerSession,
   getSession,

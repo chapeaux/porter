@@ -16,5 +16,17 @@
     "test": "deno test --allow-all test/",
     "compile": "deno compile --allow-all --include src/ui/ --include src/graph/shapes.ttl --include isolate.ts --include worker.ts --output porter cli.ts"
   },
-  "imports": {}
+  "lint": {
+    "exclude": ["src/ui/*.js", "src/ui/**/*.js", "archive/"],
+    "rules": {
+      "exclude": ["no-explicit-any", "require-await", "verbatim-module-syntax", "no-unused-vars"]
+    }
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1",
+    "@std/path": "jsr:@std/path@^1",
+    "@std/fs": "jsr:@std/fs@^1",
+    "@std/testing": "jsr:@std/testing@^1",
+    "oxigraph": "npm:oxigraph@^0.5"
+  }
 }

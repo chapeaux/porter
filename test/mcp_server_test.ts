@@ -5,7 +5,7 @@
 import {
   assertEquals,
   assertExists,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { PorterMcpServer } from "../src/mcp/mcp_server.ts";
 
 function makeServer(sessionManager?: unknown) {

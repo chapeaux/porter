@@ -9,7 +9,7 @@ import {
   assertEquals,
   assertStringIncludes,
   assertExists,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { startUiServer } from "../src/ui/server.ts";
 
 // Base port: use a random offset above 19000 to avoid test-run collisions.
