@@ -191,6 +191,7 @@ export async function showSavedAgentPicker() {
           configStore.addAgent(convertSavedAgent(saved[i]));
         }
         dlg.close();
+        openTeamBuilder(2);
       });
     },
   });
