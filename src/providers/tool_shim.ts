@@ -141,7 +141,7 @@ export function parseToolCalls(response: ChatResponse): ChatResponse {
 
     // 1. Match <tool_call>...</tool_call> XML tags
     for (const match of text.matchAll(XML_TOOL_CALL_PATTERN)) {
-      let jsonStr = match[1].trim();
+      const jsonStr = match[1].trim();
       try {
         const call = extractToolCall(JSON.parse(jsonStr));
         if (call) { calls.push(call); remainingText = remainingText.replace(match[0], ""); continue; }

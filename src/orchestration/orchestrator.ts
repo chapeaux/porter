@@ -342,7 +342,6 @@ export async function start(
         return;
       }
 
-      let content: string;
       const eventObj: Record<string, unknown> = { agent: name, role: agentConfig.role };
       switch (event.type) {
         case "text":
@@ -379,7 +378,7 @@ export async function start(
           eventObj.event = "done";
           break;
       }
-      content = JSON.stringify(eventObj);
+      const content = JSON.stringify(eventObj);
       metrics.recordActivity(name, eventObj);
       bus.publish("activity", content, name).catch(() => {});
     };

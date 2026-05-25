@@ -167,6 +167,7 @@ export class McpClient {
     const entries: ToolEntry[] = [];
 
     for (const [name, definition] of this.tools) {
+      // deno-lint-ignore no-this-alias
       const client = this;
       entries.push({
         definition,
