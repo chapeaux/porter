@@ -3,7 +3,7 @@
  */
 
 import { h, replaceContent } from '../dom.js';
-import { getOverlayDlg } from './dialog-helpers.js';
+import { getDlg, getOverlayDlg } from './dialog-helpers.js';
 import {
   ALL_TOOLS,
   ROLE_TOOL_DEFAULTS, ROLE_CHANNEL_DEFAULTS, ROLE_SECTION_DEFAULTS,
