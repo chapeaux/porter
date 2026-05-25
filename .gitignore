@@ -1,0 +1,13 @@
+node_modules/
+.deno_compile_node_modules/
+porter
+*.log
+.env
+.env.*
+*.pem
+*.key
+.porter/
+.claude/
+dist/
+.DS_Store
+Thumbs.db

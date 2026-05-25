@@ -1,0 +1,56 @@
+{
+  "session": "mixed-team",
+  "working_dir": ".",
+  "models": [
+    {
+      "id": "claude-sonnet-4-6",
+      "display_name": "Claude Sonnet 4.6",
+      "provider_type": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "auth": "bearer",
+      "context_window": 200000,
+      "max_tokens": 8192,
+      "capabilities": {
+        "tool_calling": true,
+        "reasoning": true,
+        "vision": true,
+        "json_mode": true
+      }
+    },
+    {
+      "id": "Qwen/Qwen3-14B",
+      "display_name": "Qwen3 14B",
+      "provider_type": "openai_compat",
+      "base_url": "${VLLM_API_URL}",
+      "api_key_env": "VLLM_API_KEY",
+      "auth": "bearer",
+      "context_window": 32768,
+      "max_tokens": 4096,
+      "capabilities": {
+        "tool_calling": true,
+        "reasoning": true,
+        "vision": false,
+        "json_mode": true
+      }
+    }
+  ],
+  "agents": [
+    {
+      "name": "lead",
+      "role": "admin",
+      "model": "claude-sonnet-4-6",
+      "system_prompt": "Coordinate work across the team.",
+      "tools": ["read_file", "glob", "grep", "list_dir", "send_message", "read_messages"],
+      "subscribe": ["log"]
+    },
+    {
+      "name": "worker",
+      "role": "worker",
+      "model": "Qwen/Qwen3-14B",
+      "system_prompt": "Implement tasks assigned via the 'task' channel.",
+      "tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "list_dir", "send_message", "read_messages"],
+      "subscribe": ["task"]
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+# Porter Router -- multi-user pod-per-user deployment.
+#
+# The router authenticates users via OIDC, provisions per-user orchestrator
+# pods on demand, and reverse-proxies all traffic to the user's pod.
+#
+# Template variables (substituted at deploy time via envsubst):
+#   ${IMAGE}              -- Container image (e.g. quay.io/chapeaux/porter:latest)
+#   ${NAMESPACE}          -- Target OpenShift namespace
+#   ${OIDC_ISSUER_URL}    -- OIDC issuer URL (e.g. https://keycloak.example.com/realms/porter)
+#   ${OIDC_CLIENT_ID}     -- OIDC client ID
+#   ${OIDC_REDIRECT_URI}  -- OIDC redirect URI (e.g. https://porter.example.com/auth/callback)
+#
+# Prerequisites:
+#   oc create secret generic porter-oidc \
+#     --from-literal=client-secret='<from OIDC provider>' \
+#     -n $NAMESPACE
+#
+#   oc create secret generic porter-session \
+#     --from-literal=session-key="$(openssl rand -hex 32)" \
+#     -n $NAMESPACE
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: porter-router
+  namespace: ${NAMESPACE}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: porter-router
+  namespace: ${NAMESPACE}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "secrets", "pods"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: porter-router
+  namespace: ${NAMESPACE}
+subjects:
+  - kind: ServiceAccount
+    name: porter-router
+roleRef:
+  kind: Role
+  name: porter-router
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: porter-router
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: porter
+      component: router
+  template:
+    metadata:
+      labels:
+        app: porter
+        component: router
+    spec:
+      serviceAccountName: porter-router
+      containers:
+        - name: router
+          image: ${IMAGE}
+          command: ["deno", "run", "--allow-all", "cli.ts", "router", "--port", "3000"]
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORTER_OIDC_ISSUER_URL
+              value: "${OIDC_ISSUER_URL}"
+            - name: PORTER_OIDC_CLIENT_ID
+              value: "${OIDC_CLIENT_ID}"
+            - name: PORTER_OIDC_REDIRECT_URI
+              value: "${OIDC_REDIRECT_URI}"
+            - name: PORTER_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: porter-oidc
+                  key: client-secret
+            - name: PORTER_SESSION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: porter-session
+                  key: session-key
+            - name: PORTER_IDLE_TIMEOUT
+              value: "30"
+            - name: PORTER_NAMESPACE
+              value: "${NAMESPACE}"
+            - name: PORTER_LWS_BASE_URL
+              value: "${PORTER_LWS_BASE_URL}"
+          volumeMounts:
+            - name: redhat-ca
+              mountPath: /etc/porter-certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: redhat-ca
+          configMap:
+            name: redhat-ca-bundle
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: porter-router
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: router
+spec:
+  selector:
+    app: porter
+    component: router
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: porter
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: router
+  annotations:
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  to:
+    kind: Service
+    name: porter-router
+  port:
+    targetPort: 3000
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

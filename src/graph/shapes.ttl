@@ -1,0 +1,166 @@
+@prefix porter: <https://porter.chapeaux.io/vocab#> .
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix as:     <https://www.w3.org/ns/activitystreams#> .
+
+# =============================================================================
+# Model Configuration Shape
+# =============================================================================
+
+porter:ModelShape a sh:NodeShape ;
+  sh:targetClass porter:Model ;
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "Model must have a display name (rdfs:label)"
+  ] ;
+  sh:property [
+    sh:path porter:providerType ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:in ( "openai" "openai_compat" "azure_openai" "anthropic"
+            "aws_bedrock" "vertex_ai" "groq" "ollama" ) ;
+    sh:message "provider_type must be one of: openai, openai_compat, azure_openai, anthropic, aws_bedrock, vertex_ai, groq, ollama"
+  ] ;
+  sh:property [
+    sh:path porter:baseUrl ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:pattern "^https?://" ;
+    sh:message "base_url must be a valid HTTP or HTTPS URL"
+  ] ;
+  sh:property [
+    sh:path porter:authMethod ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:in ( "bearer" "adc" "aws_iam" ) ;
+    sh:message "auth must be one of: bearer, adc, aws_iam"
+  ] ;
+  sh:property [
+    sh:path porter:contextWindow ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+    sh:message "context_window must be a positive integer"
+  ] ;
+  sh:property [
+    sh:path porter:maxTokens ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+    sh:message "max_tokens must be a positive integer"
+  ] ;
+  sh:property [
+    sh:path porter:toolCalling ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] ;
+  sh:property [
+    sh:path porter:reasoning ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] ;
+  sh:property [
+    sh:path porter:vision ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] ;
+  sh:property [
+    sh:path porter:jsonMode ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] .
+
+# =============================================================================
+# Agent Configuration Shape
+# =============================================================================
+
+porter:AgentShape a sh:NodeShape ;
+  sh:targetClass porter:Agent ;
+  sh:property [
+    sh:path as:name ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:minLength 1 ;
+    sh:message "Agent must have a non-empty name"
+  ] ;
+  sh:property [
+    sh:path porter:hasRole ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:in ( "admin" "worker" "reviewer" ) ;
+    sh:message "role must be one of: admin, worker, reviewer"
+  ] ;
+  sh:property [
+    sh:path porter:systemPrompt ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "Agent must have a system_prompt"
+  ] ;
+  sh:property [
+    sh:path porter:hasTool ;
+    sh:in ( "read_file" "write_file" "edit_file" "bash" "glob"
+            "grep" "list_dir" "send_message" "read_messages" "git"
+            "memory_write" "memory_query" ) ;
+    sh:message "Unknown tool name; must be one of: read_file, write_file, edit_file, bash, glob, grep, list_dir, send_message, read_messages, git"
+  ] .
+
+# =============================================================================
+# Team Configuration Shape
+# =============================================================================
+
+porter:TeamShape a sh:NodeShape ;
+  sh:targetClass porter:Team ;
+  sh:property [
+    sh:path as:name ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:minLength 1 ;
+    sh:message "Team must have a non-empty name (session field)"
+  ] ;
+  sh:property [
+    sh:path porter:hasAgent ;
+    sh:minCount 1 ;
+    sh:message "Team must have at least one agent"
+  ] ;
+  sh:property [
+    sh:path porter:defaultModel ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+  ] .
+
+# =============================================================================
+# Observation Shape (shared agent memory)
+# =============================================================================
+
+porter:ObservationShape a sh:NodeShape ;
+  sh:targetClass porter:Observation ;
+  sh:property [
+    sh:path porter:about ;
+    sh:minCount 1 ;
+    sh:message "Observation must specify what it is about"
+  ] ;
+  sh:property [
+    sh:path porter:finding ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "Observation must include a finding"
+  ] ;
+  sh:property [
+    sh:path porter:discoveredBy ;
+    sh:minCount 1 ;
+    sh:message "Observation must specify which agent discovered it"
+  ] ;
+  sh:property [
+    sh:path porter:severity ;
+    sh:maxCount 1 ;
+    sh:in ( "info" "low" "medium" "high" "critical" ) ;
+    sh:message "severity must be one of: info, low, medium, high, critical"
+  ] .

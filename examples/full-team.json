@@ -1,0 +1,70 @@
+{
+  "session": "team-project",
+  "model": "claude-sonnet-4-6",
+  "working_dir": ".",
+  "models": [
+    {
+      "id": "claude-opus-4-6",
+      "display_name": "Claude Opus 4.6",
+      "provider_type": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "auth": "bearer",
+      "context_window": 200000,
+      "max_tokens": 8192,
+      "capabilities": {
+        "tool_calling": true,
+        "reasoning": true,
+        "vision": true,
+        "json_mode": true
+      }
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "display_name": "Claude Sonnet 4.6",
+      "provider_type": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "auth": "bearer",
+      "context_window": 200000,
+      "max_tokens": 8192,
+      "capabilities": {
+        "tool_calling": true,
+        "reasoning": true,
+        "vision": true,
+        "json_mode": true
+      }
+    }
+  ],
+  "agents": [
+    {
+      "name": "architect",
+      "role": "admin",
+      "model": "claude-opus-4-6",
+      "system_prompt": "You are the architect. Break down tasks, assign to workers via 'task' channel, and review completed work on 'log'.",
+      "tools": ["read_file", "glob", "grep", "list_dir", "send_message", "read_messages"],
+      "subscribe": ["log"]
+    },
+    {
+      "name": "backend",
+      "role": "worker",
+      "system_prompt": "You handle backend work. Only modify files under src/server/.",
+      "tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "list_dir", "git", "send_message", "read_messages"],
+      "subscribe": ["task", "control"]
+    },
+    {
+      "name": "frontend",
+      "role": "worker",
+      "system_prompt": "You handle frontend work. Only modify files under src/client/.",
+      "tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "list_dir", "git", "send_message", "read_messages"],
+      "subscribe": ["task", "control"]
+    },
+    {
+      "name": "reviewer",
+      "role": "reviewer",
+      "system_prompt": "Review code changes. Run tests and report results to 'log'.",
+      "tools": ["read_file", "bash", "glob", "grep", "list_dir", "send_message", "read_messages"],
+      "subscribe": ["review"]
+    }
+  ]
+}

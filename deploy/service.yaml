@@ -1,0 +1,26 @@
+---
+# Service for the Porter bus server (WebSocket).
+# Exposes the orchestrator's bus so remote workers can connect.
+#
+# In most setups the orchestrator runs locally and workers connect out
+# via a Route or port-forward. This Service is for when the orchestrator
+# itself runs in-cluster.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: porter-bus
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: bus
+spec:
+  selector:
+    app: porter
+    component: orchestrator
+  ports:
+    - name: ws
+      port: 8787
+      targetPort: 8787
+      protocol: TCP
+  type: ClusterIP

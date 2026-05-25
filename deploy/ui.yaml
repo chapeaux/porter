@@ -1,0 +1,119 @@
+# Standalone UI deployment — independent of the orchestrator pod.
+# Connects to the bus via the porter-bus ClusterIP service.
+#
+# Template variables (substituted at deploy time):
+#   ${IMAGE}      — Container image (e.g. quay.io/chapeaux/porter:latest)
+#   ${NAMESPACE}  — Target OpenShift namespace
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: porter-ui
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: porter
+      component: ui
+  template:
+    metadata:
+      labels:
+        app: porter
+        component: ui
+    spec:
+      containers:
+        - name: ui
+          image: ${IMAGE}
+          command: ["deno", "run", "--allow-all", "ui/server.ts"]
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: PORTER_BUS_URL
+              value: "ws://porter-bus:8787"
+            - name: PORTER_UI_PORT
+              value: "3000"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: porter-ui
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: ui
+spec:
+  selector:
+    app: porter
+    component: ui
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: porter-ui
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: ui
+  annotations:
+    haproxy.router.openshift.io/timeout: "3600s"
+spec:
+  to:
+    kind: Service
+    name: porter-ui
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-porter-ui-ingress
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: ui
+spec:
+  podSelector:
+    matchLabels:
+      app: porter
+      component: ui
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - protocol: TCP
+          port: 3000
+  policyTypes:
+    - Ingress

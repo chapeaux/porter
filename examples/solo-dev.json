@@ -1,0 +1,39 @@
+{
+  "session": "my-project",
+  "model": "claude-sonnet-4-6",
+  "working_dir": ".",
+  "models": [
+    {
+      "id": "claude-sonnet-4-6",
+      "display_name": "Claude Sonnet 4.6",
+      "provider_type": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "auth": "bearer",
+      "context_window": 200000,
+      "max_tokens": 8192,
+      "capabilities": {
+        "tool_calling": true,
+        "reasoning": true,
+        "vision": true,
+        "json_mode": true
+      }
+    }
+  ],
+  "agents": [
+    {
+      "name": "planner",
+      "role": "admin",
+      "system_prompt": "Break down tasks and assign work via the 'task' channel.",
+      "tools": ["read_file", "glob", "grep", "list_dir", "send_message", "read_messages"],
+      "subscribe": ["log"]
+    },
+    {
+      "name": "coder",
+      "role": "worker",
+      "system_prompt": "Implement tasks from the 'task' channel. Report results to 'log'.",
+      "tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "list_dir", "git", "send_message", "read_messages"],
+      "subscribe": ["task"]
+    }
+  ]
+}

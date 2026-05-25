@@ -1,0 +1,24 @@
+---
+# OpenShift Route to expose the bus WebSocket externally.
+# Only needed when the orchestrator runs in-cluster and workers are external.
+# For typical usage (local orchestrator, remote workers), this is not needed.
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: porter-bus
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: bus
+  annotations:
+    haproxy.router.openshift.io/timeout: "3600s"
+spec:
+  to:
+    kind: Service
+    name: porter-bus
+  port:
+    targetPort: ws
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -1,0 +1,198 @@
+# Orchestrator deployment — dynamic multi-session mode (cli.ts serve).
+# The orchestrator runs the UI server directly on port 3000; no sidecar needed.
+#
+# Template variables (substituted at deploy time):
+#   ${SESSION}    — Porter session name (used for resource naming only)
+#   ${IMAGE}      — Container image (e.g. quay.io/chapeaux/porter:latest)
+#   ${NAMESPACE}  — Target OpenShift namespace
+#
+# Prerequisites (create before applying):
+#   Secret:     porter-${SESSION}-api-key         (key: ANTHROPIC_API_KEY — placeholder ok for Vertex)
+#   Secret:     porter-${SESSION}-gcp-adc         (key: application_default_credentials.json)
+#   Secret:     porter-${SESSION}-oidc            (keys: PORTER_OIDC_CLIENT_SECRET, PORTER_SESSION_KEY)
+#
+#   Create OIDC secret:
+#     oc create secret generic porter-${SESSION}-oidc \
+#       --from-literal=PORTER_OIDC_CLIENT_SECRET='<from Keycloak>' \
+#       --from-literal=PORTER_SESSION_KEY="$(openssl rand -hex 32)"
+#
+#   Register redirect URI in your OIDC provider:
+#     Add ${OIDC_REDIRECT_URI} to the client's Valid Redirect URIs
+#
+# Note: ConfigMap volume is retained for compatibility but not read by serve mode.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: porter-${SESSION}-orchestrator
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    session: ${SESSION}
+    component: orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: porter
+      session: ${SESSION}
+      component: orchestrator
+  template:
+    metadata:
+      labels:
+        app: porter
+        session: ${SESSION}
+        component: orchestrator
+    spec:
+      containers:
+        - name: orchestrator
+          image: ${IMAGE}
+          command: ["deno", "run", "--allow-all", "cli.ts", "serve",
+                    "--port", "3000",
+                    "--headless"]
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: TERM
+              value: "dumb"
+            - name: HOME
+              value: "/app"
+            # --- OIDC / SSO ---
+            - name: PORTER_OIDC_ISSUER_URL
+              value: "${OIDC_ISSUER_URL}"
+            - name: PORTER_OIDC_CLIENT_ID
+              value: "${OIDC_CLIENT_ID}"
+            - name: PORTER_OIDC_REDIRECT_URI
+              value: "${OIDC_REDIRECT_URI}"
+            - name: PORTER_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: porter-${SESSION}-oidc
+                  key: PORTER_OIDC_CLIENT_SECRET
+            - name: PORTER_SESSION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: porter-${SESSION}-oidc
+                  key: PORTER_SESSION_KEY
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: porter-${SESSION}-api-key
+                  key: ANTHROPIC_API_KEY
+            - name: CLAUDE_CODE_USE_VERTEX
+              value: "1"
+            - name: ANTHROPIC_VERTEX_PROJECT_ID
+              value: "${VERTEX_PROJECT_ID}"
+            - name: CLOUD_ML_REGION
+              value: "${VERTEX_REGION}"
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/gcp/application_default_credentials.json"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: workspace
+              mountPath: /workspace
+            - name: gcp-adc
+              mountPath: /gcp
+              readOnly: true
+            - name: porter-home
+              mountPath: /app/.porter
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: porter-${SESSION}-config
+        - name: gcp-adc
+          secret:
+            secretName: porter-${SESSION}-gcp-adc
+        - name: workspace
+          emptyDir: {}
+        - name: porter-home
+          persistentVolumeClaim:
+            claimName: porter-home
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-porter-${SESSION}-orchestrator-ui-ingress
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    session: ${SESSION}
+    component: orchestrator
+spec:
+  podSelector:
+    matchLabels:
+      app: porter
+      session: ${SESSION}
+      component: orchestrator
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - protocol: TCP
+          port: 3000
+  policyTypes:
+    - Ingress
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: porter
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    session: ${SESSION}
+    component: orchestrator
+spec:
+  selector:
+    app: porter
+    session: ${SESSION}
+    component: orchestrator
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: porter
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    session: ${SESSION}
+    component: orchestrator
+    shard: internal
+  annotations:
+    haproxy.router.openshift.io/timeout: "3600s"
+spec:
+  to:
+    kind: Service
+    name: porter
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            name: porter-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            name: porter-linux-arm64
+          - target: x86_64-apple-darwin
+            name: porter-macos-x86_64
+          - target: aarch64-apple-darwin
+            name: porter-macos-arm64
+          - target: x86_64-pc-windows-msvc
+            name: porter-windows-x86_64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Build binary
+        run: |
+          deno compile \
+            --allow-all \
+            --include src/ui/ \
+            --include src/graph/shapes.ttl \
+            --include isolate.ts \
+            --include worker.ts \
+            --target ${{ matrix.target }} \
+            --output ${{ matrix.name }} \
+            cli.ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect binaries
+        run: |
+          mkdir release
+          for dir in artifacts/*/; do
+            cp "$dir"* release/
+          done
+
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum * > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*

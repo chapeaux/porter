@@ -1,0 +1,89 @@
+# User pod template -- provisioned by the Router's PodRegistry.
+#
+# Parameters are substituted at provisioning time by PodRegistry:
+#   ${USER_ID}       -- Sanitized user identifier
+#   ${POD_NAME}      -- Deployment name (porter-user-<sanitized-id>)
+#   ${SERVICE_NAME}  -- Service name (porter-user-<sanitized-id>-svc)
+#   ${IMAGE}         -- Container image
+#   ${NAMESPACE}     -- Target namespace
+#
+# Each user gets an isolated orchestrator running in single-user mode.
+# The router handles authentication; the user pod skips OIDC.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${POD_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: user-orchestrator
+    porter.io/user: "${USER_ID}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: porter
+      component: user-orchestrator
+      porter.io/user: "${USER_ID}"
+  template:
+    metadata:
+      labels:
+        app: porter
+        component: user-orchestrator
+        porter.io/user: "${USER_ID}"
+    spec:
+      containers:
+        - name: orchestrator
+          image: ${IMAGE}
+          command: ["deno", "run", "--allow-all", "cli.ts", "serve", "--port", "3000", "--headless", "--single-user"]
+          ports:
+            - containerPort: 3000
+          env:
+            - name: TERM
+              value: dumb
+            - name: PORTER_SINGLE_USER
+              value: "true"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: porter-home
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${SERVICE_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    component: user-orchestrator
+    porter.io/user: "${USER_ID}"
+spec:
+  type: ClusterIP
+  selector:
+    app: porter
+    component: user-orchestrator
+    porter.io/user: "${USER_ID}"
+  ports:
+    - port: 3000
+      targetPort: 3000
