@@ -37,21 +37,26 @@ export class PorterPodSync {
   }
 
   async connect() {
-    // Ensure the porter/ container exists (POST to parent per LWS spec)
-    // Skip HEAD check — just POST and accept 201 (created) or 409 (already exists)
+    // Ensure the porter/ container exists
+    // Try LDP BasicContainer (standard Solid), fall back to LWS Container
     try {
-      const createResp = await this._fetch(this._podRoot, {
-        method: 'POST',
-        headers: {
-          'Slug': 'porter',
-          'Link': '<https://www.w3.org/ns/lws#Container>; rel="type"',
-          'Content-Type': 'text/turtle',
-        },
-        body: '',
-      });
-      if (!createResp.ok && createResp.status !== 409) {
-        console.warn('[porter-pod] Could not create porter/ container:', createResp.status);
+      const containerTypes = [
+        '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
+        '<https://www.w3.org/ns/lws#Container>; rel="type"',
+      ];
+      let created = false;
+      for (const linkType of containerTypes) {
+        const createResp = await this._fetch(this._podRoot, {
+          method: 'POST',
+          headers: { 'Slug': 'porter', 'Link': linkType, 'Content-Type': 'text/turtle' },
+          body: '',
+        });
+        if (createResp.ok || createResp.status === 201 || createResp.status === 409) {
+          created = true;
+          break;
+        }
       }
+      if (!created) console.warn('[porter-pod] Could not create porter/ container');
     } catch (e) { console.error('[porter-pod] Container create failed:', e); }
 
     // Load current state, or create initial resource via POST to container
@@ -64,18 +69,26 @@ export class PorterPodSync {
         this._applyRemoteState(data);
       } else if (resp.status === 404) {
         const initial = { _clientId: this._clientId, _timestamp: Date.now() };
+        // Try POST to container first (LWS), then PUT directly (Solid CSS/NSS)
         const containerUrl = this._resourceUrl.replace(/[^/]+$/, '');
         const slug = this._resourceUrl.split('/').pop();
-        const postResp = await this._fetch(containerUrl, {
+        let postResp = await this._fetch(containerUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Slug': slug },
           body: JSON.stringify(initial),
         });
+        if (!postResp.ok && postResp.status !== 201 && postResp.status !== 409) {
+          // POST failed - try PUT directly (works on CSS, NSS)
+          postResp = await this._fetch(this._resourceUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(initial),
+          });
+        }
         if (postResp.ok || postResp.status === 201) {
           this._lastEtag = postResp.headers.get('etag');
           this._lastKnownState = initial;
         } else if (postResp.status === 409) {
-          // Resource already exists — retry GET
           const retryResp = await this._fetch(this._resourceUrl);
           if (retryResp.ok) {
             const data = await retryResp.json();
