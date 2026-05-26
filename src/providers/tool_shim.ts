@@ -81,6 +81,7 @@ function formatToolDescriptions(tools: ToolDefinition[]): string {
 const FENCED_JSON_PATTERN = /```(?:json)?\s*\n([\s\S]*?)\n\s*```/g;
 const XML_TOOL_CALL_PATTERN = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
 const BARE_JSON_PATTERN = /\{[^{}]*(?:"tool"|"name"|"action")\s*:\s*"[^"]*"[^{}]*\}/g;
+const CHATML_TOOL_PATTERN = /<\|tool_call_begin\|>(?:functions\.)?(\w+)(?::\d+)?<\|tool_call_argument_begin\|>([\s\S]*?)(?:<\|tool_call_argument_end\|>|<\|tool_call_end\|>|<\|tool_calls_section_end\|>|$)/g;
 
 /**
  * Try to extract a tool name and input from a parsed JSON object.
@@ -137,7 +138,35 @@ export function parseToolCalls(response: ChatResponse): ChatResponse {
     const text = block.text;
 
     const calls: { tool: string; input: Record<string, unknown> }[] = [];
-    let remainingText = text;
+    let remainingText = text
+      .replace(/<\|tool_calls_section_begin\|>/g, "")
+      .replace(/<\|tool_calls_section_end\|>/g, "")
+      .replace(/<\|tool_call_end\|>/g, "");
+
+    // 0. Match ChatML tool calls: <|tool_call_begin|>functions.name:0<|tool_call_argument_begin|>{...}
+    for (const match of text.matchAll(CHATML_TOOL_PATTERN)) {
+      const toolName = match[1];
+      const argStr = match[2].trim();
+      try {
+        const args = JSON.parse(argStr);
+        calls.push({ tool: toolName, input: args });
+        remainingText = remainingText.replace(match[0], "");
+      } catch {
+        // Try parsing truncated JSON by finding the last complete brace
+        let depth = 0, lastValid = -1;
+        for (let j = 0; j < argStr.length; j++) {
+          if (argStr[j] === '{') depth++;
+          else if (argStr[j] === '}') { depth--; if (depth === 0) lastValid = j; }
+        }
+        if (lastValid > 0) {
+          try {
+            const args = JSON.parse(argStr.slice(0, lastValid + 1));
+            calls.push({ tool: toolName, input: args });
+            remainingText = remainingText.replace(match[0], "");
+          } catch { /* truly unparseable */ }
+        }
+      }
+    }
 
     // 1. Match <tool_call>...</tool_call> XML tags
     for (const match of text.matchAll(XML_TOOL_CALL_PATTERN)) {
