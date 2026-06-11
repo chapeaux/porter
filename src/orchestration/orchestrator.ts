@@ -184,6 +184,20 @@ export async function start(
     porterConfigToTriples(config, graphStore);
     seedTeamMemory(config.agents, graphStore);
     graphStoreRef = graphStore;
+
+    // Restore persisted memory graph if resuming from snapshot
+    if (options?.restoreFrom) {
+      try {
+        const snap = await loadSnapshot(options.restoreFrom);
+        if (snap.memoryTurtle) {
+          const { GRAPHS: G } = await import("../graph/vocabulary.ts");
+          graphStore.load(snap.memoryTurtle, G.memory);
+          console.error("[porter] Memory graph restored from snapshot");
+        }
+      } catch {
+        // Snapshot may not exist yet — not an error
+      }
+    }
   } catch (e) {
     console.error("[porter] Graph store init failed (continuing without):", (e as Error).message);
   }
@@ -751,7 +765,16 @@ export async function start(
 
     async snapshot(path?: string) {
       const dest = path ?? snapshotPath(config.session, config.working_dir);
-      await saveSnapshot(dest, config.session, agents);
+      let memoryTurtle: string | undefined;
+      try {
+        if (graphStoreRef) {
+          const { GRAPHS } = await import("../graph/vocabulary.ts");
+          memoryTurtle = graphStoreRef.dump(GRAPHS.memory);
+        }
+      } catch (e) {
+        console.error(`[porter] Memory graph dump failed: ${(e as Error).message}`);
+      }
+      await saveSnapshot(dest, config.session, agents, memoryTurtle);
       return dest;
     },
   };

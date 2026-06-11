@@ -51,6 +51,7 @@ export class ModelRegistry {
       base_url: model.base_url,
       api_key_env: model.api_key_env,
       auth: model.auth === "adc" ? "adc" : "bearer",
+      chat_endpoint: model.chat_endpoint,
     };
   }
 

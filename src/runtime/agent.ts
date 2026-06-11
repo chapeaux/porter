@@ -79,6 +79,76 @@ export interface AgentState {
   running: boolean;
 }
 
+const MAX_TOOL_RESULT_CHARS = 20_000;
+const COMPRESS_KEEP_CHARS = 200;
+const COMPRESS_KEEP_RECENT_TURNS = 4;
+
+/**
+ * Compress tool results in older history turns.
+ * After the model has acted on a tool result (produced a follow-up),
+ * the full content is no longer needed — truncate to a short prefix.
+ */
+function compressOldToolResults(history: ChatMessage[]): ChatMessage[] {
+  if (history.length <= COMPRESS_KEEP_RECENT_TURNS * 2) return history;
+
+  const cutoff = history.length - COMPRESS_KEEP_RECENT_TURNS * 2;
+  return history.map((msg, i) => {
+    if (i >= cutoff) return msg;
+    if (typeof msg.content === "string") return msg;
+
+    const compressed = msg.content.map((block) => {
+      if (block.type !== "tool_result") return block;
+      if (block.content.length <= COMPRESS_KEEP_CHARS) return block;
+      return {
+        ...block,
+        content: block.content.slice(0, COMPRESS_KEEP_CHARS) + "\n[compressed]",
+      };
+    });
+    return { ...msg, content: compressed } as ChatMessage;
+  });
+}
+
+function trimHistory(
+  history: ChatMessage[],
+  maxTurns?: number,
+  maxContextTokens?: number,
+  charsPerToken = 4,
+): ChatMessage[] {
+  if (!maxTurns && !maxContextTokens) return history;
+  if (history.length <= 2) return history;
+
+  let trimmed = [...history];
+
+  if (maxTurns && maxTurns > 0) {
+    const pairCount = Math.floor((trimmed.length - 1) / 2);
+    if (pairCount > maxTurns) {
+      const keep = maxTurns * 2;
+      trimmed = [trimmed[0], ...trimmed.slice(trimmed.length - keep)];
+    }
+  }
+
+  if (maxContextTokens && maxContextTokens > 0) {
+    while (trimmed.length > 2) {
+      let chars = 0;
+      for (const msg of trimmed) {
+        if (typeof msg.content === "string") {
+          chars += msg.content.length;
+        } else {
+          for (const b of msg.content) {
+            if (b.type === "text") chars += b.text.length;
+            else if (b.type === "tool_result") chars += b.content.length;
+            else if (b.type === "tool_use") chars += JSON.stringify(b.input).length;
+          }
+        }
+      }
+      if (chars / charsPerToken <= maxContextTokens) break;
+      trimmed = [trimmed[0], ...trimmed.slice(3)];
+    }
+  }
+
+  return trimmed;
+}
+
 /**
  * Create and run an agent loop.
  *
@@ -175,6 +245,7 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
   }
 
   let consecutiveToolErrors = 0;
+  let charsPerToken = 4;
 
   try {
     while (state.running && !cancel?.cancelled) {
@@ -237,6 +308,9 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
 
       const currentToolDefs = registry.getDefinitions();
 
+      const compressed = compressOldToolResults(state.history);
+      const contextMessages = trimHistory(compressed, config.max_turns, config.max_context_tokens, charsPerToken);
+
       let response;
       try {
         response = await callWithRetry(
@@ -246,7 +320,7 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
               max_tokens: config.max_tokens ?? 8192,
               system: systemPrompt,
               tools: currentToolDefs.length > 0 ? currentToolDefs : undefined,
-              messages: state.history,
+              messages: contextMessages,
               reasoning: config.reasoning,
             }),
           config.name,
@@ -266,6 +340,26 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens,
       });
+
+      // Adaptive chars-per-token ratio from actual API usage
+      if (response.usage.input_tokens > 0) {
+        let sentChars = systemPrompt.length;
+        for (const msg of contextMessages) {
+          if (typeof msg.content === "string") {
+            sentChars += msg.content.length;
+          } else {
+            for (const b of msg.content) {
+              if (b.type === "text") sentChars += b.text.length;
+              else if (b.type === "tool_result") sentChars += b.content.length;
+              else if (b.type === "tool_use") sentChars += JSON.stringify(b.input).length;
+            }
+          }
+        }
+        const measured = sentChars / response.usage.input_tokens;
+        if (measured > 0.5 && measured < 20) {
+          charsPerToken = charsPerToken * 0.7 + measured * 0.3;
+        }
+      }
 
       // If the response has no native tool_use blocks, check for text-based
       // tool calls (e.g. <tool_call> XML tags) that some models emit even
@@ -295,20 +389,23 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
             }
           }
 
-          // Auto-extract and execute bash/shell code blocks
-          // Results are injected as text (not tool_results) to avoid
-          // tool_call/tool_result count mismatches with strict APIs
-          const bashPattern = /```(?:bash|sh|shell)\s*\n([\s\S]*?)\n\s*```/g;
-          let bashMatch;
-          while ((bashMatch = bashPattern.exec(block.text)) !== null) {
-            const command = bashMatch[1].trim();
-            if (command.length > 2) {
-              onOutput?.(config.name, { type: "tool_call", name: "bash", params: { command } });
-              const result = await executeTool(registry, "bash", {
-                command,
-              }, config.name, config.working_dir, innerRegistry);
-              onOutput?.(config.name, { type: "tool_result", name: "bash", result });
-              autoExtractedResults.push(`[auto-executed] $ ${command}\n${result.content}`);
+          // Auto-extract and execute bash/shell code blocks (opt-in via config)
+          if (config.auto_execute_bash) {
+            const bashPattern = /```(?:bash|sh|shell)\s*\n([\s\S]*?)\n\s*```/g;
+            const maxAutoExec = 3;
+            let bashMatch;
+            let autoExecCount = 0;
+            while ((bashMatch = bashPattern.exec(block.text)) !== null && autoExecCount < maxAutoExec) {
+              const command = bashMatch[1].trim();
+              if (command.length > 2) {
+                onOutput?.(config.name, { type: "tool_call", name: "bash", params: { command } });
+                const result = await executeTool(registry, "bash", {
+                  command,
+                }, config.name, config.working_dir, innerRegistry);
+                onOutput?.(config.name, { type: "tool_result", name: "bash", result });
+                autoExtractedResults.push(`[auto-executed] $ ${command}\n${result.content}`);
+                autoExecCount++;
+              }
             }
           }
         } else if (block.type === "tool_use") {
@@ -334,10 +431,15 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
             result,
           });
 
+          let resultContent = result.content;
+          if (resultContent.length > MAX_TOOL_RESULT_CHARS) {
+            resultContent = resultContent.slice(0, MAX_TOOL_RESULT_CHARS) + "\n\n[truncated — output exceeded " + MAX_TOOL_RESULT_CHARS.toLocaleString() + " chars]";
+          }
+
           toolResults.push({
             type: "tool_result",
             tool_use_id: block.id,
-            content: result.content,
+            content: resultContent,
             is_error: result.is_error,
           });
         }

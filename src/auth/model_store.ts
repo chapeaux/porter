@@ -6,7 +6,7 @@
  * the session key + user sub.
  */
 
-import { dirname } from "@std/path";
+import { dirname } from "jsr:@std/path@^1";
 import { getRawSessionKey, base64UrlEncode, base64UrlDecode } from "./session.ts";
 
 const NONCE_LENGTH = 12;
@@ -22,6 +22,7 @@ export interface ModelConfig {
   api_version?: string;
 
   auth: "bearer" | "adc" | "aws_iam";
+  chat_endpoint?: string;
 
   default_params?: {
     temperature?: number;

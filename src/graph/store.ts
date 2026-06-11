@@ -7,7 +7,7 @@
  * constants from vocabulary.ts.
  */
 
-import oxigraph from "oxigraph";
+import oxigraph from "npm:oxigraph@^0.5";
 import { GRAPHS, PREFIXES, XSD } from "./vocabulary.ts";
 
 // Re-export the type so consumers don't need to import oxigraph directly.

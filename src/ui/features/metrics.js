@@ -5,17 +5,19 @@
 import { getDlg } from '../dialogs/dialog-helpers.js';
 import { h } from '../dom.js';
 
-let _metricsTimer = null;
-
 export function startMetricsPolling() {
-  stopMetricsPolling();
   document.getElementById('metrics-bar')?.classList.remove('hidden');
+  const session = document.getElementById('projects')?.state?.activeSession;
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'start-metrics', session });
+  }
   updateMetrics();
-  _metricsTimer = setInterval(updateMetrics, 10000);
 }
 
 export function stopMetricsPolling() {
-  if (_metricsTimer) { clearInterval(_metricsTimer); _metricsTimer = null; }
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'stop-metrics' });
+  }
 }
 
 export async function updateMetrics() {

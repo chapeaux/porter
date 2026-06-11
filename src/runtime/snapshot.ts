@@ -3,7 +3,7 @@
  * and tmux layout.
  */
 
-import { dirname } from "@std/path";
+import { dirname } from "jsr:@std/path@^1";
 import type { AgentState } from "./agent.ts";
 import { serializeState, deserializeState } from "./agent.ts";
 
@@ -15,6 +15,8 @@ export interface Snapshot {
   session: string;
   /** Serialized agent states. */
   agents: Record<string, string>;
+  /** Serialized memory graph as Turtle (agent observations). */
+  memoryTurtle?: string;
 }
 
 /**
@@ -24,12 +26,17 @@ export async function saveSnapshot(
   path: string,
   session: string,
   agents: Map<string, AgentState>,
+  memoryTurtle?: string,
 ): Promise<void> {
   const snapshot: Snapshot = {
     timestamp: new Date().toISOString(),
     session,
     agents: {},
   };
+
+  if (memoryTurtle) {
+    snapshot.memoryTurtle = memoryTurtle;
+  }
 
   for (const [name, state] of agents) {
     snapshot.agents[name] = serializeState(state);

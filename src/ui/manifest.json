@@ -1,0 +1,14 @@
+{
+  "name": "Porter",
+  "short_name": "Porter",
+  "description": "Multi-agent AI orchestration",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#c9a96e",
+  "icons": [
+    { "src": "/porter.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "/porter-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "/porter-512.png", "type": "image/png", "sizes": "512x512" }
+  ]
+}

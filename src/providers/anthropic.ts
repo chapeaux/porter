@@ -112,7 +112,9 @@ export class AnthropicProvider implements ModelProvider {
 
     const body: Record<string, unknown> = {
       max_tokens: params.max_tokens,
-      system: params.system,
+      system: [
+        { type: "text", text: params.system, cache_control: { type: "ephemeral" } },
+      ],
       messages: toClaudeMessages(params.messages),
     };
 
@@ -123,7 +125,11 @@ export class AnthropicProvider implements ModelProvider {
     }
 
     if (params.tools && params.tools.length > 0) {
-      body.tools = toClaudeTools(params.tools);
+      const tools = toClaudeTools(params.tools);
+      if (tools.length > 0) {
+        (tools[tools.length - 1] as unknown as Record<string, unknown>).cache_control = { type: "ephemeral" };
+      }
+      body.tools = tools;
     }
 
     const headers: Record<string, string> = {

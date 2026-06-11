@@ -34,7 +34,10 @@ export function setupProjectSwitcher() {
 
   projectStore.refresh();
 
-  setInterval(() => projectStore.refresh(), 15000);
+  // Session list polling is handled by the service worker
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'start-sessions' });
+  }
 }
 
 export function renderProjectList() {

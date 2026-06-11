@@ -84,6 +84,25 @@ setProjectSwitcherCallbacks({ connectWebSocket });
 // =========================================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Register service worker for PWA support
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      const { type, data } = event.data || {};
+      if (type === 'metrics') {
+        const fmt = (n) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
+        document.getElementById('m-tokens-in').textContent = `IN: ${fmt(data.totalIn)}`;
+        document.getElementById('m-tokens-out').textContent = `OUT: ${fmt(data.totalOut)}`;
+        document.getElementById('m-api-calls').textContent = `API: ${data.totalApi}`;
+        document.getElementById('m-errors').textContent = `ERR: ${data.totalErr}`;
+        document.getElementById('m-rate-limits').textContent = `LIMITS: ${data.rateLimits}`;
+      }
+      if (type === 'sessions') {
+        document.getElementById('projects')?.setSessions(data.sessions || []);
+      }
+    });
+  }
+
   await Promise.all([
     customElements.whenDefined('connection-store'),
     customElements.whenDefined('agent-store'),

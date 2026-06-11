@@ -6,6 +6,7 @@ import { h, replaceContent } from '../dom.js';
 import { getDlg } from './dialog-helpers.js';
 import { openTeamBuilder } from './team-builder.js';
 import { startMetricsPolling } from '../features/metrics.js';
+import { restoreMemoryFromPod } from '../sync/sync-helpers.js';
 
 // TODO: connectWebSocket and renderTimeline are in app.js — passed via
 // setSessionLauncherCallbacks to avoid circular dependency
@@ -125,6 +126,8 @@ export async function switchToSession(sessionName) {
       }
     }
   } catch { /* history not available — will populate from live WebSocket */ }
+
+  restoreMemoryFromPod(sessionName);
 
   _renderTimeline?.();
 

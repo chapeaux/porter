@@ -74,7 +74,10 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
   const isSecure = (oidcConfig?.redirect_uri ?? "").startsWith("https://");
 
   // Server-side PKCE state store — maps state tokens to code verifiers
-  const pendingLogins = new Map<string, { codeVerifier: string; redirectTo: string; createdAt: number }>();
+  const pendingLogins = new Map<string, {
+    codeVerifier: string; redirectTo: string; createdAt: number;
+    solidIssuer?: string; solidClientId?: string; solidCallbackUri?: string; solidTokenEndpoint?: string;
+  }>();
   // Server-side token store — keeps large tokens out of cookies (4KB limit)
   const userTokens = new Map<string, { id_token?: string; refresh_token?: string; lws_token?: string }>();
   // Clean up stale PKCE entries every 5 minutes
@@ -106,7 +109,25 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
       }
     }
     if (pathname === "/favicon.ico") {
-      return new Response("", { status: 204 });
+      return new Response(null, { status: 204 });
+    }
+    if (pathname === "/sw.js") {
+      try {
+        const sw = await Deno.readTextFile(new URL("../ui/sw.js", import.meta.url));
+        return new Response(sw, { headers: { "Content-Type": "application/javascript", "Cache-Control": "no-cache, no-store" } });
+      } catch { return new Response("", { status: 404 }); }
+    }
+    if (pathname === "/manifest.json") {
+      try {
+        const m = await Deno.readTextFile(new URL("../ui/manifest.json", import.meta.url));
+        return new Response(m, { headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" } });
+      } catch { return new Response("{}", { status: 404 }); }
+    }
+    if (pathname === "/porter-192.png" || pathname === "/porter-512.png") {
+      try {
+        const icon = await Deno.readFile(new URL("../ui" + pathname, import.meta.url));
+        return new Response(icon, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
+      } catch { return new Response("", { status: 404 }); }
     }
 
     // --- Auth routes (no proxy) ---
@@ -285,6 +306,181 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
       return new Response(LOGGED_OUT_PAGE, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
 
+    // --- Solid OIDC login (dynamic client registration + PKCE) ---
+
+    if (pathname === "/auth/solid-login" && req.method === "GET") {
+      const issuer = url.searchParams.get("issuer")?.replace(/\/+$/, "");
+      const redirectTo = url.searchParams.get("redirect") ?? "/";
+      if (!issuer) {
+        return new Response("Missing issuer parameter", { status: 400 });
+      }
+
+      try {
+        const { discoverOAuthAS } = await import("../auth/oidc.ts");
+        const solidDiscovery = await discoverOAuthAS(issuer);
+
+        const fwdProto = req.headers.get("x-forwarded-proto") || url.protocol.replace(":", "");
+        const fwdHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || url.host;
+        const callbackUri = `${fwdProto}://${fwdHost}/auth/solid-callback`;
+
+        // Dynamic client registration
+        const regEndpoint = (solidDiscovery as unknown as Record<string, string>).registration_endpoint;
+        let clientId: string;
+        if (regEndpoint) {
+          const regResp = await fetch(regEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              client_name: "Porter",
+              redirect_uris: [callbackUri],
+              grant_types: ["authorization_code", "refresh_token"],
+              response_types: ["code"],
+              token_endpoint_auth_method: "none",
+              application_type: "web",
+            }),
+          });
+          if (!regResp.ok) {
+            const text = await regResp.text().catch(() => "");
+            return new Response(`Solid client registration failed: ${regResp.status} ${text}`, { status: 502 });
+          }
+          const regData = await regResp.json();
+          clientId = regData.client_id;
+        } else {
+          clientId = callbackUri;
+        }
+
+        const { state, codeVerifier } = await generateCsrf(redirectTo, isSecure);
+        const codeChallenge = await generateCodeChallenge(codeVerifier);
+        pendingLogins.set(state, {
+          codeVerifier,
+          redirectTo,
+          createdAt: Date.now(),
+          solidIssuer: issuer,
+          solidClientId: clientId,
+          solidCallbackUri: callbackUri,
+          solidTokenEndpoint: solidDiscovery.token_endpoint,
+        });
+
+        const params = new URLSearchParams({
+          response_type: "code",
+          client_id: clientId,
+          redirect_uri: callbackUri,
+          state,
+          scope: "openid webid profile offline_access",
+          code_challenge: codeChallenge,
+          code_challenge_method: "S256",
+        });
+
+        return new Response(null, {
+          status: 302,
+          headers: { "Location": `${solidDiscovery.authorization_endpoint}?${params}` },
+        });
+      } catch (err) {
+        return new Response(`Solid login failed: ${(err as Error).message}`, { status: 500 });
+      }
+    }
+
+    if (pathname === "/auth/solid-callback" && req.method === "GET") {
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        return new Response(`Solid auth error: ${url.searchParams.get("error_description") ?? error}`, { status: 400 });
+      }
+      if (!code || !state) {
+        return new Response("Missing code or state", { status: 400 });
+      }
+
+      const pending = pendingLogins.get(state);
+      if (!pending || !pending.solidTokenEndpoint) {
+        return new Response("Login session expired. Please try again.", { status: 403 });
+      }
+      pendingLogins.delete(state);
+
+      try {
+        const tokenResp = await fetch(pending.solidTokenEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: pending.solidCallbackUri!,
+            client_id: pending.solidClientId!,
+            code_verifier: pending.codeVerifier,
+          }),
+        });
+
+        if (!tokenResp.ok) {
+          const text = await tokenResp.text().catch(() => "");
+          return new Response(`Solid token exchange failed: ${tokenResp.status} ${text}`, { status: 502 });
+        }
+
+        const tokens = await tokenResp.json();
+        let claims: Record<string, unknown> = {};
+        if (tokens.id_token) {
+          const payload = tokens.id_token.split(".")[1];
+          claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+        }
+
+        const sub = (claims.webid ?? claims.sub ?? "") as string;
+        if (!sub) {
+          return new Response("No WebID or sub in ID token", { status: 400 });
+        }
+
+        // Exchange for LWS token if configured
+        let lwsToken: string | undefined;
+        const lwsBase = Deno.env.get("PORTER_LWS_BASE_URL")?.replace(/\/+$/, "");
+        if (lwsBase && tokens.id_token) {
+          try {
+            const { getHttpClient } = await import("../providers/types.ts");
+            const lwsResp = await fetch(`${lwsBase}/token`, {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+                subject_token: tokens.id_token,
+                subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
+                requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+              }),
+              client: getHttpClient(),
+            });
+            if (lwsResp.ok) {
+              lwsToken = (await lwsResp.json()).access_token;
+            }
+          } catch { /* LWS is optional for Solid users */ }
+        }
+
+        userTokens.set(sub, {
+          id_token: tokens.id_token,
+          refresh_token: tokens.refresh_token,
+          lws_token: lwsToken,
+        });
+
+        const username = (claims.preferred_username ?? claims.name ?? sub.split("/").pop() ?? "solid-user") as string;
+        const now = new Date();
+        const sessionCookie = await createSessionCookie({
+          sub,
+          username,
+          email: claims.email as string | undefined,
+          name: claims.name as string | undefined,
+          issued_at: now.toISOString(),
+          expires_at: new Date(now.getTime() + 86400_000).toISOString(),
+        }, isSecure);
+
+        const redirectTo = pending.redirectTo || "/";
+        return new Response(null, {
+          status: 302,
+          headers: {
+            "Location": redirectTo,
+            "Set-Cookie": sessionCookie,
+          },
+        });
+      } catch (err) {
+        return new Response(`Solid auth failed: ${(err as Error).message}`, { status: 500 });
+      }
+    }
+
     if (pathname === "/auth/me" && req.method === "GET") {
       const session = await readSession(req);
       if (!session) {
@@ -439,7 +635,12 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
 
     // --- HTTP reverse proxy ---
 
-    return proxyHttp(req, entry.podUrl);
+    const resp = await proxyHttp(req, entry.podUrl);
+    if (resp.status === 502) {
+      podRegistry.evict(userId);
+      console.log(`[router] Evicted stale entry for ${userId} after proxy failure`);
+    }
+    return resp;
   });
 
   console.log(`[router] Router listening on http://0.0.0.0:${port}`);

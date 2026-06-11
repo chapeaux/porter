@@ -5,7 +5,7 @@
  * works as a standalone executable without the source directory.
  */
 
-import { extname, join } from "@std/path";
+import { extname, join } from "jsr:@std/path@^1";
 import { PorterMcpServer } from "../mcp/mcp_server.ts";
 import {
   loadOidcConfig,
@@ -42,6 +42,14 @@ const flipboard_js = Deno.readTextFileSync(join(UI_DIR, "flipboard.js"));
 const porter_svg = Deno.readTextFileSync(join(UI_DIR, "porter.svg"));
 const porter_css = Deno.readTextFileSync(join(UI_DIR, "porter.css"));
 const mcp_auth_html = Deno.readTextFileSync(join(UI_DIR, "mcp-auth-result.html"));
+let manifest_json = "";
+try { manifest_json = Deno.readTextFileSync(join(UI_DIR, "manifest.json")); } catch { /* optional */ }
+let sw_js = "";
+try { sw_js = Deno.readTextFileSync(join(UI_DIR, "sw.js")); } catch { /* optional */ }
+let porter_192_png: Uint8Array | null = null;
+try { porter_192_png = Deno.readFileSync(join(UI_DIR, "porter-192.png")); } catch { /* optional */ }
+let porter_512_png: Uint8Array | null = null;
+try { porter_512_png = Deno.readFileSync(join(UI_DIR, "porter-512.png")); } catch { /* optional */ }
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -49,6 +57,7 @@ const MIME: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".json": "application/json",
   ".svg": "image/svg+xml",
+  ".png": "image/png",
 };
 
 /** Embedded assets served from memory. */
@@ -61,7 +70,9 @@ const ASSETS: Record<string, string> = {
   "/porter-dialog.js": porter_dialog_js,
   "/flipboard.js": flipboard_js,
   "/porter.svg": porter_svg,
-  "/porter.css": porter_css
+  "/porter.css": porter_css,
+  "/manifest.json": manifest_json,
+  "/sw.js": sw_js,
 };
 
 /** Minimal shape of a managed session returned by SessionManager. */
@@ -235,7 +246,7 @@ export async function startUiServer(
         api_key: resolved?.api_key,
         api_key_env: modelConfig?.api_key_env,
         auth: modelConfig?.auth ?? "bearer",
-        chat_endpoint: (modelConfig as unknown as Record<string, unknown>)?.chat_endpoint,
+        chat_endpoint: modelConfig?.chat_endpoint,
         models: [modelId],
       };
 
@@ -1274,6 +1285,74 @@ export async function startUiServer(
       });
     }
 
+    // --- Session memory graph export/import ---
+    const memoryMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/memory$/);
+    if (memoryMatch && req.method === "GET") {
+      const sessionName = decodeURIComponent(memoryMatch[1]);
+      if (!options?.sessionManager) {
+        return new Response("", { headers: { "Content-Type": "text/turtle" } });
+      }
+      const ownerErr = await checkSessionOwnership(req, sessionName, options.sessionManager);
+      if (ownerErr) return ownerErr;
+      const session = options.sessionManager.getSession(sessionName);
+      if (session) {
+        const { getGraphStore: getGS } = await import("../graph/store.ts");
+        const { GRAPHS } = await import("../graph/vocabulary.ts");
+        const store = getGS();
+        const turtle = store ? store.dump(GRAPHS.memory) : "";
+        return new Response(turtle, { headers: { "Content-Type": "text/turtle" } });
+      }
+      // Not running — try loading from snapshot
+      try {
+        const { loadSnapshot: loadSnap, snapshotPath: snapP } = await import("../runtime/snapshot.ts");
+        const snap = await loadSnap(snapP(sessionName));
+        return new Response(snap.memoryTurtle ?? "", { headers: { "Content-Type": "text/turtle" } });
+      } catch {
+        return new Response("", { headers: { "Content-Type": "text/turtle" } });
+      }
+    }
+
+    if (memoryMatch && req.method === "POST") {
+      const sessionName = decodeURIComponent(memoryMatch[1]);
+      if (!options?.sessionManager) {
+        return new Response(JSON.stringify({ error: "Session management not available" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const ownerErr = await checkSessionOwnership(req, sessionName, options.sessionManager);
+      if (ownerErr) return ownerErr;
+      const session = options.sessionManager.getSession(sessionName);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Session not running" }), {
+          status: 404, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const turtle = await req.text();
+      if (!turtle.trim()) {
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const { getGraphStore: getGS } = await import("../graph/store.ts");
+      const { GRAPHS } = await import("../graph/vocabulary.ts");
+      const store = getGS();
+      if (!store) {
+        return new Response(JSON.stringify({ error: "Graph store not initialized" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        store.load(turtle, GRAPHS.memory);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // --- Session message history endpoint ---
     const historyMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/messages$/);
     if (historyMatch && req.method === "GET") {
@@ -2018,13 +2097,27 @@ export async function startUiServer(
       }
     }
 
+    // Serve binary PNG icons
+    if (pathname === "/porter-192.png" && porter_192_png) {
+      return new Response(porter_192_png.buffer as ArrayBuffer, {
+        headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" },
+      });
+    }
+    if (pathname === "/porter-512.png" && porter_512_png) {
+      return new Response(porter_512_png.buffer as ArrayBuffer, {
+        headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" },
+      });
+    }
+
     if (!(pathname in ASSETS)) {
       // Dynamic fallback for UI module files (ES module imports from subdirectories)
       if (pathname.endsWith(".js") && !pathname.includes("..")) {
         try {
           const filePath = join(UI_DIR, pathname.slice(1));
           const content = await Deno.readTextFile(filePath);
-          return new Response(content, { headers: { "Content-Type": "application/javascript; charset=utf-8" } });
+          return new Response(content, {
+            headers: { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+          });
         } catch { /* fall through to 404 */ }
       }
       return new Response("Not Found", { status: 404 });
@@ -2036,12 +2129,6 @@ export async function startUiServer(
 
     // Inject bus URL into index.html
     if (pathname === "/index.html") {
-      // Always inject the relative /ws proxy path so the browser connects
-      // through this server's WebSocket proxy. The proxy handles the backend
-      // bus URL server-side (using the busUrl parameter / PORTER_BUS_URL env var).
-      // The protocol (ws: vs wss:) is resolved client-side from window.location.
-      // This is essential for cloud deployments where the bus is never
-      // reachable from the user's browser.
       const injectedUrl = "/ws";
       content = content.replace(
         'content="ws://localhost:8787"',
@@ -2049,8 +2136,13 @@ export async function startUiServer(
       );
     }
 
+    // Cache-Control per asset type
+    let cacheControl = "public, max-age=86400";
+    if (pathname === "/sw.js") cacheControl = "no-cache, no-store";
+    else if (pathname.endsWith(".html") || pathname === "/manifest.json") cacheControl = "no-cache";
+
     return new Response(content, {
-      headers: { "Content-Type": contentType },
+      headers: { "Content-Type": contentType, "Cache-Control": cacheControl },
     });
   });
 

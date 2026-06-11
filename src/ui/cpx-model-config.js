@@ -124,6 +124,7 @@ class CpxModelConfig extends HTMLElement {
       region: m.region,
       api_version: m.api_version,
       auth: m.auth ?? (PROVIDER_DEFAULTS[m.provider_type]?.auth ?? "bearer"),
+      chat_endpoint: m.chat_endpoint,
       default_params: m.default_params,
       context_window: m.context_window ?? 128000,
       max_tokens: m.max_tokens ?? 4096,
@@ -372,7 +373,7 @@ class CpxModelConfig extends HTMLElement {
       h('fieldset', null,
         h('legend', null, 'Connection'),
         h('label', null, 'Base URL ', h('input', { id: 'f-base_url', value: m.base_url, placeholder: 'https://api.example.com' })),
-        h('label', null, 'Chat Endpoint ', h('input', { id: 'f-chat_endpoint', value: m.chat_endpoint ?? '', placeholder: '/v1/messages (default)' })),
+        h('label', null, 'Chat Endpoint ', h('input', { id: 'f-chat_endpoint', value: m.chat_endpoint ?? '', placeholder: '/v1/chat/completions (default)' })),
         h('label', null, 'API Key Env Var ', h('input', { id: 'f-api_key_env', value: m.api_key_env ?? '', placeholder: 'OPENAI_API_KEY' })),
         h('label', null, 'Auth Method ',
           h('select', { id: 'f-auth' },
@@ -401,7 +402,11 @@ class CpxModelConfig extends HTMLElement {
       h('fieldset', null,
         h('legend', null, 'Constraints'),
         h('label', null, 'Context Window ', h('input', { id: 'f-context_window', type: 'number', value: String(m.context_window) })),
+        h('div', { style: 'font-size:11px;color:#888;margin:-4px 0 8px;padding-left:2px' },
+          'Total tokens the model can process (input + output). Examples: Mistral 7B: 32,768 | Llama 3.3 70B: 131,072 | Claude Sonnet: 200,000 | Gemini 2.5: 1,048,576'),
         h('label', null, 'Max Output Tokens ', h('input', { id: 'f-max_tokens', type: 'number', value: String(m.max_tokens) })),
+        h('div', { style: 'font-size:11px;color:#888;margin:-4px 0 8px;padding-left:2px' },
+          'Maximum tokens per response. Must be less than context window. Examples: Small/fast tasks: 2,048 | General use: 4,096-8,192 | Long-form generation: 16,384+'),
       )
     );
 

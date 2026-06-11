@@ -113,6 +113,10 @@ export class PodRegistry {
     if (entry) entry.lastSeen = Date.now();
   }
 
+  evict(userId: string): void {
+    this.entries.delete(userId);
+  }
+
   async provision(userId: string): Promise<PodEntry> {
     const existing = this.entries.get(userId);
     if (existing) return existing;

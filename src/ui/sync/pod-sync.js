@@ -129,6 +129,51 @@ export class PorterPodSync {
     this._scheduleFlush();
   }
 
+  async saveMemory(sessionName, turtle) {
+    if (!turtle || !turtle.trim()) return;
+    const memoryUrl = `${this._podRoot}porter/memory/${encodeURIComponent(sessionName)}.ttl`;
+    try {
+      let resp = await this._fetch(memoryUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/turtle' },
+        body: turtle,
+      });
+      if (resp.status === 404) {
+        const containerTypes = [
+          '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
+          '<https://www.w3.org/ns/lws#Container>; rel="type"',
+        ];
+        for (const linkType of containerTypes) {
+          const cr = await this._fetch(`${this._podRoot}porter/`, {
+            method: 'POST',
+            headers: { 'Slug': 'memory', 'Link': linkType, 'Content-Type': 'text/turtle' },
+            body: '',
+          });
+          if (cr.ok || cr.status === 201 || cr.status === 409) break;
+        }
+        resp = await this._fetch(memoryUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'text/turtle' },
+          body: turtle,
+        });
+      }
+      if (resp.ok) console.log('[porter-pod] Memory saved for session:', sessionName);
+    } catch (e) {
+      console.error('[porter-pod] Memory save failed:', e);
+    }
+  }
+
+  async loadMemory(sessionName) {
+    const memoryUrl = `${this._podRoot}porter/memory/${encodeURIComponent(sessionName)}.ttl`;
+    try {
+      const resp = await this._fetch(memoryUrl);
+      if (resp.ok) return await resp.text();
+    } catch (e) {
+      console.error('[porter-pod] Memory load failed:', e);
+    }
+    return null;
+  }
+
   _scheduleFlush() {
     if (this._flushScheduled) return;
     this._flushScheduled = true;

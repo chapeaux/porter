@@ -504,6 +504,65 @@ This makes configuration portable across Porter instances: log in with the same 
 
 ---
 
+## Context Management
+
+Porter provides controls to limit input token usage, which is important for pay-per-token endpoints like vLLM on Vultr or RHOAI.
+
+### History Trimming
+
+Set `max_turns` or `max_context_tokens` on any agent to automatically drop oldest conversation turns:
+
+```json
+{
+  "name": "worker-1",
+  "role": "worker",
+  "max_turns": 30,
+  "max_context_tokens": 24000
+}
+```
+
+| Use Case | Max Turns | Max Context Tokens | Notes |
+|---|---|---|---|
+| Quick tasks (lint, format) | 10 | 16,000 | Low cost, short memory |
+| Standard development | 30 | 64,000 | Good balance |
+| Deep analysis / research | 100 | 128,000 | Higher cost, long memory |
+| Large context models (Claude, Gemini) | — | — | Default: unlimited |
+
+Rule of thumb: set `max_context_tokens` to ~75% of the model's context window.
+
+### Tool Result Truncation
+
+Tool results exceeding 20,000 characters are automatically truncated to prevent a single large file read or command output from consuming the entire context window.
+
+---
+
+## Shared Memory Persistence
+
+Agent observations written via `memory_write` are persisted across session restarts. When a session stops, the memory graph is serialized as Turtle into the session snapshot. On restart, it is restored automatically.
+
+For SSO and Solid users, the memory graph is also synced to the user's LWS/Solid Pod at `{pod}/porter/memory/{session}.ttl`, enabling persistence across pod restarts and device portability.
+
+### API
+
+```
+GET /api/sessions/<name>/memory     # Export as text/turtle
+POST /api/sessions/<name>/memory    # Import text/turtle into running session
+```
+
+---
+
+## Progressive Web App
+
+Porter is a PWA — installable, offline-capable, and optimized for background operation.
+
+- **Installable** — browser shows an install prompt; works as a standalone app on desktop and mobile
+- **Offline shell** — cached app shell loads even without network, reconnects when back online
+- **Background polling** — metrics and session list polling run in the service worker, keeping the main thread responsive
+- **Cache-first assets** — static assets (JS, CSS, SVG) are served from cache with background updates (stale-while-revalidate)
+- **Network-first API** — API calls hit the server with cache fallback for offline reads
+
+---
+
 ## Metrics and Observability
 
 Porter collects per-session operational metrics automatically.
@@ -607,6 +666,8 @@ GET /api/sessions/<name>/messages?limit=500
 | `model` | no | session default | Override model for this agent |
 | `subscribe` | no | `[]` | Bus channels to subscribe to |
 | `max_tokens` | no | `8192` | Max tokens per response |
+| `max_turns` | no | unlimited | Max conversation turn pairs to keep in context |
+| `max_context_tokens` | no | unlimited | Estimated input token budget (~4 chars/token) |
 | `reasoning` | no | `false` | Enable extended thinking |
 | `mcp_tools` | no | `[]` | MCP tools this agent can access |
 
@@ -768,6 +829,8 @@ porter/
       porter-dialog.js  Dialog component
       constants.js      UI constants and helpers
       dom.js            Safe DOM construction helpers (replaces innerHTML)
+      sw.js             Service worker (PWA caching + background polling)
+      manifest.json     Web app manifest (PWA metadata)
       dialogs/
         team-builder.js   Team Builder wizard (3-step)
         agent-editor.js   Agent create/edit dialog

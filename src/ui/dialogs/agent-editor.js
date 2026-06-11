@@ -232,6 +232,42 @@ export function renderAgentForm(agent) {
         h('table', { class: 'max-tokens-table' }, ...tableRows),
         h('p', null, 'Higher values = longer responses but more token usage. For agent teams, 4,096-8,192 is usually sufficient.'),
       ),
+    ),
+    h('div', { class: 'team-field' },
+      h('label', null, 'Max Turns ',
+        h('span', { class: 'max-tokens-help-toggle', id: 'max-turns-toggle', title: 'What is this?' }, '(? help)')
+      ),
+      h('input', { type: 'number', id: 'agent-max-turns', value: agent.maxTurns ? String(agent.maxTurns) : '', placeholder: 'Unlimited' }),
+      h('div', { id: 'agent-max-turns-hint', class: 'field-hint' }, 'Limits conversation history length. Oldest turns are dropped.'),
+      h('div', { id: 'max-turns-help', class: 'max-tokens-help', style: 'display:none' },
+        h('p', null, h('strong', null, 'Max Turns'), ' caps how many user/assistant turn pairs are kept in context. Older turns are dropped to save input tokens.'),
+        h('table', { class: 'max-tokens-table' },
+          h('tr', null, h('th', null, 'Use Case'), h('th', null, 'Max Turns'), h('th', null, 'Notes')),
+          h('tr', null, h('td', null, 'Quick tasks (lint, format)'), h('td', null, '10'), h('td', null, 'Low cost, short memory')),
+          h('tr', null, h('td', null, 'Standard development'), h('td', null, '30'), h('td', null, 'Good balance of cost and context')),
+          h('tr', null, h('td', null, 'Deep analysis / research'), h('td', null, '100'), h('td', null, 'Higher cost, longer memory')),
+          h('tr', null, h('td', null, 'Large context models'), h('td', null, 'blank'), h('td', null, 'Default: unlimited (Claude, Gemini)')),
+        ),
+      ),
+    ),
+    h('div', { class: 'team-field' },
+      h('label', null, 'Max Context Tokens ',
+        h('span', { class: 'max-tokens-help-toggle', id: 'max-context-toggle', title: 'What is this?' }, '(? help)')
+      ),
+      h('input', { type: 'number', id: 'agent-max-context-tokens', value: agent.maxContextTokens ? String(agent.maxContextTokens) : '', placeholder: 'Unlimited' }),
+      h('div', { id: 'agent-max-context-hint', class: 'field-hint' }, 'Estimated input token budget. Oldest turns are dropped when exceeded.'),
+      h('div', { id: 'max-context-help', class: 'max-tokens-help', style: 'display:none' },
+        h('p', null, h('strong', null, 'Max Context Tokens'), ' sets a soft budget for input tokens. When the estimated token count exceeds this, oldest turns are dropped. Set this below your model\'s context window to leave room for the response.'),
+        h('table', { class: 'max-tokens-table' },
+          h('tr', null, h('th', null, 'Model'), h('th', null, 'Context Window'), h('th', null, 'Suggested Max Context')),
+          h('tr', null, h('td', null, 'Mistral 7B'), h('td', null, '32,768'), h('td', null, '24,000')),
+          h('tr', null, h('td', null, 'Qwen3 14B / GPT-OSS 20B'), h('td', null, '32,768'), h('td', null, '24,000')),
+          h('tr', null, h('td', null, 'Llama 3.3 70B'), h('td', null, '131,072'), h('td', null, '100,000')),
+          h('tr', null, h('td', null, 'Claude Sonnet'), h('td', null, '200,000'), h('td', null, '150,000')),
+          h('tr', null, h('td', null, 'Gemini 2.5'), h('td', null, '1,048,576'), h('td', null, 'unlimited')),
+        ),
+        h('p', null, 'Rule of thumb: set to ~75% of the model\'s context window. On pay-per-token endpoints, lower values reduce cost.'),
+      ),
     )
   );
 
@@ -286,11 +322,13 @@ export function renderAgentForm(agent) {
     if (status) status.textContent = `${files.length} file(s) appended`;
   });
 
-  // Max tokens help toggle
-  body.querySelector('#max-tokens-toggle')?.addEventListener('click', () => {
-    const help = body.querySelector('#max-tokens-help');
-    if (help) help.style.display = help.style.display === 'none' ? '' : 'none';
-  });
+  // Help toggles
+  for (const [toggleId, helpId] of [['max-tokens-toggle', 'max-tokens-help'], ['max-turns-toggle', 'max-turns-help'], ['max-context-toggle', 'max-context-help']]) {
+    body.querySelector(`#${toggleId}`)?.addEventListener('click', () => {
+      const help = body.querySelector(`#${helpId}`);
+      if (help) help.style.display = help.style.display === 'none' ? '' : 'none';
+    });
+  }
 
   // Max tokens auto-suggestion based on selected model
   function updateMaxTokensHint() {
@@ -342,6 +380,8 @@ export function handleAgentSave() {
     tools: [...body.querySelectorAll('#agent-tools input:checked')].map(cb => cb.value),
     channels: body.querySelector('#agent-channels').value.split(',').map(s => s.trim()).filter(Boolean),
     maxTokens: parseInt(body.querySelector('#agent-max-tokens').value) || 8192,
+    maxTurns: parseInt(body.querySelector('#agent-max-turns').value) || undefined,
+    maxContextTokens: parseInt(body.querySelector('#agent-max-context-tokens').value) || undefined,
     reasoning: body.querySelector('#agent-reasoning')?.checked || false,
     mcpTools: [
       ...[...body.querySelectorAll('.mcp-tool-check:checked')].map(cb => cb.value),

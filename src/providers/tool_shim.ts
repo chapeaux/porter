@@ -82,6 +82,9 @@ const FENCED_JSON_PATTERN = /```(?:json)?\s*\n([\s\S]*?)\n\s*```/g;
 const XML_TOOL_CALL_PATTERN = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
 const BARE_JSON_PATTERN = /\{[^{}]*(?:"tool"|"name"|"action")\s*:\s*"[^"]*"[^{}]*\}/g;
 const CHATML_TOOL_PATTERN = /<\|tool_call_begin\|>(?:functions\.)?(\w+)(?::\d+)?<\|tool_call_argument_begin\|>([\s\S]*?)(?:<\|tool_call_argument_end\|>|<\|tool_call_end\|>|<\|tool_calls_section_end\|>|$)/g;
+// Matches tool_name<|channel|>type(key: value, ...) — emitted by some models (e.g. GPT-20B)
+const SPECIAL_TOKEN_CALL_PATTERN = /\b(\w+)<\|[^|]*\|>\w*\(([^)]*)\)/g;
+const STRAY_SPECIAL_TOKEN = /<\|[\w_]+\|?>|<\|[^|]*\|>/g;
 
 /**
  * Try to extract a tool name and input from a parsed JSON object.
@@ -166,6 +169,27 @@ export function parseToolCalls(response: ChatResponse): ChatResponse {
           } catch { /* truly unparseable */ }
         }
       }
+    }
+
+    // 0b. Match tool_name<|channel|>type(key: value, ...) special token calls
+    for (const match of text.matchAll(SPECIAL_TOKEN_CALL_PATTERN)) {
+      const toolName = match[1];
+      const argsStr = match[2].trim();
+      if (argsStr) {
+        const input: Record<string, unknown> = {};
+        for (const pair of argsStr.split(/,\s*/)) {
+          const sep = pair.indexOf(":");
+          if (sep > 0) {
+            const k = pair.slice(0, sep).trim();
+            const v = pair.slice(sep + 1).trim();
+            input[k] = /^\d+$/.test(v) ? Number(v) : v;
+          }
+        }
+        calls.push({ tool: toolName, input });
+      } else {
+        calls.push({ tool: toolName, input: {} });
+      }
+      remainingText = remainingText.replace(match[0], "");
     }
 
     // 1. Match <tool_call>...</tool_call> XML tags
@@ -274,6 +298,10 @@ export function parseToolCalls(response: ChatResponse): ChatResponse {
       calls.push({ tool: match[1], input: {} });
       remainingText = remainingText.replace(match[0], "");
     }
+
+    // Strip stray special tokens (e.g. <|channel|>, <|constrain|>) that
+    // would cause vLLM 500s if sent back in conversation history.
+    remainingText = remainingText.replace(STRAY_SPECIAL_TOKEN, "");
 
     // Add any remaining text
     const trimmed = remainingText.trim();

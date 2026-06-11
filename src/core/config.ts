@@ -2,7 +2,7 @@
  * Porter configuration types and loader.
  */
 
-import { dirname, resolve } from "@std/path";
+import { dirname, resolve } from "jsr:@std/path@^1";
 import { validateToolSpec } from "../router/tool_registry.ts";
 
 /** Tool names that can be assigned to agents. */
@@ -45,12 +45,18 @@ export interface AgentConfig {
   subscribe?: string[];
   /** Maximum tokens per response. */
   max_tokens?: number;
+  /** Maximum conversation turn pairs to keep in context. Oldest turns are dropped. */
+  max_turns?: number;
+  /** Maximum estimated input tokens. Oldest turns are dropped when exceeded (~4 chars/token). */
+  max_context_tokens?: number;
   /** Working directory for file/shell operations. Inherited from PorterConfig if not set. */
   working_dir?: string;
   /** Enable reasoning/thinking mode (chat_template_kwargs for OpenAI-compat models). */
   reasoning?: boolean;
   /** MCP tools this agent can use. Format: "server_name.*" or "server_name.tool_name". */
   mcp_tools?: string[];
+  /** Auto-execute bash/shell code blocks found in model output. Default: false. */
+  auto_execute_bash?: boolean;
 }
 
 /** Vertex AI configuration. */
@@ -140,6 +146,8 @@ const DEFAULTS = {
   api_key_env: "ANTHROPIC_API_KEY",
   heartbeat_timeout_ms: 120_000,
   max_tokens: 8192,
+  max_turns: 30,
+  max_context_tokens: 32_000,
 } as const;
 
 /** Replace ${VAR_NAME} patterns with environment variable values. */
@@ -207,9 +215,12 @@ export async function loadConfig(path: string): Promise<PorterConfig> {
         tools: a.tools,
         subscribe: a.subscribe ?? [],
         max_tokens: a.max_tokens ?? DEFAULTS.max_tokens,
+        max_turns: a.max_turns ?? DEFAULTS.max_turns,
+        max_context_tokens: a.max_context_tokens ?? DEFAULTS.max_context_tokens,
         working_dir: a.working_dir,
         reasoning: a.reasoning,
         mcp_tools: a.mcp_tools,
+        auto_execute_bash: a.auto_execute_bash,
       };
     }),
   );

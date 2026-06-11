@@ -142,6 +142,16 @@ function toOaiMessages(
     }
   }
 
+  // Post-process: vLLM rejects "user" immediately after "tool".
+  // Merge such user messages into the preceding tool result.
+  for (let i = 1; i < out.length; i++) {
+    if (out[i].role === "user" && out[i - 1].role === "tool") {
+      out[i - 1].content = (out[i - 1].content ?? "") + "\n\n" + (out[i].content ?? "");
+      out.splice(i, 1);
+      i--;
+    }
+  }
+
   return out;
 }
 
@@ -212,7 +222,7 @@ export class OpenAICompatProvider implements ModelProvider {
     private apiKey: string,
     private chatEndpoint: string = "/v1/chat/completions",
   ) {
-    this.baseUrl = baseUrl.replace(/\/v1\/?$/, "");
+    this.baseUrl = baseUrl.replace(/\/v1\/(chat\/)?completions\/?$|\/v1\/?$/, "");
   }
 
   private baseUrl: string;
@@ -233,7 +243,8 @@ export class OpenAICompatProvider implements ModelProvider {
       }
     }
 
-    if (params.reasoning && this.chatEndpoint === "/v1/chat/completions") {
+    if (params.reasoning && this.chatEndpoint === "/v1/chat/completions" &&
+        /qwen/i.test(params.model)) {
       body.chat_template_kwargs = { thinking: true };
     }
 

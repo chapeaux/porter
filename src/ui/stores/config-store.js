@@ -329,6 +329,8 @@ export class ConfigStore extends CPXStore {
           tools: a.tools,
           subscribe: a.channels,
           max_tokens: a.maxTokens || undefined,
+          max_turns: a.maxTurns || undefined,
+          max_context_tokens: a.maxContextTokens || undefined,
         };
         if (a.reasoning) agent.reasoning = true;
         if (a.mcpTools?.length) agent.mcp_tools = a.mcpTools;
@@ -368,6 +370,8 @@ export class ConfigStore extends CPXStore {
           tools: a.tools || [],
           channels: a.subscribe || [],
           maxTokens: a.max_tokens || 8192,
+          maxTurns: a.max_turns || undefined,
+          maxContextTokens: a.max_context_tokens || undefined,
           reasoning: a.reasoning || false,
           mcpTools: a.mcp_tools || [],
         })),

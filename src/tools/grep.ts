@@ -1,4 +1,4 @@
-import { walk } from "@std/fs";
+import { walk } from "jsr:@std/fs@^1";
 import { isPathEscapeError, validatePath } from "../sandbox/mod.ts";
 import type { ToolEntry } from "./mod.ts";
 

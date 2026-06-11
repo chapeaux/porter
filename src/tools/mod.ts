@@ -80,9 +80,11 @@ export class ToolRegistry {
     return this.registry.delete(name);
   }
 
-  /** Get all tool definitions for the current set. */
+  /** Get all tool definitions for the current set, sorted for stable prefix caching. */
   getDefinitions(): ToolDefinition[] {
-    return [...this.registry.values()].map((e) => e.definition);
+    return [...this.registry.values()]
+      .map((e) => e.definition)
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /** Get a tool entry by name. */

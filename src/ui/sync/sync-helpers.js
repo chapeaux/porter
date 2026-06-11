@@ -183,10 +183,44 @@ export async function initSsoPodSync(podUrl, tokenEndpoint) {
 
 async function exchangeLwsToken(tokenEndpoint) {
   const resp = await fetch(tokenEndpoint, { method: 'POST' });
+  if (resp.status === 401) {
+    // LWS token lost (router restarted) — silent re-login to refresh it.
+    // SSO session is still active so this redirect is transparent.
+    window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+    await new Promise(() => {}); // block until redirect
+  }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
     throw new Error(`LWS token exchange failed: ${resp.status} ${text}`);
   }
   const data = await resp.json();
   return data.access_token;
+}
+
+export async function syncMemoryToPod(sessionName) {
+  if (!window._podSync) return;
+  try {
+    const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionName)}/memory`);
+    if (resp.ok) {
+      const turtle = await resp.text();
+      if (turtle.trim()) {
+        await window._podSync.saveMemory(sessionName, turtle);
+      }
+    }
+  } catch (e) { console.error('[porter-pod] Memory sync to pod failed:', e); }
+}
+
+export async function restoreMemoryFromPod(sessionName) {
+  if (!window._podSync) return;
+  try {
+    const turtle = await window._podSync.loadMemory(sessionName);
+    if (turtle && turtle.trim()) {
+      await fetch(`/api/sessions/${encodeURIComponent(sessionName)}/memory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/turtle' },
+        body: turtle,
+      });
+      console.log('[porter-pod] Memory restored from pod for session:', sessionName);
+    }
+  } catch (e) { console.error('[porter-pod] Memory restore from pod failed:', e); }
 }

@@ -1,4 +1,5 @@
 import { CPXStore } from '../cpx-store.js';
+import { syncMemoryToPod } from '../sync/sync-helpers.js';
 
 // =========================================================================
 // ProjectStore — multi-project session management
@@ -41,6 +42,7 @@ export class ProjectStore extends CPXStore {
     try {
       const resp = await fetch(`/api/sessions/${encodeURIComponent(name)}/stop`, { method: 'POST' });
       if (resp.ok) {
+        syncMemoryToPod(name);
         await this.refresh();
       }
     } catch (e) {

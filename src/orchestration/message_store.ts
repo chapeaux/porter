@@ -5,7 +5,7 @@
  * Supports loading history when switching sessions in the UI.
  */
 
-import { dirname } from "@std/path";
+import { dirname } from "jsr:@std/path@^1";
 import { getGraphStore } from "../graph/store.ts";
 import { busMessageToTriples } from "../graph/converters.ts";
 
