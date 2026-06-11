@@ -3,7 +3,7 @@
  * and tmux layout.
  */
 
-import { dirname } from "jsr:@std/path@^1";
+import { dirname } from "@std/path";
 import type { AgentState } from "./agent.ts";
 import { serializeState, deserializeState } from "./agent.ts";
 

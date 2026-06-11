@@ -1,4 +1,4 @@
-import { normalize, resolve } from "jsr:@std/path@^1";
+import { normalize, resolve } from "@std/path";
 
 export class PathEscapeError extends Error {
   constructor(originalPath: string, resolvedPath: string, workingDir: string) {

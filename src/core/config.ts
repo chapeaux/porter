@@ -2,7 +2,7 @@
  * Porter configuration types and loader.
  */
 
-import { dirname, resolve } from "jsr:@std/path@^1";
+import { dirname, resolve } from "@std/path";
 import { validateToolSpec } from "../router/tool_registry.ts";
 
 /** Tool names that can be assigned to agents. */

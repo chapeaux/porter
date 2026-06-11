@@ -5,7 +5,7 @@
  * works as a standalone executable without the source directory.
  */
 
-import { extname, join } from "jsr:@std/path@^1";
+import { extname, join } from "@std/path";
 import { PorterMcpServer } from "../mcp/mcp_server.ts";
 import {
   loadOidcConfig,

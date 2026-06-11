@@ -14,7 +14,7 @@ Named in honor of the historic United States railroad Pullman Porters, who coord
 # Install (requires Deno 2+)
 git clone https://github.com/chapeaux/porter.git
 cd porter
-deno install --global --allow-all --name porter cli.ts
+deno install --global --allow-all --name porter --config deno.json cli.ts
 
 # Set your API credentials
 export ANTHROPIC_API_KEY=sk-ant-...

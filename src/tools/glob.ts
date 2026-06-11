@@ -1,4 +1,4 @@
-import { expandGlob } from "jsr:@std/fs@^1";
+import { expandGlob } from "@std/fs";
 import { isPathEscapeError, validatePath } from "../sandbox/mod.ts";
 import type { ToolEntry } from "./mod.ts";
 
