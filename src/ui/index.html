@@ -45,6 +45,11 @@
         <span slot="label">TEAMS</span>
         <span slot="value" id="fb-teams-val">--</span>
       </flipboard-cell>
+      <flipboard-cell id="fb-federation" clickable>
+        <span slot="icon" class="fb-gear" data-action="federation">&#9881;</span>
+        <span slot="label">FEDERATION</span>
+        <span slot="value" id="fb-federation-val">--</span>
+      </flipboard-cell>
       <flipboard-cell id="fb-session" clickable>
         <span slot="icon" class="fb-gear" data-action="session">&#9881;</span>
         <span slot="label">SESSION</span>
@@ -151,6 +156,15 @@
     <div id="model-dialog-body" style="max-height:70vh;overflow-y:auto;padding:1rem"></div>
     <div data-dialog-footer>
       <button id="model-dialog-close" class="team-btn secondary">Close</button>
+    </div>
+  </template>
+
+  <!-- Federation Editor -->
+  <template id="tpl-federation-editor">
+    <div id="federation-editor-body" style="max-height:70vh;overflow-y:auto;padding:1rem"></div>
+    <div data-dialog-footer>
+      <button id="federation-cancel" class="team-btn secondary">Cancel</button>
+      <button id="federation-save" class="team-btn primary">Save</button>
     </div>
   </template>
 

@@ -247,6 +247,44 @@ export async function handleActivityPubRoutes(
   // 7. REST API routes (require authenticated user)
   // -------------------------------------------------------------------------
 
+  // GET /api/activitypub/config — read AP config
+  if (pathname === "/api/activitypub/config" && method === "GET") {
+    try {
+      const home = Deno.env.get("HOME") ?? Deno.cwd();
+      const text = await Deno.readTextFile(`${home}/.porter/activitypub/config.json`);
+      return json(JSON.parse(text));
+    } catch {
+      return json({
+        enabled: config.enabled ?? false,
+        domain: config.domain ?? "",
+        approval_mode: config.approval_mode ?? "allowlist",
+        allowlist: config.allowlist ?? [],
+        public_summaries: config.public_summaries ?? false,
+        max_sessions_per_follower: config.max_sessions_per_follower ?? 1,
+      });
+    }
+  }
+
+  // PUT /api/activitypub/config — write AP config
+  if (pathname === "/api/activitypub/config" && method === "PUT") {
+    const auth = await requireUserId(req, options.resolveUserId);
+    if (auth instanceof Response) return auth;
+
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const home = Deno.env.get("HOME") ?? Deno.cwd();
+    const dir = `${home}/.porter/activitypub`;
+    const { dirname } = await import("@std/path");
+    await Deno.mkdir(dir, { recursive: true });
+    await Deno.writeTextFile(`${dir}/config.json`, JSON.stringify(body, null, 2));
+    return json({ ok: true });
+  }
+
   // GET /api/activitypub/teams — list all federated teams
   if (pathname === "/api/activitypub/teams" && method === "GET") {
     const auth = await requireUserId(req, options.resolveUserId);

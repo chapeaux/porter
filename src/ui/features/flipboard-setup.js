@@ -8,6 +8,7 @@ import { showAgentLibrary } from '../dialogs/agent-library.js';
 import { openTeamBuilder } from '../dialogs/team-builder.js';
 import { showSessionLauncher } from '../dialogs/session-launcher.js';
 import { showMetricsDetail } from './metrics.js';
+import { showFederationDialog } from '../dialogs/federation-editor.js';
 
 export function setupFlipboard() {
   // Header gear toggle
@@ -25,6 +26,7 @@ export function setupFlipboard() {
   });
   document.getElementById('fb-agents')?.addEventListener('click', () => showAgentLibrary());
   document.getElementById('fb-teams')?.addEventListener('click', () => openTeamBuilder());
+  document.getElementById('fb-federation')?.addEventListener('click', () => showFederationDialog());
   document.getElementById('fb-session')?.addEventListener('click', () => showSessionLauncher());
 
   // Gear icons inside cells
@@ -41,6 +43,7 @@ export function setupFlipboard() {
         }
         case 'agents': showAgentLibrary(); break;
         case 'teams': openTeamBuilder(); break;
+        case 'federation': showFederationDialog(); break;
         case 'session': showSessionLauncher(); break;
       }
     });
@@ -71,7 +74,30 @@ export function updateSetupBar() {
 
   updateTeamCount();
   updateAgentCount();
+  updateFederationStatus();
   document.querySelector('flipboard-bar')?._updateWidths?.();
+}
+
+export function updateFederationStatus() {
+  const cell = document.getElementById('fb-federation');
+  const val = document.getElementById('fb-federation-val');
+  if (!cell || !val) return;
+  fetch('/api/activitypub/config')
+    .then(r => r.ok ? r.json() : { enabled: false })
+    .then(data => {
+      if (data.enabled) {
+        val.textContent = data.domain ? data.domain.toUpperCase() : 'ENABLED';
+        cell.setAttribute('status', 'ok');
+      } else {
+        val.textContent = 'DISABLED';
+        cell.setAttribute('status', 'warn');
+      }
+      document.querySelector('flipboard-bar')?._updateWidths?.();
+    })
+    .catch(() => {
+      val.textContent = '--';
+      cell.removeAttribute('status');
+    });
 }
 
 export function updateTeamCount() {
