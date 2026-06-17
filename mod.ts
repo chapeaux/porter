@@ -122,3 +122,41 @@ export type { SessionRecord } from "./src/orchestration/registry.ts";
 
 export { SessionManager } from "./src/orchestration/session_manager.ts";
 export type { ManagedSession } from "./src/orchestration/session_manager.ts";
+
+export { handleActivityPubRoutes } from "./src/activitypub/routes.ts";
+export type { ApRouteOptions } from "./src/activitypub/routes.ts";
+export {
+  resolveApConfig,
+  apBaseUrl,
+  LocalFederationStore,
+  handleWebFinger,
+  buildActorDocument,
+  buildWelcomeMessage,
+  handleActorRequest,
+  getOrCreateKeyPair,
+  signRequest,
+  verifySignature,
+  getApContext,
+  setApContext,
+  resetApContext,
+  publishTeam,
+  unpublishTeam,
+  resolveOwner,
+  listFederated,
+  AP_CONTEXT,
+  AP_PUBLIC,
+  AP_CONTENT_TYPE,
+} from "./src/activitypub/mod.ts";
+export type {
+  ActivityPubConfig,
+  ActivityPubBackend,
+  FederationStore,
+  FollowerRecord,
+  ConversationMap,
+  ApContext,
+  SessionHandle,
+  SessionStatus,
+  Actor,
+  Activity,
+  APObject,
+} from "./src/activitypub/mod.ts";

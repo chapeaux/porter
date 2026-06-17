@@ -35,11 +35,18 @@ export const AS = {
   Delete: "https://www.w3.org/ns/activitystreams#Delete",
   Announce: "https://www.w3.org/ns/activitystreams#Announce",
   Question: "https://www.w3.org/ns/activitystreams#Question",
+  Follow: "https://www.w3.org/ns/activitystreams#Follow",
+  Undo: "https://www.w3.org/ns/activitystreams#Undo",
+  Like: "https://www.w3.org/ns/activitystreams#Like",
   // Object types
   Note: "https://www.w3.org/ns/activitystreams#Note",
   Document: "https://www.w3.org/ns/activitystreams#Document",
   Collection: "https://www.w3.org/ns/activitystreams#Collection",
   Application: "https://www.w3.org/ns/activitystreams#Application",
+  Service: "https://www.w3.org/ns/activitystreams#Service",
+  Person: "https://www.w3.org/ns/activitystreams#Person",
+  OrderedCollection: "https://www.w3.org/ns/activitystreams#OrderedCollection",
+  OrderedCollectionPage: "https://www.w3.org/ns/activitystreams#OrderedCollectionPage",
   // Properties
   actor: "https://www.w3.org/ns/activitystreams#actor",
   object: "https://www.w3.org/ns/activitystreams#object",
@@ -53,6 +60,15 @@ export const AS = {
   name: "https://www.w3.org/ns/activitystreams#name",
   url: "https://www.w3.org/ns/activitystreams#url",
   tag: "https://www.w3.org/ns/activitystreams#tag",
+  inbox: "https://www.w3.org/ns/activitystreams#inbox",
+  outbox: "https://www.w3.org/ns/activitystreams#outbox",
+  followers: "https://www.w3.org/ns/activitystreams#followers",
+  following: "https://www.w3.org/ns/activitystreams#following",
+  preferredUsername: "https://www.w3.org/ns/activitystreams#preferredUsername",
+  manuallyApprovesFollowers: "https://www.w3.org/ns/activitystreams#manuallyApprovesFollowers",
+  publicKey: "https://www.w3.org/ns/activitystreams#publicKey",
+  endpoints: "https://www.w3.org/ns/activitystreams#endpoints",
+  sharedInbox: "https://www.w3.org/ns/activitystreams#sharedInbox",
 } as const;
 
 export const PROV = {

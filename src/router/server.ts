@@ -34,6 +34,8 @@ export interface RouterOptions {
   port: number;
   idleTimeoutMinutes: number;
   namespace?: string;
+  /** ActivityPub federation configuration. If omitted, federation is disabled. */
+  activityPubConfig?: import("../activitypub/config.ts").ActivityPubConfig;
 }
 
 /** Client-side page templates — loaded from src/ui/ files. */
@@ -90,6 +92,30 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
   const podRegistry = new PodRegistry(namespace, idleTimeoutMs);
   podRegistry.startIdleSweep();
   console.log(`[router] Pod registry initialized (namespace: ${namespace}, idle timeout: ${options.idleTimeoutMinutes}m)`);
+
+  // Initialize ActivityPub if configured
+  let apRouteHandler: ((req: Request, url: URL, pathname: string) => Promise<Response | null>) | null = null;
+  if (options.activityPubConfig?.enabled) {
+    const { handleActivityPubRoutes } = await import("../activitypub/routes.ts");
+    const { LocalFederationStore } = await import("../activitypub/store.ts");
+    const { resolveApConfig } = await import("../activitypub/config.ts");
+    const { UserStore } = await import("../auth/user_store.ts");
+    const apConfig = resolveApConfig(options.activityPubConfig);
+    if (apConfig) {
+      const apStore = new LocalFederationStore();
+      const apUserStore = new UserStore();
+      const { RouterBackend } = await import("../activitypub/backend.ts");
+      const apBackend = new RouterBackend(podRegistry, apUserStore);
+      apRouteHandler = (req, url, pathname) =>
+        handleActivityPubRoutes(req, url, pathname, {
+          config: apConfig,
+          store: apStore,
+          backend: apBackend,
+          userStore: apUserStore,
+        });
+      console.log(`[router] ActivityPub enabled: ${apConfig.domain}`);
+    }
+  }
 
   const server = Deno.serve({ port, onListen: () => {} }, async (req) => {
     const url = new URL(req.url);
@@ -568,6 +594,12 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
       }), {
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // --- ActivityPub routes (before OIDC gate — AP uses HTTP Signatures) ---
+    if (apRouteHandler) {
+      const apResponse = await apRouteHandler(req, url, pathname);
+      if (apResponse) return apResponse;
     }
 
     // --- Require authentication for everything below ---

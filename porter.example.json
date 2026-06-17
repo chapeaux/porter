@@ -21,6 +21,15 @@
     }
   ],
 
+  "activitypub": {
+    "enabled": false,
+    "domain": "porter.example.com",
+    "approval_mode": "allowlist",
+    "allowlist": ["mastodon.social"],
+    "public_summaries": false,
+    "max_sessions_per_follower": 1
+  },
+
   "agents": [
     {
       "name": "planner",

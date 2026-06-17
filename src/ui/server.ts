@@ -116,6 +116,8 @@ export interface UiServerOptions {
   oidcConfig?: OidcConfig;
   /** Single-user mode: skip OIDC, auto-create a default session. Used by user pods behind the router. */
   singleUser?: boolean;
+  /** ActivityPub federation configuration. If omitted, federation is disabled. */
+  activityPubConfig?: import("../activitypub/config.ts").ActivityPubConfig;
 }
 
 function mcpAuthResultPage(
@@ -161,6 +163,31 @@ export async function startUiServer(
 
   // Always initialize session key (needed for credential encryption even without OIDC)
   await initSessionKey();
+
+  // Initialize ActivityPub if configured
+  let apRouteHandler: ((req: Request, url: URL, pathname: string) => Promise<Response | null>) | null = null;
+  if (options?.activityPubConfig?.enabled) {
+    const { handleActivityPubRoutes } = await import("../activitypub/routes.ts");
+    const { LocalFederationStore } = await import("../activitypub/store.ts");
+    const { resolveApConfig } = await import("../activitypub/config.ts");
+    const apConfig = resolveApConfig(options.activityPubConfig);
+    if (apConfig) {
+      const apStore = new LocalFederationStore();
+      const { StandaloneBackend } = await import("../activitypub/backend.ts");
+      const apBackend = options?.sessionManager
+        ? new StandaloneBackend(options.sessionManager as unknown as import("../activitypub/backend.ts").SessionManagerLike, userStore)
+        : null;
+      apRouteHandler = (req, url, pathname) =>
+        handleActivityPubRoutes(req, url, pathname, {
+          config: apConfig,
+          store: apStore,
+          backend: apBackend!,
+          userStore,
+          resolveUserId: async (r) => await resolveUserId(r),
+        });
+      console.error(`[porter] ActivityPub enabled: ${apConfig.domain}`);
+    }
+  }
 
   if (singleUser) {
     console.error("[porter] Running in single-user mode (OIDC disabled, router handles auth)");
@@ -547,6 +574,12 @@ export async function startUiServer(
           },
         },
       );
+    }
+
+    // --- ActivityPub federation routes ---
+    if (apRouteHandler) {
+      const apResponse = await apRouteHandler(req, url, pathname);
+      if (apResponse) return apResponse;
     }
 
     if (pathname === "/.well-known/oauth-authorization-server" && req.method === "GET") {

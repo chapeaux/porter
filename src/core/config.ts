@@ -18,7 +18,10 @@ export type ToolName =
   | "read_messages"
   | "git"
   | "memory_write"
-  | "memory_query";
+  | "memory_query"
+  | "ap_post"
+  | "ap_reply"
+  | "ap_boost";
 
 /** Agent role for organizational purposes. */
 export type AgentRole = "admin" | "worker" | "reviewer";
@@ -138,6 +141,8 @@ export interface PorterConfig {
   runtime_tools?: RuntimeToolEntry[];
   /** Container sandbox configuration. When true, enables default sandbox. */
   sandbox?: boolean | SandboxConfig;
+  /** ActivityPub federation configuration. Enables fediverse interaction with teams. */
+  activitypub?: import("../activitypub/config.ts").ActivityPubConfig;
 }
 
 /** Default config values. */

@@ -54,6 +54,12 @@ async function loadTool(name: ToolName): Promise<ToolEntry> {
       return (await import("./memory_write.ts")).default;
     case "memory_query":
       return (await import("./memory_query.ts")).default;
+    case "ap_post":
+      return (await import("./ap_post.ts")).default;
+    case "ap_reply":
+      return (await import("./ap_reply.ts")).default;
+    case "ap_boost":
+      return (await import("./ap_boost.ts")).default;
   }
 }
 
