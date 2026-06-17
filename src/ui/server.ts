@@ -1523,6 +1523,100 @@ export async function startUiServer(
       return new Response(JSON.stringify({ ok }), { headers: { "Content-Type": "application/json" } });
     }
 
+    // --- ActivityPub config API (always available, even when AP is not enabled) ---
+
+    if (pathname === "/api/activitypub/config" && req.method === "GET") {
+      const home = Deno.env.get("HOME") ?? Deno.cwd();
+      try {
+        const text = await Deno.readTextFile(`${home}/.porter/activitypub/config.json`);
+        return new Response(text, { headers: { "Content-Type": "application/json" } });
+      } catch {
+        return new Response(JSON.stringify({
+          enabled: false, domain: "", approval_mode: "allowlist",
+          allowlist: [], public_summaries: false, max_sessions_per_follower: 1,
+        }), { headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    if (pathname === "/api/activitypub/teams" && req.method === "GET") {
+      const { listFederated } = await import("../activitypub/registry.ts");
+      const teams = await listFederated();
+      return new Response(JSON.stringify({ teams }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (pathname === "/api/activitypub/publish" && req.method === "POST") {
+      const userId = await resolveUserId(req);
+      const { publishTeam } = await import("../activitypub/registry.ts");
+      try {
+        const body = await req.json();
+        if (!body.teamSlug) return new Response(JSON.stringify({ error: "Missing teamSlug" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        await publishTeam(body.teamSlug, userId);
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    if (pathname === "/api/activitypub/unpublish" && req.method === "POST") {
+      const { unpublishTeam } = await import("../activitypub/registry.ts");
+      try {
+        const body = await req.json();
+        if (!body.teamSlug) return new Response(JSON.stringify({ error: "Missing teamSlug" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        await unpublishTeam(body.teamSlug);
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    const apFollowersMatch = pathname.match(/^\/api\/activitypub\/([^/]+)\/followers(\/(.+))?$/);
+    if (apFollowersMatch) {
+      const teamName = apFollowersMatch[1];
+      const sub = apFollowersMatch[3];
+      const { LocalFederationStore } = await import("../activitypub/store.ts");
+      const apStore = new LocalFederationStore();
+
+      if (!sub && req.method === "GET") {
+        const followers = await apStore.getFollowers(teamName);
+        const pending = await apStore.getPendingFollows(teamName);
+        return new Response(JSON.stringify({ followers, pending }), { headers: { "Content-Type": "application/json" } });
+      }
+
+      const actionMatch = sub?.match(/^([^/]+)\/(approve|reject)$/);
+      if (actionMatch && req.method === "POST") {
+        const actorId = decodeURIComponent(actionMatch[1]);
+        const { approveFollow, rejectFollow } = await import("../activitypub/approval.ts");
+        const home = Deno.env.get("HOME") ?? Deno.cwd();
+        let apConfig;
+        try { apConfig = JSON.parse(await Deno.readTextFile(`${home}/.porter/activitypub/config.json`)); } catch { apConfig = { domain: "" }; }
+        const result = actionMatch[2] === "approve"
+          ? await approveFollow(teamName, actorId, apConfig, apStore)
+          : await rejectFollow(teamName, actorId, apConfig, apStore);
+        return new Response(JSON.stringify({ ok: !!result }), { headers: { "Content-Type": "application/json" } });
+      }
+
+      if (sub && !actionMatch && req.method === "DELETE") {
+        const actorId = decodeURIComponent(sub);
+        await apStore.removeFollower(teamName, actorId);
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    if (pathname === "/api/activitypub/config" && req.method === "PUT") {
+      const home = Deno.env.get("HOME") ?? Deno.cwd();
+      try {
+        const body = await req.json();
+        const dir = `${home}/.porter/activitypub`;
+        await Deno.mkdir(dir, { recursive: true });
+        await Deno.writeTextFile(`${dir}/config.json`, JSON.stringify(body, null, 2));
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // --- Team API endpoints (auth required) ---
 
     if (pathname === "/api/teams" && req.method === "GET") {
