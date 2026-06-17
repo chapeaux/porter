@@ -483,7 +483,8 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
           lws_token: lwsToken,
         });
 
-        const username = (claims.preferred_username ?? claims.name ?? sub.split("/").pop() ?? "solid-user") as string;
+        const subPath = sub.replace(/#.*$/, "");
+        const username = (claims.preferred_username ?? claims.name ?? subPath.split("/").filter(Boolean).pop() ?? "solid-user") as string;
         const now = new Date();
         const sessionCookie = await createSessionCookie({
           sub,
@@ -641,11 +642,13 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
     // Touch to reset idle timer
     podRegistry.touch(userId);
 
-    // If pod is not ready, serve the loading page (for HTML requests) or status JSON
+    // If pod is not ready, serve the loading page or reject the request
     if (!entry.ready) {
-      // Re-check readiness
       const ready = await podRegistry.checkReady(userId);
       if (!ready) {
+        if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+          return new Response("Pod not ready", { status: 503 });
+        }
         const accept = req.headers.get("accept") ?? "";
         if (accept.includes("text/html")) {
           return new Response(LOADING_PAGE, {
