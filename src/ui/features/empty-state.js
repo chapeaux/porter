@@ -229,7 +229,7 @@ export async function renderEmptyState() {
     } catch { /* ignore */ }
   }
   _updateStep('federation', hasFederation,
-    hasFederation ? 'Federation enabled' : 'ActivityPub federation (optional)',
+    hasFederation ? 'Federation enabled' : 'Federation (optional)',
     hasFederation ? 'Manage' : 'Set Up',
     hasTeams);
 

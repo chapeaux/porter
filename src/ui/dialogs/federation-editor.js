@@ -9,7 +9,7 @@ import { updateSetupBar } from '../features/flipboard-setup.js';
 export function showFederationDialog() {
   const dlg = getDlg();
   dlg.openTemplate('tpl-federation-editor', {
-    title: 'ActivityPub Federation',
+    title: 'Federation',
     id: 'federation-dialog',
     onOpen: () => {
       const body = dlg.bodyEl.querySelector('#federation-editor-body');
@@ -162,7 +162,7 @@ async function loadAndRender(body, saveBtn, cancelBtn, dlg) {
             await fetch('/api/activitypub/unpublish', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ team: team.slug || team.name }),
+              body: JSON.stringify({ teamSlug: team.teamSlug || team.slug || team.name }),
             });
           } catch (_) { /* ignore */ }
           await renderPublishedTeams();
@@ -211,7 +211,7 @@ async function loadAndRender(body, saveBtn, cancelBtn, dlg) {
         await fetch('/api/activitypub/publish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ team: val }),
+          body: JSON.stringify({ teamSlug: val }),
         });
       } catch (_) { /* ignore */ }
       row.remove();
