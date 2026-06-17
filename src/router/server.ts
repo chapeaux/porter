@@ -98,24 +98,30 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
   const apExplicit = options.activityPubConfig;
   const apWanted = apExplicit?.enabled || Deno.env.get("PORTER_AP_ENABLED") === "true";
   if (apWanted) {
-    const { handleActivityPubRoutes } = await import("../activitypub/routes.ts");
-    const { LocalFederationStore } = await import("../activitypub/store.ts");
-    const { resolveApConfig } = await import("../activitypub/config.ts");
-    const { UserStore } = await import("../auth/user_store.ts");
-    const apConfig = resolveApConfig(apExplicit);
-    if (apConfig) {
-      const apStore = new LocalFederationStore();
-      const apUserStore = new UserStore();
-      const { RouterBackend } = await import("../activitypub/backend.ts");
-      const apBackend = new RouterBackend(podRegistry, apUserStore);
-      apRouteHandler = (req, url, pathname) =>
-        handleActivityPubRoutes(req, url, pathname, {
-          config: apConfig,
-          store: apStore,
-          backend: apBackend,
-          userStore: apUserStore,
-        });
-      console.log(`[router] ActivityPub enabled: ${apConfig.domain}`);
+    try {
+      const { handleActivityPubRoutes } = await import("../activitypub/routes.ts");
+      const { LocalFederationStore } = await import("../activitypub/store.ts");
+      const { resolveApConfig } = await import("../activitypub/config.ts");
+      const { UserStore } = await import("../auth/user_store.ts");
+      const apConfig = resolveApConfig(apExplicit);
+      if (apConfig) {
+        const apStore = new LocalFederationStore();
+        const apUserStore = new UserStore();
+        const { RouterBackend } = await import("../activitypub/backend.ts");
+        const apBackend = new RouterBackend(podRegistry, apUserStore);
+        apRouteHandler = (req, url, pathname) =>
+          handleActivityPubRoutes(req, url, pathname, {
+            config: apConfig,
+            store: apStore,
+            backend: apBackend,
+            userStore: apUserStore,
+          });
+        console.error(`[router] ActivityPub enabled: ${apConfig.domain}`);
+      } else {
+        console.error("[router] ActivityPub wanted but config resolution failed");
+      }
+    } catch (err) {
+      console.error(`[router] ActivityPub init failed: ${(err as Error).message}`);
     }
   }
 
