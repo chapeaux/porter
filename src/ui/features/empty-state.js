@@ -9,6 +9,7 @@ import { openMcpEditorDialog, showMcpManageDialog } from '../dialogs/mcp-editor.
 import { showAgentLibrary } from '../dialogs/agent-library.js';
 import { openTeamBuilder } from '../dialogs/team-builder.js';
 import { showSessionLauncher } from '../dialogs/session-launcher.js';
+import { showFederationDialog } from '../dialogs/federation-editor.js';
 import { checkAuthState, _authChecked, oidcAvailable } from './auth-state.js';
 
 // TODO: setupFilters, setupCompose, renderAgentDeck, renderTimeline are in
@@ -92,6 +93,7 @@ const STEP_DEFS = [
   { id: 'mcp', optional: true },
   { id: 'agents', optional: false },
   { id: 'team', optional: false },
+  { id: 'federation', optional: true },
   { id: 'launch', optional: false },
 ];
 
@@ -153,6 +155,7 @@ function _handleStepAction(action) {
       openTeamBuilder(hasTeams ? 0 : 1);
       break;
     }
+    case 'federation': showFederationDialog(); break;
     case 'launch': showSessionLauncher(); break;
   }
 }
@@ -217,6 +220,19 @@ export async function renderEmptyState() {
 
   _updateStep('agents', agentCount > 0, agentCount > 0 ? `${agentCount} agent${agentCount > 1 ? 's' : ''} saved` : 'Create an agent', agentCount > 0 ? 'Manage' : 'Create');
   _updateStep('team', hasTeams, hasTeams ? 'Teams available' : 'Create a team', hasTeams ? 'Manage' : 'Create');
+
+  let hasFederation = false;
+  if (hasTeams) {
+    try {
+      const fedResp = await fetch('/api/activitypub/config').catch(() => null);
+      if (fedResp?.ok) { const d = await fedResp.json(); hasFederation = !!d.enabled; }
+    } catch { /* ignore */ }
+  }
+  _updateStep('federation', hasFederation,
+    hasFederation ? 'Federation enabled' : 'ActivityPub federation (optional)',
+    hasFederation ? 'Manage' : 'Set Up',
+    hasTeams);
+
   _updateStep('launch', false, 'Launch a session', 'Launch', hasTeams && hasModels);
 
   _emptyStateRendering = false;
