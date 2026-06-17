@@ -166,11 +166,12 @@ export async function startUiServer(
 
   // Initialize ActivityPub if configured
   let apRouteHandler: ((req: Request, url: URL, pathname: string) => Promise<Response | null>) | null = null;
-  if (options?.activityPubConfig?.enabled) {
+  const apWanted = options?.activityPubConfig?.enabled || Deno.env.get("PORTER_AP_ENABLED") === "true";
+  if (apWanted) {
     const { handleActivityPubRoutes } = await import("../activitypub/routes.ts");
     const { LocalFederationStore } = await import("../activitypub/store.ts");
     const { resolveApConfig } = await import("../activitypub/config.ts");
-    const apConfig = resolveApConfig(options.activityPubConfig);
+    const apConfig = resolveApConfig(options?.activityPubConfig);
     if (apConfig) {
       const apStore = new LocalFederationStore();
       const { StandaloneBackend } = await import("../activitypub/backend.ts");

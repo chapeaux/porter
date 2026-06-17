@@ -95,12 +95,14 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
 
   // Initialize ActivityPub if configured
   let apRouteHandler: ((req: Request, url: URL, pathname: string) => Promise<Response | null>) | null = null;
-  if (options.activityPubConfig?.enabled) {
+  const apExplicit = options.activityPubConfig;
+  const apWanted = apExplicit?.enabled || Deno.env.get("PORTER_AP_ENABLED") === "true";
+  if (apWanted) {
     const { handleActivityPubRoutes } = await import("../activitypub/routes.ts");
     const { LocalFederationStore } = await import("../activitypub/store.ts");
     const { resolveApConfig } = await import("../activitypub/config.ts");
     const { UserStore } = await import("../auth/user_store.ts");
-    const apConfig = resolveApConfig(options.activityPubConfig);
+    const apConfig = resolveApConfig(apExplicit);
     if (apConfig) {
       const apStore = new LocalFederationStore();
       const apUserStore = new UserStore();
@@ -597,10 +599,32 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
       });
     }
 
-    // --- ActivityPub routes (before OIDC gate — AP uses HTTP Signatures) ---
+    // --- ActivityPub federation routes (before OIDC gate — AP uses HTTP Signatures) ---
     if (apRouteHandler) {
-      const apResponse = await apRouteHandler(req, url, pathname);
-      if (apResponse) return apResponse;
+      // Protocol routes (webfinger, actor, inbox, etc.) handled directly by router
+      if (!pathname.startsWith("/api/")) {
+        const apResponse = await apRouteHandler(req, url, pathname);
+        if (apResponse) return apResponse;
+      }
+
+      // Publish/unpublish: write to router's registry so WebFinger can resolve teams,
+      // then let the request continue to the user pod via proxy for its own copy.
+      if ((pathname === "/api/activitypub/publish" || pathname === "/api/activitypub/unpublish") && req.method === "POST") {
+        try {
+          const clonedBody = await req.clone().json();
+          const slug = clonedBody?.teamSlug;
+          if (slug) {
+            const { publishTeam, unpublishTeam } = await import("../activitypub/registry.ts");
+            if (pathname.endsWith("/publish")) {
+              const session = await readSession(req);
+              await publishTeam(slug, session?.sub ?? "unknown");
+            } else {
+              await unpublishTeam(slug);
+            }
+          }
+        } catch { /* let the pod handle errors */ }
+        // Fall through to proxy — pod also needs the registry update
+      }
     }
 
     // --- Require authentication for everything below ---
