@@ -169,7 +169,7 @@ async function loadAndRender(body, saveBtn, cancelBtn, dlg) {
           await renderFollowers();
         });
         return h('div', { class: 'mcp-server-card' },
-          h('span', { class: 'mcp-name' }, team.name || team.slug),
+          h('span', { class: 'mcp-name' }, team.teamSlug || team.name || team.slug),
           unpubBtn,
         );
       });
