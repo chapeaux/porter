@@ -638,8 +638,9 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         if (apResponse) return apResponse;
       }
 
-      // Followers/teams/config API — serve from router's sparq store directly
-      if (pathname.startsWith("/api/activitypub/") && req.method === "GET") {
+      // Followers API — serve from router's sparq store (follower data lives here, not on user pod)
+      const followersMatch = pathname.match(/^\/api\/activitypub\/([^/]+)\/followers/);
+      if (followersMatch && req.method === "GET") {
         const apResponse = await apRouteHandler(req, url, pathname);
         if (apResponse) return apResponse;
       }
@@ -699,6 +700,12 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // --- AP API reads from router's sparq store (after auth, before pod provisioning) ---
+    if (apRouteHandler && pathname.startsWith("/api/activitypub/") && req.method === "GET") {
+      const apResponse = await apRouteHandler(req, url, pathname);
+      if (apResponse) return apResponse;
     }
 
     // --- Pod lookup and provisioning ---
