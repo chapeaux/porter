@@ -113,6 +113,7 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
 
   // Initialize ActivityPub if configured
   let apRouteHandler: ((req: Request, url: URL, pathname: string) => Promise<Response | null>) | null = null;
+  let apConfig: import("../activitypub/config.ts").ActivityPubConfig | null = null;
   const apExplicit = options.activityPubConfig;
   const apEnvEnabled = Deno.env.get("PORTER_AP_ENABLED");
   const apWanted = apExplicit?.enabled || apEnvEnabled === "true";
@@ -126,20 +127,21 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
       const { getSparqStore } = await import("../activitypub/registry.ts");
       const sparq = getSparqStore();
       const sparqConfig = sparq?.getConfig();
-      const apConfig = sparqConfig ?? resolveApConfig(apExplicit);
+      apConfig = sparqConfig ?? resolveApConfig(apExplicit);
       if (apConfig) {
+        const liveConfig = apConfig;
         const apStore = sparq ?? new LocalFederationStore();
         const apUserStore = new UserStore();
         const { RouterBackend } = await import("../activitypub/backend.ts");
         const apBackend = new RouterBackend(podRegistry, apUserStore);
         apRouteHandler = (req, url, pathname) =>
           handleActivityPubRoutes(req, url, pathname, {
-            config: apConfig,
+            config: liveConfig,
             store: apStore,
             backend: apBackend,
             userStore: apUserStore,
           });
-        console.error(`[router] ActivityPub enabled: ${apConfig.domain}`);
+        console.error(`[router] ActivityPub enabled: ${liveConfig.domain}`);
       } else {
         console.error("[router] ActivityPub wanted but config resolution failed");
       }
@@ -636,7 +638,7 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         if (apResponse) return apResponse;
       }
 
-      // Publish/unpublish: write to router's registry so WebFinger can resolve teams,
+      // Publish/unpublish/toggle: write to router's registry so WebFinger can resolve teams,
       // then let the request continue to the user pod via proxy for its own copy.
       if ((pathname === "/api/activitypub/publish" || pathname === "/api/activitypub/unpublish" || pathname === "/api/activitypub/toggle") && req.method === "POST") {
         try {
@@ -656,6 +658,18 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
           }
         } catch { /* let the pod handle errors */ }
         // Fall through to proxy — pod also needs the registry update
+      }
+
+      // Config save: update the router's live AP config and persist to sparq store
+      if (pathname === "/api/activitypub/config" && req.method === "PUT" && apConfig) {
+        try {
+          const clonedBody = await req.clone().json();
+          Object.assign(apConfig, clonedBody);
+          const { getSparqStore } = await import("../activitypub/registry.ts");
+          const sparq = getSparqStore();
+          if (sparq) await sparq.saveConfig(apConfig);
+        } catch { /* let the pod handle errors */ }
+        // Fall through to proxy
       }
     }
 
