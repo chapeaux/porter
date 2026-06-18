@@ -638,6 +638,12 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         if (apResponse) return apResponse;
       }
 
+      // Followers/teams/config API — serve from router's sparq store directly
+      if (pathname.startsWith("/api/activitypub/") && req.method === "GET") {
+        const apResponse = await apRouteHandler(req, url, pathname);
+        if (apResponse) return apResponse;
+      }
+
       // Publish/unpublish/toggle: write to router's registry so WebFinger can resolve teams,
       // then let the request continue to the user pod via proxy for its own copy.
       if ((pathname === "/api/activitypub/publish" || pathname === "/api/activitypub/unpublish" || pathname === "/api/activitypub/toggle") && req.method === "POST") {
