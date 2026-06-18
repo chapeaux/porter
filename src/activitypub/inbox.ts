@@ -192,10 +192,15 @@ export async function handleInbox(
   callbacks: InboxCallbacks,
 ): Promise<Response> {
   // 1. Verify HTTP Signature
+  const sigHeader = request.headers.get("signature");
+  console.log(`[inbox] Signature header present: ${!!sigHeader}`);
+  if (sigHeader) console.log(`[inbox] Signature: ${sigHeader.substring(0, 200)}`);
   const keyId = await verifySignature(request);
   if (!keyId) {
+    console.error(`[inbox] HTTP Signature verification failed for ${request.url}`);
     return new Response("Invalid or missing HTTP Signature", { status: 401 });
   }
+  console.log(`[inbox] Signature verified: ${keyId}`);
 
   // 2. Verify Digest
   const digestValid = await verifyDigest(request);
