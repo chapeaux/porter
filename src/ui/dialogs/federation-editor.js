@@ -316,7 +316,12 @@ async function renderFollowers(container, teamSlug) {
   let followers = [];
   try {
     const res = await fetch(`/api/activitypub/${encodeURIComponent(teamSlug)}/followers`);
-    if (res.ok) { const data = await res.json(); followers = data.followers || []; }
+    if (res.ok) {
+      const data = await res.json();
+      const approved = (data.followers || []).map(f => ({ ...f, status: 'approved' }));
+      const pending = (data.pending || []).map(f => ({ ...f, status: 'pending', id: f.actorId }));
+      followers = [...pending, ...approved];
+    }
   } catch { /* empty */ }
 
   if (followers.length === 0) {
