@@ -94,6 +94,7 @@ export class PodRegistry {
   private entries = new Map<string, PodEntry>();
   private sweepInterval: ReturnType<typeof setInterval> | null = null;
   private image: string;
+  private imagePullSecret: string | undefined;
 
   constructor(
     private namespace: string,
@@ -102,6 +103,7 @@ export class PodRegistry {
   ) {
     this.image = image ?? Deno.env.get("PORTER_USER_POD_IMAGE") ??
       `image-registry.openshift-image-registry.svc:5000/${namespace}/porter:latest`;
+    this.imagePullSecret = Deno.env.get("PORTER_IMAGE_PULL_SECRET");
   }
 
   get(userId: string): PodEntry | undefined {
@@ -332,6 +334,7 @@ export class PodRegistry {
                 periodSeconds: 10,
               },
             }],
+            ...(this.imagePullSecret ? { imagePullSecrets: [{ name: this.imagePullSecret }] } : {}),
             volumes: [
               { name: "workspace", emptyDir: {} },
               { name: "porter-home", emptyDir: {} },
