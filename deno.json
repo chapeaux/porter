@@ -1,6 +1,6 @@
 {
   "name": "@chapeaux/porter",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "exports": "./mod.ts",
   "tasks": {
     "init": "deno run --allow-all cli.ts init",
