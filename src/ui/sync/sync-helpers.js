@@ -148,6 +148,13 @@ export function showReloginPrompt() {
 
 export async function initPodSync(webId) {
   if (window._podSync) return;
+  const lastWebId = localStorage.getItem('porter-last-webid');
+  if (lastWebId && lastWebId !== webId) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+    localStorage.removeItem('porter-pod-teams');
+    localStorage.removeItem('porter-pod-agents');
+  }
+  localStorage.setItem('porter-last-webid', webId);
   try {
     const podRoot = await window.solidAuth.discoverPodStorage(webId);
     if (!podRoot) { console.error('[porter-pod] Could not discover Pod storage for', webId); return; }

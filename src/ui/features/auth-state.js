@@ -157,6 +157,9 @@ export function renderSolidIdentity(container, webId) {
       window._podSync = null;
     }
     window.solidAuth.solidLogoutUser();
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+    localStorage.removeItem('porter-pod-teams');
+    localStorage.removeItem('porter-pod-agents');
     checkAuthState();
   });
   const updateSyncStatus = (text, color, title) => {
