@@ -1540,6 +1540,12 @@ export async function startUiServer(
     }
 
     if (pathname === "/api/activitypub/teams" && req.method === "GET") {
+      const showAll = url.searchParams.get("all") === "true";
+      if (showAll) {
+        const { listAllPublished } = await import("../activitypub/registry.ts");
+        const teams = await listAllPublished();
+        return new Response(JSON.stringify({ teams }), { headers: { "Content-Type": "application/json" } });
+      }
       const { listFederated } = await import("../activitypub/registry.ts");
       const teams = await listFederated();
       return new Response(JSON.stringify({ teams }), { headers: { "Content-Type": "application/json" } });
@@ -1564,6 +1570,19 @@ export async function startUiServer(
         const body = await req.json();
         if (!body.teamSlug) return new Response(JSON.stringify({ error: "Missing teamSlug" }), { status: 400, headers: { "Content-Type": "application/json" } });
         await unpublishTeam(body.teamSlug);
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    if (pathname === "/api/activitypub/toggle" && req.method === "POST") {
+      const { enableTeam, disableTeam } = await import("../activitypub/registry.ts");
+      try {
+        const body = await req.json();
+        if (!body.teamSlug) return new Response(JSON.stringify({ error: "Missing teamSlug" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        if (body.enabled) await enableTeam(body.teamSlug);
+        else await disableTeam(body.teamSlug);
         return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
       } catch (err) {
         return new Response(JSON.stringify({ error: (err as Error).message }), { status: 400, headers: { "Content-Type": "application/json" } });

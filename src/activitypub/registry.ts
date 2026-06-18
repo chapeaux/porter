@@ -100,3 +100,17 @@ export async function listFederated(): Promise<
       publishedAt: e.publishedAt,
     }));
 }
+
+/** List all published teams including disabled ones. */
+export async function listAllPublished(): Promise<
+  Array<{ teamSlug: string; ownerId: string; publishedAt: string; enabled: boolean }>
+> {
+  const reg = await loadRegistry();
+  return Object.entries(reg.teams)
+    .map(([slug, e]) => ({
+      teamSlug: slug,
+      ownerId: e.ownerId,
+      publishedAt: e.publishedAt,
+      enabled: e.enabled,
+    }));
+}

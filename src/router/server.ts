@@ -96,7 +96,9 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
   // Initialize ActivityPub if configured
   let apRouteHandler: ((req: Request, url: URL, pathname: string) => Promise<Response | null>) | null = null;
   const apExplicit = options.activityPubConfig;
-  const apWanted = apExplicit?.enabled || Deno.env.get("PORTER_AP_ENABLED") === "true";
+  const apEnvEnabled = Deno.env.get("PORTER_AP_ENABLED");
+  const apWanted = apExplicit?.enabled || apEnvEnabled === "true";
+  console.error(`[router] AP check: explicit=${apExplicit?.enabled}, env=${apEnvEnabled}, wanted=${apWanted}`);
   if (apWanted) {
     try {
       const { handleActivityPubRoutes } = await import("../activitypub/routes.ts");
@@ -615,17 +617,20 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
 
       // Publish/unpublish: write to router's registry so WebFinger can resolve teams,
       // then let the request continue to the user pod via proxy for its own copy.
-      if ((pathname === "/api/activitypub/publish" || pathname === "/api/activitypub/unpublish") && req.method === "POST") {
+      if ((pathname === "/api/activitypub/publish" || pathname === "/api/activitypub/unpublish" || pathname === "/api/activitypub/toggle") && req.method === "POST") {
         try {
           const clonedBody = await req.clone().json();
           const slug = clonedBody?.teamSlug;
           if (slug) {
-            const { publishTeam, unpublishTeam } = await import("../activitypub/registry.ts");
+            const { publishTeam, unpublishTeam, enableTeam, disableTeam } = await import("../activitypub/registry.ts");
             if (pathname.endsWith("/publish")) {
               const session = await readSession(req);
               await publishTeam(slug, session?.sub ?? "unknown");
-            } else {
+            } else if (pathname.endsWith("/unpublish")) {
               await unpublishTeam(slug);
+            } else if (pathname.endsWith("/toggle")) {
+              if (clonedBody.enabled) await enableTeam(slug);
+              else await disableTeam(slug);
             }
           }
         } catch { /* let the pod handle errors */ }
