@@ -123,7 +123,7 @@ export async function getOrCreateKeyPair(
     const keyPair = await crypto.subtle.generateKey(ALGO, true, ["sign", "verify"]);
     const publicPem = await exportPublicPem(keyPair.publicKey);
     const privatePem = await exportPrivatePem(keyPair.privateKey);
-    sparq.storeKeyPems(teamSlug, publicPem, privatePem);
+    await sparq.storeKeyPems(teamSlug, publicPem, privatePem);
     const privateKey = await importPrivateKey(privatePem);
     const pair: KeyPair = { privateKey, publicKeyPem: publicPem, keyId };
     cache.set(teamSlug, pair);

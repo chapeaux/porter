@@ -64,7 +64,7 @@ export class SparqApStore implements FederationStore {
 
   private scheduleFlush(): void {
     if (this.flushTimer) return;
-    this.flushTimer = setTimeout(() => this.flush(), 500);
+    this.flushTimer = setTimeout(() => this.flush(), 100);
   }
 
   async flush(): Promise<void> {
@@ -78,11 +78,19 @@ export class SparqApStore implements FederationStore {
     await this.s3.putObject(S3_KEY, nt);
   }
 
+  async flushSync(): Promise<void> {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    await this.flush();
+  }
+
   // ---------------------------------------------------------------------------
   // Registry
   // ---------------------------------------------------------------------------
 
-  publishTeam(slug: string, ownerId: string): void {
+  async publishTeam(slug: string, ownerId: string): Promise<void> {
     const uri = teamUri(slug);
     this.store.update(`
       DELETE { <${uri}> ?p ?o }
@@ -94,31 +102,31 @@ export class SparqApStore implements FederationStore {
         <${uri}> <${P}publishedAt> "${new Date().toISOString()}" .
       }
     `);
-    this.scheduleFlush();
+    await this.flush();
   }
 
-  unpublishTeam(slug: string): void {
+  async unpublishTeam(slug: string): Promise<void> {
     const uri = teamUri(slug);
     this.store.update(`DELETE { <${uri}> ?p ?o } WHERE { <${uri}> ?p ?o }`);
-    this.scheduleFlush();
+    await this.flush();
   }
 
-  enableTeam(slug: string): void {
+  async enableTeam(slug: string): Promise<void> {
     const uri = teamUri(slug);
     this.store.update(`
       DELETE { <${uri}> <${P}enabled> ?v } WHERE { <${uri}> <${P}enabled> ?v };
       INSERT DATA { <${uri}> <${P}enabled> "true"^^<${XSD}boolean> }
     `);
-    this.scheduleFlush();
+    await this.flush();
   }
 
-  disableTeam(slug: string): void {
+  async disableTeam(slug: string): Promise<void> {
     const uri = teamUri(slug);
     this.store.update(`
       DELETE { <${uri}> <${P}enabled> ?v } WHERE { <${uri}> <${P}enabled> ?v };
       INSERT DATA { <${uri}> <${P}enabled> "false"^^<${XSD}boolean> }
     `);
-    this.scheduleFlush();
+    await this.flush();
   }
 
   resolveOwner(slug: string): string | null {
@@ -210,13 +218,13 @@ export class SparqApStore implements FederationStore {
       triples += `<${uri}> <${P}sharedInbox> "${esc(follower.sharedInbox)}" .\n`;
     }
     this.store.update(`INSERT DATA { ${triples} }`);
-    this.scheduleFlush();
+    await this.flush();
   }
 
   async removeFollower(slug: string, actorId: string): Promise<void> {
     const uri = followerUri(slug, actorId);
     this.store.update(`DELETE { <${uri}> ?p ?o } WHERE { <${uri}> ?p ?o }`);
-    this.scheduleFlush();
+    await this.flush();
   }
 
   async updateFollower(slug: string, actorId: string, update: Partial<FollowerRecord>): Promise<void> {
@@ -271,13 +279,13 @@ export class SparqApStore implements FederationStore {
       triples += `<${uri}> <${P}sharedInbox> "${esc(pending.sharedInbox)}" .\n`;
     }
     this.store.update(`INSERT DATA { ${triples} }`);
-    this.scheduleFlush();
+    await this.flush();
   }
 
   async removePendingFollow(slug: string, actorId: string): Promise<void> {
     const uri = pendingUri(slug, actorId);
     this.store.update(`DELETE { <${uri}> ?p ?o } WHERE { <${uri}> ?p ?o }`);
-    this.scheduleFlush();
+    await this.flush();
   }
 
   // ---------------------------------------------------------------------------
@@ -319,13 +327,13 @@ export class SparqApStore implements FederationStore {
       <${uri}> <${P}createdAt> "${conv.createdAt}" .
       <${uri}> <${P}lastActivityAt> "${conv.lastActivityAt}" .
     }`);
-    this.scheduleFlush();
+    await this.flush();
   }
 
   async removeConversation(slug: string, apConversationId: string): Promise<void> {
     const uri = convUri(slug, apConversationId);
     this.store.update(`DELETE { <${uri}> ?p ?o } WHERE { <${uri}> ?p ?o }`);
-    this.scheduleFlush();
+    await this.flush();
   }
 
   // ---------------------------------------------------------------------------
@@ -347,7 +355,7 @@ export class SparqApStore implements FederationStore {
     };
   }
 
-  storeKeyPems(slug: string, publicPem: string, privatePem: string): void {
+  async storeKeyPems(slug: string, publicPem: string, privatePem: string): Promise<void> {
     const uri = `urn:porter:ap:keys/${encodeURIComponent(slug)}`;
     this.store.update(`DELETE { <${uri}> ?p ?o } WHERE { <${uri}> ?p ?o }`);
     this.store.update(`INSERT DATA {
@@ -355,7 +363,7 @@ export class SparqApStore implements FederationStore {
       <${uri}> <${P}publicKeyPem> "${esc(publicPem)}" .
       <${uri}> <${P}privateKeyPem> "${esc(privatePem)}" .
     }`);
-    this.scheduleFlush();
+    await this.flush();
   }
 
   // ---------------------------------------------------------------------------
@@ -388,7 +396,7 @@ export class SparqApStore implements FederationStore {
     };
   }
 
-  saveConfig(config: ActivityPubConfig): void {
+  async saveConfig(config: ActivityPubConfig): Promise<void> {
     const uri = "urn:porter:ap:config";
     this.store.update(`DELETE { <${uri}> ?p ?o } WHERE { <${uri}> ?p ?o }`);
     this.store.update(`DELETE { ?e ?p ?o } WHERE { ?e a <${P}AllowlistEntry> ; ?p ?o }`);
@@ -406,6 +414,6 @@ export class SparqApStore implements FederationStore {
         <${eUri}> <${P}value> "${esc(entry)}" .
       }`);
     }
-    this.scheduleFlush();
+    await this.flush();
   }
 }

@@ -54,7 +54,7 @@ export async function publishTeam(
   teamSlug: string,
   ownerId: string,
 ): Promise<void> {
-  if (_sparqStore) { _sparqStore.publishTeam(teamSlug, ownerId); return; }
+  if (_sparqStore) { await _sparqStore.publishTeam(teamSlug, ownerId); return; }
   const reg = await loadRegistry();
   reg.teams[teamSlug] = {
     ownerId,
@@ -66,7 +66,7 @@ export async function publishTeam(
 
 /** Unpublish a team (removes from federation). */
 export async function unpublishTeam(teamSlug: string): Promise<void> {
-  if (_sparqStore) { _sparqStore.unpublishTeam(teamSlug); return; }
+  if (_sparqStore) { await _sparqStore.unpublishTeam(teamSlug); return; }
   const reg = await loadRegistry();
   delete reg.teams[teamSlug];
   await saveRegistry(reg);
@@ -74,7 +74,7 @@ export async function unpublishTeam(teamSlug: string): Promise<void> {
 
 /** Disable a team without removing its entry. */
 export async function disableTeam(teamSlug: string): Promise<void> {
-  if (_sparqStore) { _sparqStore.disableTeam(teamSlug); return; }
+  if (_sparqStore) { await _sparqStore.disableTeam(teamSlug); return; }
   const reg = await loadRegistry();
   if (reg.teams[teamSlug]) {
     reg.teams[teamSlug].enabled = false;
@@ -84,7 +84,7 @@ export async function disableTeam(teamSlug: string): Promise<void> {
 
 /** Enable a previously disabled team. */
 export async function enableTeam(teamSlug: string): Promise<void> {
-  if (_sparqStore) { _sparqStore.enableTeam(teamSlug); return; }
+  if (_sparqStore) { await _sparqStore.enableTeam(teamSlug); return; }
   const reg = await loadRegistry();
   if (reg.teams[teamSlug]) {
     reg.teams[teamSlug].enabled = true;
