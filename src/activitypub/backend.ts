@@ -235,7 +235,15 @@ export class RouterBackend implements ActivityPubBackend {
   }
 
   async getTeam(ownerId: string, teamSlug: string): Promise<SavedTeam | null> {
-    return await this.userStore.getTeam(ownerId, teamSlug);
+    const local = await this.userStore.getTeam(ownerId, teamSlug);
+    if (local) return local;
+
+    try {
+      const pod = await this.ensurePod(ownerId);
+      const resp = await fetch(`${pod.podUrl}/api/teams/${encodeURIComponent(teamSlug)}`);
+      if (resp.ok) return (await resp.json()) as SavedTeam;
+    } catch { /* pod unavailable */ }
+    return null;
   }
 
   async listFederatedTeams(): Promise<Array<{ teamSlug: string; ownerId: string }>> {
