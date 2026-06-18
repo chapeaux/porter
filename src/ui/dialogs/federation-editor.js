@@ -5,6 +5,7 @@
 import { h, text, replaceContent } from '../dom.js';
 import { getDlg } from './dialog-helpers.js';
 import { updateSetupBar } from '../features/flipboard-setup.js';
+import { syncPublishedTeamsToPod } from '../sync/sync-helpers.js';
 
 export function showFederationDialog() {
   const dlg = getDlg();
@@ -167,6 +168,7 @@ async function loadAndRender(body, saveBtn, cancelBtn, dlg) {
           } catch (_) { /* ignore */ }
           await renderPublishedTeams();
           await renderFollowers();
+          syncPublishedTeamsToPod();
         });
         return h('div', { class: 'mcp-server-card' },
           h('span', { class: 'mcp-name' }, team.teamSlug || team.name || team.slug),
@@ -218,6 +220,7 @@ async function loadAndRender(body, saveBtn, cancelBtn, dlg) {
       publishTeamBtn.style.display = '';
       await renderPublishedTeams();
       await renderFollowers();
+      syncPublishedTeamsToPod();
     });
   });
 

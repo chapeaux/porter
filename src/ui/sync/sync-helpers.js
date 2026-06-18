@@ -77,6 +77,18 @@ export function syncModelsToPod(models) {
   syncToPod('models', tagged);
 }
 
+export async function syncPublishedTeamsToPod() {
+  if (!window._podSync) return;
+  try {
+    const resp = await fetch('/api/activitypub/teams');
+    if (resp.ok) {
+      const data = await resp.json();
+      const slugs = (data.teams || []).map(t => t.teamSlug || t.slug || t.name);
+      syncToPod('published_teams', slugs);
+    }
+  } catch { /* best-effort */ }
+}
+
 export function syncMcpToPod() {
   if (!window._podSync) return;
   const configStore = document.getElementById('config');

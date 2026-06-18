@@ -434,6 +434,16 @@ export class PorterPodSync {
       }
     }
 
+    if (data.published_teams && Array.isArray(data.published_teams)) {
+      for (const slug of data.published_teams) {
+        fetch('/api/activitypub/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
+          body: JSON.stringify({ teamSlug: slug }),
+        }).catch(() => {});
+      }
+    }
+
     if (data.saved_agents && Array.isArray(data.saved_agents)) {
       localStorage.setItem('porter-pod-agents', JSON.stringify(data.saved_agents));
       for (const a of data.saved_agents) {
