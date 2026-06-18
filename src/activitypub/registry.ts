@@ -1,12 +1,23 @@
 /**
  * Federation registry — maps published team slugs to their owning user.
  *
- * Stored at ~/.porter/activitypub/registry.json. Lives outside any
- * single user's directory since the router needs to read it without
- * knowing which user to look up first.
+ * When a SparqApStore is set (router mode with S3), all operations delegate
+ * to the SPARQL-backed store. Otherwise falls back to the local JSON file
+ * at ~/.porter/activitypub/registry.json.
  */
 
 import { dirname } from "@std/path";
+import type { SparqApStore } from "./sparq_store.ts";
+
+let _sparqStore: SparqApStore | null = null;
+
+export function setSparqStore(store: SparqApStore): void {
+  _sparqStore = store;
+}
+
+export function getSparqStore(): SparqApStore | null {
+  return _sparqStore;
+}
 
 export interface FederationEntry {
   ownerId: string;
@@ -43,6 +54,7 @@ export async function publishTeam(
   teamSlug: string,
   ownerId: string,
 ): Promise<void> {
+  if (_sparqStore) { _sparqStore.publishTeam(teamSlug, ownerId); return; }
   const reg = await loadRegistry();
   reg.teams[teamSlug] = {
     ownerId,
@@ -54,6 +66,7 @@ export async function publishTeam(
 
 /** Unpublish a team (removes from federation). */
 export async function unpublishTeam(teamSlug: string): Promise<void> {
+  if (_sparqStore) { _sparqStore.unpublishTeam(teamSlug); return; }
   const reg = await loadRegistry();
   delete reg.teams[teamSlug];
   await saveRegistry(reg);
@@ -61,6 +74,7 @@ export async function unpublishTeam(teamSlug: string): Promise<void> {
 
 /** Disable a team without removing its entry. */
 export async function disableTeam(teamSlug: string): Promise<void> {
+  if (_sparqStore) { _sparqStore.disableTeam(teamSlug); return; }
   const reg = await loadRegistry();
   if (reg.teams[teamSlug]) {
     reg.teams[teamSlug].enabled = false;
@@ -70,6 +84,7 @@ export async function disableTeam(teamSlug: string): Promise<void> {
 
 /** Enable a previously disabled team. */
 export async function enableTeam(teamSlug: string): Promise<void> {
+  if (_sparqStore) { _sparqStore.enableTeam(teamSlug); return; }
   const reg = await loadRegistry();
   if (reg.teams[teamSlug]) {
     reg.teams[teamSlug].enabled = true;
@@ -81,6 +96,7 @@ export async function enableTeam(teamSlug: string): Promise<void> {
 export async function resolveOwner(
   teamSlug: string,
 ): Promise<string | null> {
+  if (_sparqStore) return _sparqStore.resolveOwner(teamSlug);
   const reg = await loadRegistry();
   const entry = reg.teams[teamSlug];
   if (!entry || !entry.enabled) return null;
@@ -91,6 +107,7 @@ export async function resolveOwner(
 export async function listFederated(): Promise<
   Array<{ teamSlug: string; ownerId: string; publishedAt: string }>
 > {
+  if (_sparqStore) return _sparqStore.listFederated();
   const reg = await loadRegistry();
   return Object.entries(reg.teams)
     .filter(([_, e]) => e.enabled)
@@ -105,6 +122,7 @@ export async function listFederated(): Promise<
 export async function listAllPublished(): Promise<
   Array<{ teamSlug: string; ownerId: string; publishedAt: string; enabled: boolean }>
 > {
+  if (_sparqStore) return _sparqStore.listAllPublished();
   const reg = await loadRegistry();
   return Object.entries(reg.teams)
     .map(([slug, e]) => ({

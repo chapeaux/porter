@@ -93,6 +93,24 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
   podRegistry.startIdleSweep();
   console.log(`[router] Pod registry initialized (namespace: ${namespace}, idle timeout: ${options.idleTimeoutMinutes}m)`);
 
+  // Initialize SPARQL-backed AP store if S3 is configured
+  try {
+    const { loadS3Config, ApS3Client } = await import("../activitypub/s3.ts");
+    const s3Config = loadS3Config();
+    if (s3Config) {
+      const { SparqApStore } = await import("../activitypub/sparq_store.ts");
+      const { setSparqStore } = await import("../activitypub/registry.ts");
+      const s3 = new ApS3Client(s3Config);
+      const sparqStore = new SparqApStore(s3);
+      await sparqStore.init();
+      setSparqStore(sparqStore);
+      console.log("[router] SPARQL AP store initialized (sparq WASM + MinIO persistence)");
+    }
+  } catch (err) {
+    console.error(`[router] SPARQL AP store init failed: ${(err as Error).message}`);
+    console.error("[router] Falling back to local file-based AP storage");
+  }
+
   // Initialize ActivityPub if configured
   let apRouteHandler: ((req: Request, url: URL, pathname: string) => Promise<Response | null>) | null = null;
   const apExplicit = options.activityPubConfig;
@@ -105,9 +123,12 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
       const { LocalFederationStore } = await import("../activitypub/store.ts");
       const { resolveApConfig } = await import("../activitypub/config.ts");
       const { UserStore } = await import("../auth/user_store.ts");
-      const apConfig = resolveApConfig(apExplicit);
+      const { getSparqStore } = await import("../activitypub/registry.ts");
+      const sparq = getSparqStore();
+      const sparqConfig = sparq?.getConfig();
+      const apConfig = sparqConfig ?? resolveApConfig(apExplicit);
       if (apConfig) {
-        const apStore = new LocalFederationStore();
+        const apStore = sparq ?? new LocalFederationStore();
         const apUserStore = new UserStore();
         const { RouterBackend } = await import("../activitypub/backend.ts");
         const apBackend = new RouterBackend(podRegistry, apUserStore);

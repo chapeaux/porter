@@ -6,6 +6,7 @@
  */
 
 import { dirname } from "@std/path";
+import { getSparqStore } from "./registry.ts";
 
 export interface KeyPair {
   privateKey: CryptoKey;
@@ -109,6 +110,25 @@ export async function getOrCreateKeyPair(
 
   const cached = cache.get(teamSlug);
   if (cached) return cached;
+
+  const sparq = getSparqStore();
+  if (sparq) {
+    const pems = sparq.getKeyPems(teamSlug);
+    if (pems) {
+      const privateKey = await importPrivateKey(pems.privatePem);
+      const pair: KeyPair = { privateKey, publicKeyPem: pems.publicPem, keyId };
+      cache.set(teamSlug, pair);
+      return pair;
+    }
+    const keyPair = await crypto.subtle.generateKey(ALGO, true, ["sign", "verify"]);
+    const publicPem = await exportPublicPem(keyPair.publicKey);
+    const privatePem = await exportPrivatePem(keyPair.privateKey);
+    sparq.storeKeyPems(teamSlug, publicPem, privatePem);
+    const privateKey = await importPrivateKey(privatePem);
+    const pair: KeyPair = { privateKey, publicKeyPem: publicPem, keyId };
+    cache.set(teamSlug, pair);
+    return pair;
+  }
 
   const dir = keysDir(teamSlug);
   try {

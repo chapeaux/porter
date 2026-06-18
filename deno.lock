@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@bradenmacdonald/s3-lite-client@0.9": "0.9.6",
     "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/assert@^1.0.19": "1.0.19",
@@ -18,9 +19,14 @@
     "jsr:@std/yaml@*": "1.0.10",
     "npm:@anthropic-ai/sdk@0.39": "0.39.0",
     "npm:@anthropic-ai/vertex-sdk@0.6": "0.6.4",
+    "npm:@rdfjs/types@2": "2.0.1",
+    "npm:fzstd@0.1": "0.1.1",
     "npm:oxigraph@0.5": "0.5.8"
   },
   "jsr": {
+    "@bradenmacdonald/s3-lite-client@0.9.6": {
+      "integrity": "5dac4eb9ce4d8574ce2eb21e1cff1e96b409ca3ba333913a8bbf918710dc50d9"
+    },
     "@std/assert@1.0.19": {
       "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
       "dependencies": [
@@ -95,6 +101,12 @@
       "dependencies": [
         "@anthropic-ai/sdk",
         "google-auth-library"
+      ]
+    },
+    "@rdfjs/types@2.0.1": {
+      "integrity": "sha512-uyAzpugX7KekAXAHq26m3JlUIZJOC0uSBhpnefGV5i15bevDyyejoB7I+9MKeUrzXD8OOUI3+4FeV1wwQr5ihA==",
+      "dependencies": [
+        "@types/node"
       ]
     },
     "@types/node-fetch@2.6.13": {
@@ -222,6 +234,9 @@
     },
     "function-bind@1.1.2": {
       "integrity": "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA=="
+    },
+    "fzstd@0.1.1": {
+      "integrity": "sha512-dkuVSOKKwh3eas5VkJy1AW1vFpet8TA/fGmVA5krThl8YcOVE/8ZIoEA1+U1vEn5ckxxhLirSdY837azmbaNHA=="
     },
     "gaxios@6.7.1": {
       "integrity": "sha512-LDODD4TMYx7XXdpwxAVRAIAuB0bzv0s+ywFonY46k126qzQHT9ygyoa9tncmOiQmmDrik65UYsEkv3lbfqQ3yQ==",
@@ -378,6 +393,7 @@
     },
     "uuid@9.0.1": {
       "integrity": "sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==",
+      "deprecated": true,
       "bin": true
     },
     "web-streams-polyfill@4.0.0-beta.3": {
@@ -431,10 +447,13 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@bradenmacdonald/s3-lite-client@0.9",
       "jsr:@std/assert@1",
       "jsr:@std/fs@1",
       "jsr:@std/path@1",
       "jsr:@std/testing@1",
+      "npm:@rdfjs/types@2",
+      "npm:fzstd@0.1",
       "npm:oxigraph@0.5"
     ]
   }

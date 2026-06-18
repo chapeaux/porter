@@ -17,7 +17,7 @@
     "compile": "deno compile --allow-all --include src/ui/ --include src/graph/shapes.ttl --include isolate.ts --include worker.ts --output porter cli.ts"
   },
   "lint": {
-    "exclude": ["src/ui/*.js", "src/ui/**/*.js", "archive/"],
+    "exclude": ["src/ui/*.js", "src/ui/**/*.js", "archive/", "src/activitypub/sparq/"],
     "rules": {
       "exclude": ["no-explicit-any", "require-await", "verbatim-module-syntax", "no-unused-vars"]
     }
@@ -27,6 +27,9 @@
     "@std/path": "jsr:@std/path@^1",
     "@std/fs": "jsr:@std/fs@^1",
     "@std/testing": "jsr:@std/testing@^1",
-    "oxigraph": "npm:oxigraph@^0.5"
+    "oxigraph": "npm:oxigraph@^0.5",
+    "@rdfjs/types": "npm:@rdfjs/types@^2",
+    "fzstd": "npm:fzstd@^0.1",
+    "@bradenmacdonald/s3-lite-client": "jsr:@bradenmacdonald/s3-lite-client@^0.9"
   }
 }
