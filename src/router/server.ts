@@ -134,12 +134,22 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         const apUserStore = new UserStore();
         const { RouterBackend } = await import("../activitypub/backend.ts");
         const apBackend = new RouterBackend(podRegistry, apUserStore);
+        const apResolveUserId = async (r: Request): Promise<string> => {
+          const u = await extractUser(r, oidcDiscovery?.jwks_uri, oidcDiscovery?.issuer);
+          if (u) return u.sub;
+          const s = await readSession(r);
+          if (s?.sub) return s.sub;
+          const webId = r.headers.get("x-porter-webid");
+          if (webId) return `webid:${webId}`;
+          return "default";
+        };
         apRouteHandler = (req, url, pathname) =>
           handleActivityPubRoutes(req, url, pathname, {
             config: liveConfig,
             store: apStore,
             backend: apBackend,
             userStore: apUserStore,
+            resolveUserId: apResolveUserId,
           });
         console.error(`[router] ActivityPub enabled: ${liveConfig.domain}`);
       } else {
