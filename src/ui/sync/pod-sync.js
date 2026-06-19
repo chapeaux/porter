@@ -37,26 +37,29 @@ export class PorterPodSync {
   }
 
   async connect() {
-    // Ensure the porter/ container exists
-    // Try LDP BasicContainer (standard Solid), fall back to LWS Container
+    // Ensure the porter/ container exists — use PUT to the exact URL
+    const containerUrl = `${this._podRoot}porter/`;
     try {
-      const containerTypes = [
-        '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
-        '<https://www.w3.org/ns/lws#Container>; rel="type"',
-      ];
-      let created = false;
-      for (const linkType of containerTypes) {
-        const createResp = await this._fetch(this._podRoot, {
-          method: 'POST',
-          headers: { 'Slug': 'porter', 'Link': linkType, 'Content-Type': 'text/turtle' },
-          body: '',
-        });
-        if (createResp.ok || createResp.status === 201 || createResp.status === 409) {
-          created = true;
-          break;
+      const headResp = await this._fetch(containerUrl, { method: 'HEAD' });
+      if (headResp.status === 404) {
+        const containerTypes = [
+          '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
+          '<https://www.w3.org/ns/lws#Container>; rel="type"',
+        ];
+        let created = false;
+        for (const linkType of containerTypes) {
+          const createResp = await this._fetch(containerUrl, {
+            method: 'PUT',
+            headers: { 'Link': linkType, 'Content-Type': 'text/turtle' },
+            body: '',
+          });
+          if (createResp.ok || createResp.status === 201) {
+            created = true;
+            break;
+          }
         }
+        if (!created) console.warn('[porter-pod] Could not create porter/ container');
       }
-      if (!created) console.warn('[porter-pod] Could not create porter/ container');
     } catch (e) { console.error('[porter-pod] Container create failed:', e); }
 
     // Load current state, or create initial resource via POST to container
@@ -69,22 +72,12 @@ export class PorterPodSync {
         this._applyRemoteState(data);
       } else if (resp.status === 404) {
         const initial = { _clientId: this._clientId, _timestamp: Date.now() };
-        // Try POST to container first (LWS), then PUT directly (Solid CSS/NSS)
-        const containerUrl = this._resourceUrl.replace(/[^/]+$/, '');
-        const slug = this._resourceUrl.split('/').pop();
-        let postResp = await this._fetch(containerUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Slug': slug },
+        // PUT directly to the exact resource URL
+        let postResp = await this._fetch(this._resourceUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(initial),
         });
-        if (!postResp.ok && postResp.status !== 201 && postResp.status !== 409) {
-          // POST failed - try PUT directly (works on CSS, NSS)
-          postResp = await this._fetch(this._resourceUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(initial),
-          });
-        }
         if (postResp.ok || postResp.status === 201) {
           this._lastEtag = postResp.headers.get('etag');
           this._lastKnownState = initial;
@@ -143,13 +136,14 @@ export class PorterPodSync {
           '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
           '<https://www.w3.org/ns/lws#Container>; rel="type"',
         ];
+        const memoryContainerUrl = `${this._podRoot}porter/memory/`;
         for (const linkType of containerTypes) {
-          const cr = await this._fetch(`${this._podRoot}porter/`, {
-            method: 'POST',
-            headers: { 'Slug': 'memory', 'Link': linkType, 'Content-Type': 'text/turtle' },
+          const cr = await this._fetch(memoryContainerUrl, {
+            method: 'PUT',
+            headers: { 'Link': linkType, 'Content-Type': 'text/turtle' },
             body: '',
           });
-          if (cr.ok || cr.status === 201 || cr.status === 409) break;
+          if (cr.ok || cr.status === 201) break;
         }
         resp = await this._fetch(memoryUrl, {
           method: 'PUT',
@@ -281,9 +275,8 @@ export class PorterPodSync {
           this._ttlEtag = ttlResp.headers.get('etag');
         } else if (ttlResp.status === 404) {
           const containerUrl = turtleUrl.replace(/[^/]+$/, '');
-          const slug = turtleUrl.split('/').pop();
-          const createResp = await this._fetch(containerUrl, {
-            method: 'POST', headers: { 'Content-Type': 'text/turtle', 'Slug': slug }, body: turtle,
+          const createResp = await this._fetch(turtleUrl, {
+            method: 'PUT', headers: { 'Content-Type': 'text/turtle' }, body: turtle,
           });
           if (createResp.ok || createResp.status === 201) this._ttlEtag = createResp.headers.get('etag');
         } else if (ttlResp.status === 409 || ttlResp.status === 428) {

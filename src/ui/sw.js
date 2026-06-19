@@ -1,4 +1,4 @@
-const CACHE_NAME = 'porter-v6';
+const CACHE_NAME = 'porter-v7';
 const PRECACHE_URLS = [
   '/',
   '/app.js',
