@@ -690,6 +690,28 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
     const userId = user?.sub ?? session?.sub;
 
     if (!userId) {
+      // Solid OIDC callback — serve the full app (all static assets) so
+      // solid-auth.js can process the code exchange in the browser.
+      if (url.searchParams.has("code") && url.searchParams.has("state")) {
+        const accept = req.headers.get("accept") ?? "";
+        if (accept.includes("text/html")) {
+          try {
+            const html = Deno.readTextFileSync(new URL("../ui/index.html", import.meta.url));
+            return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+          } catch { /* fall through to login chooser */ }
+        }
+      }
+      // Serve UI static assets without auth (needed for Solid callback and PWA)
+      if (pathname.endsWith(".js") || pathname.endsWith(".css") || pathname.endsWith(".html")) {
+        try {
+          const filePath = new URL("../ui" + pathname, import.meta.url);
+          const content = await Deno.readTextFile(filePath);
+          const ct = pathname.endsWith(".js") ? "application/javascript"
+            : pathname.endsWith(".css") ? "text/css"
+            : "text/html; charset=utf-8";
+          return new Response(content, { headers: { "Content-Type": ct } });
+        } catch { /* not a UI file — fall through */ }
+      }
       // Not authenticated: show login chooser for browser requests, 401 for API
       const accept = req.headers.get("accept") ?? "";
       if (accept.includes("text/html")) {
