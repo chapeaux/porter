@@ -398,10 +398,13 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         const callbackUri = `${fwdProto}://${fwdHost}/auth/solid-callback`;
 
         if (!cached || Date.now() - cached.cachedAt > 3600_000) {
+          const t0 = Date.now();
           const solidDiscovery = await discoverOAuthAS(issuer);
+          console.log(`[solid-login] Discovery: ${Date.now() - t0}ms`);
           const regEndpoint = (solidDiscovery as unknown as Record<string, string>).registration_endpoint;
           let clientId: string;
           if (regEndpoint) {
+            const t1 = Date.now();
             const regResp = await fetch(regEndpoint, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -419,6 +422,7 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
               return new Response(`Solid client registration failed: ${regResp.status} ${text}`, { status: 502 });
             }
             const regData = await regResp.json();
+            console.log(`[solid-login] Registration: ${Date.now() - t1}ms`);
             clientId = regData.client_id;
           } else {
             clientId = callbackUri;
@@ -430,6 +434,9 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
             cachedAt: Date.now(),
           };
           solidIdpCache.set(issuer, cached);
+          console.log(`[solid-login] Total uncached: ${Date.now() - t0}ms`);
+        } else {
+          console.log(`[solid-login] Cache hit for ${issuer}`);
         }
 
         const idp = cached!;
