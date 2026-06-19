@@ -287,7 +287,7 @@
     var state = uuid().replace(/-/g, "");
 
     // Persist pending auth state in sessionStorage
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify({
+    localStorage.setItem(PENDING_KEY, JSON.stringify({
       issuer: issuer,
       state: state,
       verifier: verifier,
@@ -300,8 +300,8 @@
     }));
 
     // Also store state and verifier under their own keys for clarity
-    sessionStorage.setItem(STATE_KEY, state);
-    sessionStorage.setItem(VERIFIER_KEY, verifier);
+    localStorage.setItem(STATE_KEY, state);
+    localStorage.setItem(VERIFIER_KEY, verifier);
 
     // Build authorization URL
     var authUrl = new URL(config.authorization_endpoint);
@@ -336,16 +336,16 @@
     var cleanUrl = window.location.origin + window.location.pathname;
     window.history.replaceState({}, "", cleanUrl);
 
-    var storedStr = sessionStorage.getItem(PENDING_KEY);
+    var storedStr = localStorage.getItem(PENDING_KEY);
     if (!storedStr) {
       return restoreSession();
     }
 
     var stored = JSON.parse(storedStr);
     if (stored.state !== state) {
-      sessionStorage.removeItem(PENDING_KEY);
-      sessionStorage.removeItem(STATE_KEY);
-      sessionStorage.removeItem(VERIFIER_KEY);
+      localStorage.removeItem(PENDING_KEY);
+      localStorage.removeItem(STATE_KEY);
+      localStorage.removeItem(VERIFIER_KEY);
       return restoreSession();
     }
 
@@ -372,9 +372,9 @@
 
       if (!tokenResponse.ok) {
         // Clear stale client cache on failure
-        sessionStorage.removeItem(PENDING_KEY);
-        sessionStorage.removeItem(STATE_KEY);
-        sessionStorage.removeItem(VERIFIER_KEY);
+        localStorage.removeItem(PENDING_KEY);
+        localStorage.removeItem(STATE_KEY);
+        localStorage.removeItem(VERIFIER_KEY);
         var storageKeys = Object.keys(localStorage);
         for (var i = 0; i < storageKeys.length; i++) {
           if (storageKeys[i].indexOf(CLIENT_KEY) === 0) {
@@ -406,9 +406,9 @@
 
       localStorage.setItem(SESSION_KEY, JSON.stringify(currentSession));
       localStorage.setItem(LAST_IDP_KEY, stored.issuer);
-      sessionStorage.removeItem(PENDING_KEY);
-      sessionStorage.removeItem(STATE_KEY);
-      sessionStorage.removeItem(VERIFIER_KEY);
+      localStorage.removeItem(PENDING_KEY);
+      localStorage.removeItem(STATE_KEY);
+      localStorage.removeItem(VERIFIER_KEY);
 
       scheduleProactiveRefresh();
       return { isLoggedIn: true, webId: webId };
@@ -442,9 +442,9 @@
   function solidLogoutUser() {
     if (_refreshTimer) { clearTimeout(_refreshTimer); _refreshTimer = null; }
     localStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(PENDING_KEY);
-    sessionStorage.removeItem(STATE_KEY);
-    sessionStorage.removeItem(VERIFIER_KEY);
+    localStorage.removeItem(PENDING_KEY);
+    localStorage.removeItem(STATE_KEY);
+    localStorage.removeItem(VERIFIER_KEY);
     currentSession = null;
     podStorageCache = {};
   }

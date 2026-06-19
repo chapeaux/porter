@@ -142,7 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // before any "no models" checks run.
   let solidRestored = false;
   let solidWebId = null;
-  if (window.location.search.includes('code=') && sessionStorage.getItem('porter-solid-state')) {
+  if (window.location.search.includes('code=') && (localStorage.getItem('porter-solid-state') || localStorage.getItem('porter-solid-last-idp'))) {
     try {
       const result = await window.solidAuth.handleRedirect();
       window.history.replaceState({}, '', window.location.pathname);
