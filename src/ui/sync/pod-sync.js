@@ -306,7 +306,7 @@ export class PorterPodSync {
     ];
 
     for (const m of state.models || []) {
-      const uri = `porter:model/${encodeURIComponent(m.id || m.model_id)}`;
+      const uri = `<https://porter.chapeaux.io/vocab#model/${encodeURIComponent(m.id || m.model_id)}>`;
       lines.push(`${uri} a porter:Model ;`);
       lines.push(`  rdfs:label "${(m.display_name || m.id || '').replace(/"/g, '\\"')}" ;`);
       lines.push(`  porter:providerType "${m.provider_type || 'openai_compat'}" ;`);
@@ -327,7 +327,7 @@ export class PorterPodSync {
 
     if (state.mcp_servers && typeof state.mcp_servers === 'object') {
       for (const [name, cfg] of Object.entries(state.mcp_servers)) {
-        const uri = `porter:mcp/${encodeURIComponent(name)}`;
+        const uri = `<https://porter.chapeaux.io/vocab#mcp/${encodeURIComponent(name)}>`;
         lines.push(`${uri} a porter:McpServer ;`);
         lines.push(`  rdfs:label "${name.replace(/"/g, '\\"')}" ;`);
         lines.push(`  porter:transport "${cfg.transport || 'stdio'}" ;`);
