@@ -160,7 +160,7 @@ export function renderSolidIdentity(container, webId) {
     caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
     localStorage.removeItem('porter-pod-teams');
     localStorage.removeItem('porter-pod-agents');
-    checkAuthState();
+    window.location.href = '/auth/logout';
   });
   const updateSyncStatus = (text, color, title) => {
     if (!statusEl) return;

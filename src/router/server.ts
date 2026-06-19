@@ -352,7 +352,8 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         }
       }
 
-      if (oidcDiscovery?.end_session_endpoint) {
+      const isSolidUser = session?.sub?.startsWith("http");
+      if (!isSolidUser && oidcDiscovery?.end_session_endpoint) {
         const fwdProto = req.headers.get("x-forwarded-proto") || url.protocol.replace(":", "");
         const fwdHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || url.host;
         const postLogoutUri = `${fwdProto}://${fwdHost}/auth/logged-out`;
