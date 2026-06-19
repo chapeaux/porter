@@ -133,15 +133,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     connectWebSocket(busUrl);
   });
 
-  // Show loading state — don't render stale localStorage content until
-  // we confirm sessions exist on the server.
   const main = document.querySelector('main');
   main.classList.add('porter-loading');
 
-  // Restore Solid session and AWAIT Pod sync so model data is ready
-  // before any "no models" checks run.
+  // --- Authenticate before doing anything else ---
+  let authenticated = false;
   let solidRestored = false;
   let solidWebId = null;
+
+  // 1. Handle Solid OIDC callback
   if (window.location.search.includes('code=') && (localStorage.getItem('porter-solid-state') || localStorage.getItem('porter-solid-last-idp'))) {
     try {
       const result = await window.solidAuth.handleRedirect();
@@ -149,54 +149,70 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (result.isLoggedIn) {
         solidRestored = true;
         solidWebId = result.webId;
+        authenticated = true;
       }
     } catch (err) {
       console.error('[porter] Solid redirect failed:', err);
     }
-  } else {
+  }
+
+  // 2. Restore Solid session from localStorage
+  if (!authenticated) {
     const restored = window.solidAuth?.restoreSession?.();
     if (restored?.isLoggedIn) {
       solidRestored = true;
       solidWebId = restored.webId;
+      authenticated = true;
     }
   }
 
-  if (solidRestored && solidWebId) {
-    await initPodSync(solidWebId);
-  }
-
-  // Fallback: if restoreSession missed it but Solid is actually active, init Pod sync now
-  if (!window._podSync && !solidRestored) {
+  // 3. Fallback: check live Solid session state
+  if (!authenticated) {
     const liveSession = window.solidAuth?.getSessionInfo?.();
     if (liveSession?.isLoggedIn && liveSession.webId) {
-      await initPodSync(liveSession.webId);
+      solidRestored = true;
+      solidWebId = liveSession.webId;
+      authenticated = true;
     }
   }
 
-  // SSO users: initialize Pod sync if the server provides a pod_url (LWS)
-  const solidActive = window.solidAuth?.getSessionInfo?.()?.isLoggedIn;
-  if (!window._podSync && !solidActive) {
+  // 4. Check server-side session (SSO or server-side Solid)
+  let ssoMe = null;
+  if (!authenticated) {
     try {
       const meResp = await fetch('/auth/me');
       if (meResp.ok) {
-        const me = await meResp.json();
-        if (me.authenticated && me.pod_url && me.lws_token_endpoint) {
-          await initSsoPodSync(me.pod_url, me.lws_token_endpoint);
-        }
+        ssoMe = await meResp.json();
+        if (ssoMe.authenticated) authenticated = true;
       }
-    } catch { /* not authenticated or no LWS configured */ }
+    } catch { /* not authenticated */ }
+  }
+
+  // 5. Not authenticated — show only sign-in, don't load anything else
+  if (!authenticated) {
+    main.classList.remove('porter-loading');
+    checkAuthState();
+    return;
+  }
+
+  // --- Authenticated — initialize Pod sync and load app ---
+  if (solidRestored && solidWebId) {
+    await initPodSync(solidWebId);
+  }
+  if (!window._podSync && ssoMe?.pod_url && ssoMe?.lws_token_endpoint) {
+    try {
+      await initSsoPodSync(ssoMe.pod_url, ssoMe.lws_token_endpoint);
+    } catch { /* best effort */ }
   }
 
   checkAuthState();
 
-  // Re-show login when Solid session expires
   window.addEventListener('porter-auth-expired', () => {
     if (window._podSync) { window._podSync.disconnect(); window._podSync = null; }
     checkAuthState();
     showReloginPrompt();
   });
 
-  // Check for active sessions — show empty state if none, restore when sessions appear
   const projectStore = document.getElementById('projects');
   projectStore.addEventListener('change', (e) => {
     if (e.detail.prop === 'sessions') {
@@ -205,11 +221,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         stopMetricsPolling();
         document.getElementById('metrics-bar')?.classList.add('hidden');
         projectStore.setActive(null);
-        // Disconnect WebSocket — reconnect to lobby to stop retrying
         resetBusState();
         const connStore = document.getElementById('connection');
         connStore.setDisconnected();
-        // Clear stale UI state
         agentStore._isInternalChange = true;
         agentStore.state.agents = {};
         agentStore._isInternalChange = false;
@@ -242,13 +256,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Fetch models and sessions — wait for both before removing loading state
   await document.getElementById('models')?.refresh();
   updateSetupBar();
   await projectStore.refresh();
 
-  // If the loading indicator is still showing (no sessions triggered the
-  // empty state or session content), render the empty state now.
   if (document.getElementById('loading-indicator')) {
     await renderEmptyState();
   }
