@@ -203,10 +203,12 @@ export async function initSsoPodSync(podUrl, tokenEndpoint) {
 async function exchangeLwsToken(tokenEndpoint) {
   const resp = await fetch(tokenEndpoint, { method: 'POST' });
   if (resp.status === 401) {
-    // LWS token lost (router restarted) — silent re-login to refresh it.
-    // SSO session is still active so this redirect is transparent.
+    const solidSession = window.solidAuth?.getSessionInfo?.();
+    if (solidSession?.isLoggedIn) {
+      throw new Error('LWS token not available for Solid sessions');
+    }
     window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
-    await new Promise(() => {}); // block until redirect
+    await new Promise(() => {});
   }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
