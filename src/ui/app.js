@@ -165,9 +165,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initPodSync(solidWebId);
   }
 
-  // SSO users: initialize Pod sync if the server provides a pod_url (LWS)
-  // Skip if already authenticated via Solid — SSO token exchange would fail and redirect.
+  // Fallback: if restoreSession missed it but Solid is actually active, init Pod sync now
   if (!window._podSync && !solidRestored) {
+    const liveSession = window.solidAuth?.getSessionInfo?.();
+    if (liveSession?.isLoggedIn && liveSession.webId) {
+      await initPodSync(liveSession.webId);
+    }
+  }
+
+  // SSO users: initialize Pod sync if the server provides a pod_url (LWS)
+  const solidActive = window.solidAuth?.getSessionInfo?.()?.isLoggedIn;
+  if (!window._podSync && !solidActive) {
     try {
       const meResp = await fetch('/auth/me');
       if (meResp.ok) {
