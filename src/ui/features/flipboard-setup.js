@@ -86,7 +86,7 @@ export function updateFederationStatus() {
     .then(r => r.ok ? r.json() : { enabled: false })
     .then(data => {
       if (data.enabled) {
-        val.textContent = data.domain ? data.domain.toUpperCase() : 'ENABLED';
+        val.textContent = 'ENABLED';
         cell.setAttribute('status', 'ok');
       } else {
         val.textContent = 'DISABLED';
