@@ -78,9 +78,10 @@ async function loadAndRender(body, saveBtn, cancelBtn, dlg) {
 
 async function renderTeamCards(container) {
   let teams = [];
+  let domain = '';
   try {
     const res = await fetch('/api/activitypub/teams?all=true');
-    if (res.ok) { const data = await res.json(); teams = data.teams || []; }
+    if (res.ok) { const data = await res.json(); teams = data.teams || []; domain = data.domain || ''; }
   } catch { /* empty */ }
 
   if (teams.length === 0) {
@@ -90,6 +91,14 @@ async function renderTeamCards(container) {
 
   const cards = teams.map(team => {
     const slug = team.teamSlug || team.name;
+    const handle = `@${slug}@${domain}`;
+
+    const copyBtn = h('button', { class: 'team-btn secondary', style: 'font-size:0.7rem;padding:0.15rem 0.4rem', title: handle }, 'Copy');
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(handle);
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+    });
 
     const toggle = h('input', { type: 'checkbox', checked: team.enabled !== false });
     toggle.addEventListener('change', async () => {
@@ -122,6 +131,7 @@ async function renderTeamCards(container) {
 
     return h('div', { class: 'mcp-server-card', style: 'margin-bottom:0.5rem' },
       h('span', { class: 'mcp-name', style: 'flex:1' }, slug),
+      copyBtn,
       h('label', { class: 'inline-check', style: 'font-size:0.8rem;margin-right:0.5rem' }, toggle, ' enabled'),
       editBtn,
       unpubBtn,

@@ -18,6 +18,7 @@ import { handleActorRequest } from "./actor.ts";
 import {
   resolveOwner,
   listFederated,
+  listAllPublished,
   publishTeam,
   unpublishTeam,
 } from "./registry.ts";
@@ -285,13 +286,15 @@ export async function handleActivityPubRoutes(
     return json({ ok: true });
   }
 
-  // GET /api/activitypub/teams — list all federated teams
+  // GET /api/activitypub/teams — list federated teams (scoped to current user)
   if (pathname === "/api/activitypub/teams" && method === "GET") {
     const auth = await requireUserId(req, options.resolveUserId);
     if (auth instanceof Response) return auth;
 
-    const teams = await listFederated();
-    return json({ teams });
+    const showAll = url.searchParams.get("all") === "true";
+    const allTeams = showAll ? await listAllPublished() : await listFederated();
+    const teams = allTeams.filter(t => t.ownerId === auth.userId);
+    return json({ teams, domain: config.domain });
   }
 
   // POST /api/activitypub/publish — publish a team for federation
