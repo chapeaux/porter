@@ -166,7 +166,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // SSO users: initialize Pod sync if the server provides a pod_url (LWS)
-  if (!window._podSync) {
+  // Skip if already authenticated via Solid — SSO token exchange would fail and redirect.
+  if (!window._podSync && !solidRestored) {
     try {
       const meResp = await fetch('/auth/me');
       if (meResp.ok) {
