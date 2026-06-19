@@ -203,12 +203,7 @@ export async function initSsoPodSync(podUrl, tokenEndpoint) {
 async function exchangeLwsToken(tokenEndpoint) {
   const resp = await fetch(tokenEndpoint, { method: 'POST' });
   if (resp.status === 401) {
-    const solidSession = window.solidAuth?.getSessionInfo?.();
-    if (solidSession?.isLoggedIn) {
-      throw new Error('LWS token not available for Solid sessions');
-    }
-    window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
-    await new Promise(() => {});
+    throw new Error('LWS token exchange returned 401');
   }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
