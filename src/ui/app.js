@@ -166,7 +166,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 4. Check server-side session (SSO or server-side Solid)
+  // 4. Check email identity (standalone mode)
+  if (!authenticated) {
+    const email = localStorage.getItem('porter-user-email');
+    if (email) authenticated = true;
+  }
+
+  // 5. Check server-side session (SSO or server-side Solid)
   let ssoMe = null;
   if (!authenticated) {
     try {
@@ -174,11 +180,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (meResp.ok) {
         ssoMe = await meResp.json();
         if (ssoMe.authenticated) authenticated = true;
+        // No OIDC configured and no auth — standalone mode, allow through
+        if (!ssoMe.authenticated && !ssoMe.oidc_configured) authenticated = true;
       }
-    } catch { /* not authenticated */ }
+    } catch {
+      // /auth/me failed — likely no auth configured, allow through
+      authenticated = true;
+    }
   }
 
-  // 5. Not authenticated — show only sign-in, don't load anything else
+  // 6. Not authenticated — show only sign-in, don't load anything else
   if (!authenticated) {
     main.classList.remove('porter-loading');
     checkAuthState();
