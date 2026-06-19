@@ -560,15 +560,41 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         );
       }
       const { sub, username, email, name, id_token } = session;
-      const lwsBase = Deno.env.get("PORTER_LWS_BASE_URL")?.replace(/\/+$/, "");
-      const podUrl = lwsBase ? `${lwsBase}/${encodeURIComponent(sub)}/` : undefined;
+      const isSolidUser = sub.startsWith("http");
+      let podUrl: string | undefined;
+      let tokenEndpoint: string | undefined;
+
+      if (isSolidUser) {
+        // Solid user: discover Pod from WebID profile
+        try {
+          const profileUrl = sub.replace(/#.*$/, "");
+          const resp = await fetch(profileUrl, { headers: { Accept: "text/turtle" } });
+          if (resp.ok) {
+            const turtle = await resp.text();
+            const storageMatch = turtle.match(/(?:pim:storage|space:storage|<http:\/\/www\.w3\.org\/ns\/pim\/space#storage>)\s+<([^>]+)>/);
+            if (storageMatch) podUrl = storageMatch[1];
+          }
+        } catch { /* discovery failed */ }
+        // Solid users get their access token via /auth/lws-token if we have it
+        const tokens = userTokens.get(sub);
+        if (tokens?.lws_token || tokens?.id_token) {
+          tokenEndpoint = "/auth/lws-token";
+        }
+      } else {
+        // SSO user: Pod on LWS/Tudor
+        const lwsBase = Deno.env.get("PORTER_LWS_BASE_URL")?.replace(/\/+$/, "");
+        podUrl = lwsBase ? `${lwsBase}/${encodeURIComponent(sub)}/` : undefined;
+        tokenEndpoint = podUrl ? "/auth/lws-token" : undefined;
+      }
+
       return new Response(
         JSON.stringify({
           authenticated: true,
           oidc_configured: !!oidcDiscovery,
           user: { sub, username, email, name },
           pod_url: podUrl,
-          lws_token_endpoint: podUrl ? "/auth/lws-token" : undefined,
+          lws_token_endpoint: tokenEndpoint,
+          solid_user: isSolidUser,
         }),
         { headers: { "Content-Type": "application/json" } },
       );
@@ -583,13 +609,14 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
         });
       }
       const tokens = userTokens.get(session.sub);
-      if (!tokens?.lws_token) {
-        return new Response(JSON.stringify({ error: "No LWS token available" }), {
+      const accessToken = tokens?.lws_token ?? tokens?.id_token;
+      if (!accessToken) {
+        return new Response(JSON.stringify({ error: "No token available" }), {
           status: 401, headers: { "Content-Type": "application/json" },
         });
       }
       return new Response(
-        JSON.stringify({ access_token: tokens.lws_token, token_type: "Bearer" }),
+        JSON.stringify({ access_token: accessToken, token_type: "Bearer" }),
         { headers: { "Content-Type": "application/json" } },
       );
     }
