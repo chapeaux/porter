@@ -122,16 +122,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   setupDialog();
   setupTeamBuilder();
-  setupProjectSwitcher();
-  setupFlipboard();
-
-  // Handle session switches: disconnect current WS and reconnect to new bus URL
-  window.addEventListener('porter-switch-session', (e) => {
-    const { busUrl } = e.detail;
-    resetBusState();
-    restoreMainContent();
-    connectWebSocket(busUrl);
-  });
 
   const main = document.querySelector('main');
   main.classList.add('porter-loading');
@@ -195,7 +185,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // --- Authenticated — initialize Pod sync and load app ---
+  // --- Authenticated — initialize UI components that make API calls ---
+  setupProjectSwitcher();
+  setupFlipboard();
+
+  window.addEventListener('porter-switch-session', (e) => {
+    const { busUrl } = e.detail;
+    resetBusState();
+    restoreMainContent();
+    connectWebSocket(busUrl);
+  });
   if (solidRestored && solidWebId) {
     await initPodSync(solidWebId);
   }
