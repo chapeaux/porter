@@ -328,7 +328,7 @@ async function renderFollowers(container, teamSlug) {
     const res = await fetch(`/api/activitypub/${encodeURIComponent(teamSlug)}/followers`);
     if (res.ok) {
       const data = await res.json();
-      const approved = (data.followers || []).map(f => ({ ...f, status: 'approved' }));
+      const approved = (data.followers || []).map(f => ({ ...f, status: 'approved', id: f.actorId }));
       const pending = (data.pending || []).map(f => ({ ...f, status: 'pending', id: f.actorId }));
       followers = [...pending, ...approved];
     }

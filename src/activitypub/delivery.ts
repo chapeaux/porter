@@ -152,20 +152,12 @@ export async function deliverActivity(
 
   for (const entry of resolved) {
     if (!entry) continue;
-
-    if (entry.sharedInbox) {
-      if (!sharedInboxSeen.has(entry.sharedInbox)) {
-        sharedInboxSeen.add(entry.sharedInbox);
-        targetInboxes.set(entry.sharedInbox, entry.actorUrl);
-      }
-    } else {
-      targetInboxes.set(entry.inbox, entry.actorUrl);
-    }
+    targetInboxes.set(entry.inbox, entry.actorUrl);
   }
 
-  // Deliver to each unique inbox
+  // Deliver to each unique inbox, prefer personal inbox (shared inbox often 404s)
   const body = JSON.stringify(activity);
-  const deliveries = Array.from(targetInboxes.keys()).map(async (inboxUrl) => {
+  const deliveries = Array.from(targetInboxes.entries()).map(async ([inboxUrl]) => {
     const request = new Request(inboxUrl, {
       method: "POST",
       headers: {
