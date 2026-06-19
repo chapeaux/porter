@@ -82,6 +82,9 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
   }>();
   // Server-side token store — keeps large tokens out of cookies (4KB limit)
   const userTokens = new Map<string, { id_token?: string; refresh_token?: string; lws_token?: string }>();
+  // Solid IdP cache — discovery + client registration (1 hour TTL)
+  // deno-lint-ignore no-explicit-any
+  const solidIdpCache = new Map<string, { discovery: any; clientId: string; callbackUri: string; cachedAt: number }>();
   // Clean up stale PKCE entries every 5 minutes
   setInterval(() => {
     const cutoff = Date.now() - 300_000;
@@ -387,38 +390,49 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
 
       try {
         const { discoverOAuthAS } = await import("../auth/oidc.ts");
-        const solidDiscovery = await discoverOAuthAS(issuer);
 
+        // Cache discovery + client registration per issuer
+        let cached = solidIdpCache.get(issuer);
         const fwdProto = req.headers.get("x-forwarded-proto") || url.protocol.replace(":", "");
         const fwdHost = req.headers.get("x-forwarded-host") || req.headers.get("host") || url.host;
         const callbackUri = `${fwdProto}://${fwdHost}/auth/solid-callback`;
 
-        // Dynamic client registration
-        const regEndpoint = (solidDiscovery as unknown as Record<string, string>).registration_endpoint;
-        let clientId: string;
-        if (regEndpoint) {
-          const regResp = await fetch(regEndpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              client_name: "Porter",
-              redirect_uris: [callbackUri],
-              grant_types: ["authorization_code", "refresh_token"],
-              response_types: ["code"],
-              token_endpoint_auth_method: "none",
-              application_type: "web",
-            }),
-          });
-          if (!regResp.ok) {
-            const text = await regResp.text().catch(() => "");
-            return new Response(`Solid client registration failed: ${regResp.status} ${text}`, { status: 502 });
+        if (!cached || Date.now() - cached.cachedAt > 3600_000) {
+          const solidDiscovery = await discoverOAuthAS(issuer);
+          const regEndpoint = (solidDiscovery as unknown as Record<string, string>).registration_endpoint;
+          let clientId: string;
+          if (regEndpoint) {
+            const regResp = await fetch(regEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                client_name: "Porter",
+                redirect_uris: [callbackUri],
+                grant_types: ["authorization_code", "refresh_token"],
+                response_types: ["code"],
+                token_endpoint_auth_method: "none",
+                application_type: "web",
+              }),
+            });
+            if (!regResp.ok) {
+              const text = await regResp.text().catch(() => "");
+              return new Response(`Solid client registration failed: ${regResp.status} ${text}`, { status: 502 });
+            }
+            const regData = await regResp.json();
+            clientId = regData.client_id;
+          } else {
+            clientId = callbackUri;
           }
-          const regData = await regResp.json();
-          clientId = regData.client_id;
-        } else {
-          clientId = callbackUri;
+          cached = {
+            discovery: solidDiscovery,
+            clientId,
+            callbackUri,
+            cachedAt: Date.now(),
+          };
+          solidIdpCache.set(issuer, cached);
         }
 
+        const idp = cached!;
         const { state, codeVerifier } = await generateCsrf(redirectTo, isSecure);
         const codeChallenge = await generateCodeChallenge(codeVerifier);
         pendingLogins.set(state, {
@@ -426,15 +440,15 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
           redirectTo,
           createdAt: Date.now(),
           solidIssuer: issuer,
-          solidClientId: clientId,
-          solidCallbackUri: callbackUri,
-          solidTokenEndpoint: solidDiscovery.token_endpoint,
+          solidClientId: idp.clientId,
+          solidCallbackUri: idp.callbackUri,
+          solidTokenEndpoint: idp.discovery.token_endpoint,
         });
 
         const params = new URLSearchParams({
           response_type: "code",
-          client_id: clientId,
-          redirect_uri: callbackUri,
+          client_id: idp.clientId,
+          redirect_uri: idp.callbackUri,
           state,
           scope: "openid webid profile offline_access",
           code_challenge: codeChallenge,
@@ -443,7 +457,7 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
 
         return new Response(null, {
           status: 302,
-          headers: { "Location": `${solidDiscovery.authorization_endpoint}?${params}` },
+          headers: { "Location": `${idp.discovery.authorization_endpoint}?${params}` },
         });
       } catch (err) {
         return new Response(`Solid login failed: ${(err as Error).message}`, { status: 500 });
