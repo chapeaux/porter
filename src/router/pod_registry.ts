@@ -303,6 +303,7 @@ export class PodRegistry {
             containers: [{
               name: "orchestrator",
               image: this.image,
+              imagePullPolicy: "Always",
               command: [
                 "deno", "run", "--allow-all", "cli.ts",
                 "serve", "--port", "3000", "--headless", "--single-user",
