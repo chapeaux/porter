@@ -6,6 +6,7 @@ import { h, replaceContent } from '../dom.js';
 import { getDlg, getOverlayDlg } from './dialog-helpers.js';
 import { setMODELS } from '../stores/config-store.js';
 import { updateSetupBar } from '../features/flipboard-setup.js';
+import { renderEmptyState } from '../features/empty-state.js';
 import { syncModelsToPod } from '../sync/sync-helpers.js';
 
 export function renderModelSetup(useOverlay = false) {
@@ -42,6 +43,7 @@ export function renderModelSetup(useOverlay = false) {
               const available = modelStore?.getAvailable() || [];
               setMODELS(available.map(m => m.model_id));
               updateSetupBar();
+              if (document.querySelector('.empty-state-prompt')) renderEmptyState();
               syncModelsToPod(e.detail.models);
             } catch (err) {
               console.error('Failed to save models:', err);

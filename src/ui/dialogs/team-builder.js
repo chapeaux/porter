@@ -16,6 +16,7 @@ import { openAgentEditor } from './agent-editor.js';
 import { showSavedAgentPicker } from './agent-library.js';
 import { showSessionLauncher } from './session-launcher.js';
 import { updateSetupBar } from '../features/flipboard-setup.js';
+import { renderEmptyState } from '../features/empty-state.js';
 import { startMetricsPolling } from '../features/metrics.js';
 import { restoreMainContent } from '../features/empty-state.js';
 import { syncTeamsToPod } from '../sync/sync-helpers.js';
@@ -657,6 +658,8 @@ export function renderStep3(body, s) {
         btn.textContent = 'Saved';
         setTimeout(() => { btn.textContent = 'Save Team'; }, 2000);
         syncTeamsToPod();
+        updateSetupBar();
+        if (document.querySelector('.empty-state-prompt')) renderEmptyState();
       } else {
         console.error('[porter] Save Team failed:', resp.status, data);
         btn.textContent = data.error || 'Save failed';

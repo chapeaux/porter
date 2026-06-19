@@ -11,6 +11,7 @@ import {
   getAvailableModels, formatModelOption,
 } from '../stores/config-store.js';
 import { updateSetupBar } from '../features/flipboard-setup.js';
+import { renderEmptyState } from '../features/empty-state.js';
 import { syncAgentsToPod } from '../sync/sync-helpers.js';
 // TODO: renderTeamStep is in team-builder.js — imported here to avoid circular dep
 // by re-exporting from a shared location or passing as callback
@@ -424,4 +425,5 @@ export function handleAgentSave() {
   }
   syncAgentsToPod(configStore.state.agents);
   updateSetupBar();
+  if (document.querySelector('.empty-state-prompt')) renderEmptyState();
 }
