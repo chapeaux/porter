@@ -326,13 +326,13 @@ export class PodRegistry {
               },
               livenessProbe: {
                 httpGet: { path: "/healthz", port: 3000 },
-                initialDelaySeconds: 10,
+                initialDelaySeconds: 3,
                 periodSeconds: 30,
               },
               readinessProbe: {
                 httpGet: { path: "/healthz", port: 3000 },
-                initialDelaySeconds: 10,
-                periodSeconds: 10,
+                initialDelaySeconds: 2,
+                periodSeconds: 3,
               },
             }],
             ...(this.imagePullSecret ? { imagePullSecrets: [{ name: this.imagePullSecret }] } : {}),
