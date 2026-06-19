@@ -754,8 +754,8 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
       });
     }
 
-    // --- AP API reads from router's sparq store (after auth, before pod provisioning) ---
-    if (apRouteHandler && pathname.startsWith("/api/activitypub/") && req.method === "GET") {
+    // --- AP API from router's sparq store (after auth, before pod provisioning) ---
+    if (apRouteHandler && pathname.startsWith("/api/activitypub/")) {
       const apResponse = await apRouteHandler(req, url, pathname);
       if (apResponse) return apResponse;
     }
