@@ -30,6 +30,8 @@ import { processFollowRequest, approveFollow, rejectFollow } from "./approval.ts
 import { deliverActivity } from "./delivery.ts";
 import { handleDirectMessage, type BridgeContext } from "./session_bridge.ts";
 import { getOrCreateKeyPair } from "./keys.ts";
+import { buildWelcomeMessage } from "./actor.ts";
+import { createNote, appendToOutbox } from "./outbox.ts";
 import type { FollowActivity, Actor, APObject } from "./types.ts";
 import { UserStore, type SavedTeam } from "../auth/user_store.ts";
 
@@ -177,13 +179,22 @@ export async function handleActivityPubRoutes(
           );
           if (result.responseActivity) {
             const keyPair = await getOrCreateKeyPair(slug, base);
-            const remoteInbox = remoteActor.inbox ?? `${remoteActor.id}/inbox`;
             await deliverActivity(
               result.responseActivity,
               [remoteActor.id],
               keyPair.privateKey,
               keyPair.keyId,
             );
+            if (result.action === "accepted" && team) {
+              const welcome = buildWelcomeMessage(team);
+              const welcomeNote = createNote(slug, config, {
+                content: `<p>${welcome.replace(/\n/g, "<br>")}</p>`,
+                visibility: "followers_only",
+                to: [remoteActor.id],
+              });
+              appendToOutbox(slug, welcomeNote);
+              await deliverActivity(welcomeNote, [remoteActor.id], keyPair.privateKey, keyPair.keyId);
+            }
           }
         },
         async onDirectMessage(slug, note, fromActorId) {
@@ -380,6 +391,18 @@ export async function handleActivityPubRoutes(
           const base = apBaseUrl(config);
           const keyPair = await getOrCreateKeyPair(teamName, base);
           await deliverActivity(acceptActivity, [actorId], keyPair.privateKey, keyPair.keyId);
+          const ownerId = await resolveOwner(teamName);
+          const approvedTeam = ownerId ? await resolveTeam(ownerId, teamName, options) : null;
+          if (approvedTeam) {
+            const welcome = buildWelcomeMessage(approvedTeam);
+            const welcomeNote = createNote(teamName, config, {
+              content: `<p>${welcome.replace(/\n/g, "<br>")}</p>`,
+              visibility: "followers_only",
+              to: [actorId],
+            });
+            appendToOutbox(teamName, welcomeNote);
+            await deliverActivity(welcomeNote, [actorId], keyPair.privateKey, keyPair.keyId);
+          }
           return json({ ok: true });
         }
 
