@@ -198,13 +198,17 @@ export async function handleActivityPubRoutes(
           }
         },
         async onDirectMessage(slug, note, fromActorId) {
-          if (!team) return;
+          const dmTeam = team ?? await resolveTeam(ownerId, slug, options);
+          if (!dmTeam) {
+            console.error(`[inbox] DM dropped: team '${slug}' not found`);
+            return;
+          }
           const bridgeCtx: BridgeContext = {
             teamSlug: slug,
             config,
             store,
             backend,
-            team,
+            team: dmTeam,
           };
           const result = await handleDirectMessage(note, fromActorId, bridgeCtx);
           if (result.replyText) {
