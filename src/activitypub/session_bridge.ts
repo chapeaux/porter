@@ -287,15 +287,21 @@ async function handleCommand(
         };
       }
 
-      // Create session
-      const handle = await ctx.backend.createSession(ownerId, ctx.teamSlug);
+      // Create session (or reuse existing if 409)
+      let sessionName: string;
+      try {
+        const handle = await ctx.backend.createSession(ownerId, ctx.teamSlug);
+        sessionName = handle.sessionName;
+      } catch {
+        sessionName = `ap-${ctx.teamSlug}-reattach`;
+      }
 
       // Save conversation mapping
       const now = new Date().toISOString();
       await ctx.store.saveConversation(ctx.teamSlug, {
         apConversationId: conversationId,
         remoteActorId: fromActorId,
-        sessionName: handle.sessionName,
+        sessionName,
         createdAt: now,
         lastActivityAt: now,
       });

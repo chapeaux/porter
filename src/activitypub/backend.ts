@@ -284,7 +284,7 @@ export class RouterBackend implements ActivityPubBackend {
       }),
     });
 
-    if (!resp.ok) {
+    if (!resp.ok && resp.status !== 409) {
       const text = await resp.text();
       throw new Error(`Failed to create session on pod: ${resp.status} ${text}`);
     }
