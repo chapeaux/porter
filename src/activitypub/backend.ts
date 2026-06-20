@@ -269,7 +269,7 @@ export class RouterBackend implements ActivityPubBackend {
   }
 
   async createSession(ownerId: string, teamSlug: string): Promise<SessionHandle> {
-    const team = await this.userStore.getTeam(ownerId, teamSlug);
+    const team = await this.getTeam(ownerId, teamSlug);
     if (!team) throw new Error(`Team '${teamSlug}' not found for user '${ownerId}'`);
 
     const pod = await this.ensurePod(ownerId);
