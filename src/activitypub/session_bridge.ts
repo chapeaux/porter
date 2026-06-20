@@ -323,7 +323,7 @@ async function handleCommand(
         };
       }
 
-      const handle = conversationToHandle(conv, ctx.teamSlug);
+      const handle = await conversationToHandle(conv, ctx.teamSlug, ctx);
       await ctx.backend.stopSession(handle);
       await ctx.store.removeConversation(ctx.teamSlug, conversationId);
 
@@ -346,7 +346,7 @@ async function handleCommand(
         };
       }
 
-      const handle = conversationToHandle(conv, ctx.teamSlug);
+      const handle = await conversationToHandle(conv, ctx.teamSlug, ctx);
       const status = await ctx.backend.getSessionStatus(handle);
 
       if (!status) {
@@ -416,7 +416,7 @@ async function handleChat(
   const channels = resolveChannels(parsed, agents);
 
   // Build the session handle
-  const handle = conversationToHandle(conv, ctx.teamSlug);
+  const handle = await conversationToHandle(conv, ctx.teamSlug, ctx);
   const from = `fedi:${acct}`;
 
   // Send to each resolved channel
@@ -507,13 +507,23 @@ async function findConversation(
 }
 
 /** Build a minimal SessionHandle from a ConversationMap. */
-function conversationToHandle(
+async function conversationToHandle(
   conv: ConversationMap,
   teamSlug: string,
-): SessionHandle {
+  ctx: BridgeContext,
+): Promise<SessionHandle> {
+  const ownerId = await ctx.backend.resolveTeamOwner(teamSlug);
+  let podUrl: string | undefined;
+  if (ownerId) {
+    try {
+      const pod = await (ctx.backend as any).ensurePod(ownerId);
+      podUrl = pod.podUrl;
+    } catch { /* best effort */ }
+  }
   return {
     sessionName: conv.sessionName,
     ownerId: conv.remoteActorId,
     teamSlug,
+    podUrl,
   };
 }
