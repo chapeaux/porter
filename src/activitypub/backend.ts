@@ -275,7 +275,7 @@ export class RouterBackend implements ActivityPubBackend {
     const pod = await this.ensurePod(ownerId);
     const sessionName = `ap-${teamSlug}-${Date.now()}`;
 
-    const resp = await fetch(`${pod.podUrl}/api/sessions`, {
+    const resp = await fetch(`${pod.podUrl}/api/sessions/launch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
