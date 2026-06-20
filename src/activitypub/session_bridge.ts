@@ -220,9 +220,10 @@ export async function handleDirectMessage(
   // 3. Parse the message
   const parsed = parseMessage(plainText, note.tag, agents);
 
-  // 4. Derive conversation ID
+  // 4. Derive conversation ID — use actor ID as stable key so all messages
+  // from the same user map to the same session (note.id differs per message)
   const conversationId =
-    note.conversation ?? note.inReplyTo ?? note.id ?? fromActorId;
+    note.conversation ?? fromActorId;
 
   // 5. Build fedi identity
   const acct = extractAcct(fromActorId);
