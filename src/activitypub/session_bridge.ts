@@ -293,7 +293,9 @@ async function handleCommand(
         const handle = await ctx.backend.createSession(ownerId, ctx.teamSlug);
         sessionName = handle.sessionName;
       } catch {
-        sessionName = `ap-${ctx.teamSlug}-reattach`;
+        // Session already exists — use the team slug as session name
+        // (porter's launch API uses the config's session field as the name)
+        sessionName = ctx.teamSlug;
       }
 
       // Save conversation mapping
