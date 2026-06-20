@@ -164,9 +164,13 @@ async function handleCreate(
   const note = obj as APObject;
   if (note.type !== "Note") return;
 
-  if (isDirectMessage(note, actorUrl)) {
+  const isDM = isDirectMessage(note, actorUrl);
+  const isMent = isMention(note, actorUrl);
+  console.log(`[inbox] Create/Note: isDM=${isDM} isMention=${isMent} to=${JSON.stringify(note.to)} cc=${JSON.stringify(note.cc)} actorUrl=${actorUrl}`);
+
+  if (isDM) {
     await callbacks.onDirectMessage(teamSlug, note, activity.actor);
-  } else if (isMention(note, actorUrl) && callbacks.onMention) {
+  } else if (isMent && callbacks.onMention) {
     await callbacks.onMention(teamSlug, note, activity.actor);
   }
 }
@@ -224,6 +228,7 @@ export async function handleInbox(
 
   // 4. Route by activity type
   const actorUrl = `https://${config.domain}/ap/actors/${teamSlug}`;
+  console.log(`[inbox] Activity type=${activity.type} from=${activity.actor} team=${teamSlug}`);
 
   try {
     switch (activity.type) {
