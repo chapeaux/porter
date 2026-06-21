@@ -20,8 +20,7 @@ export type ToolName =
   | "memory_write"
   | "memory_query"
   | "ap_post"
-  | "ap_reply"
-  | "ap_boost";
+  | "ap_reply";
 
 /** Agent role for organizational purposes. */
 export type AgentRole = "admin" | "worker" | "reviewer";

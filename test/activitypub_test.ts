@@ -45,6 +45,10 @@ import {
   parseMessage,
   resolveChannels,
   aggregateResponse,
+  shouldRelay,
+  formatRelayMessage,
+  aggregateRelayMessages,
+  buildHelpMessage,
 } from "../src/activitypub/session_bridge.ts";
 import {
   handleFollowersRequest,
@@ -1062,4 +1066,174 @@ Deno.test("followers: handleFollowersRequest page returns actor IDs", async () =
     Deno.env.set("HOME", origHome ?? "");
     await Deno.remove(tmpDir, { recursive: true }).catch(() => {});
   }
+});
+
+// ---------------------------------------------------------------------------
+// 11. Session Bridge — Subscription commands
+// ---------------------------------------------------------------------------
+
+Deno.test("session-bridge: parseMessage #follow #logs returns subscription with log channel", () => {
+  const agents = [
+    { name: "planner", role: "admin" },
+    { name: "coder", role: "worker" },
+  ];
+  const parsed = parseMessage("#follow #logs", undefined, agents);
+  assertEquals(parsed.type, "subscription");
+  assertEquals(parsed.command, "#follow");
+  assertEquals(parsed.subscriptionChannel, "log");
+});
+
+Deno.test("session-bridge: parseMessage #unfollow #activity returns subscription unfollow", () => {
+  const agents = [
+    { name: "planner", role: "admin" },
+    { name: "coder", role: "worker" },
+  ];
+  const parsed = parseMessage("#unfollow #activity", undefined, agents);
+  assertEquals(parsed.type, "subscription");
+  assertEquals(parsed.command, "#unfollow");
+  assertEquals(parsed.subscriptionChannel, "activity");
+});
+
+Deno.test("session-bridge: parseMessage #subscriptions returns subscription list", () => {
+  const agents = [
+    { name: "planner", role: "admin" },
+    { name: "coder", role: "worker" },
+  ];
+  const parsed = parseMessage("#subscriptions", undefined, agents);
+  assertEquals(parsed.type, "subscription");
+  assertEquals(parsed.command, "#subscriptions");
+});
+
+Deno.test("session-bridge: parseMessage #follow #errors maps to activity:errors channel", () => {
+  const agents = [
+    { name: "planner", role: "admin" },
+    { name: "coder", role: "worker" },
+  ];
+  const parsed = parseMessage("#follow #errors", undefined, agents);
+  assertEquals(parsed.type, "subscription");
+  assertEquals(parsed.command, "#follow");
+  assertEquals(parsed.subscriptionChannel, "activity:errors");
+});
+
+// ---------------------------------------------------------------------------
+// 12. Session Bridge — Info commands
+// ---------------------------------------------------------------------------
+
+Deno.test("session-bridge: parseMessage #help returns info type", () => {
+  const agents = [{ name: "planner", role: "admin" }];
+  const parsed = parseMessage("#help", undefined, agents);
+  assertEquals(parsed.type, "info");
+  assertEquals(parsed.command, "#help");
+});
+
+Deno.test("session-bridge: parseMessage #who returns info type", () => {
+  const agents = [{ name: "planner", role: "admin" }];
+  const parsed = parseMessage("#who", undefined, agents);
+  assertEquals(parsed.type, "info");
+  assertEquals(parsed.command, "#who");
+});
+
+Deno.test("session-bridge: parseMessage #roster aliases to #who info command", () => {
+  const agents = [{ name: "planner", role: "admin" }];
+  const parsed = parseMessage("#roster", undefined, agents);
+  assertEquals(parsed.type, "info");
+  assertEquals(parsed.command, "#who");
+});
+
+// ---------------------------------------------------------------------------
+// 13. Session Bridge — shouldRelay
+// ---------------------------------------------------------------------------
+
+Deno.test("session-bridge: shouldRelay returns true for subscribed channel", () => {
+  const result = shouldRelay("log", "Agent started", ["log", "activity"], false);
+  assertEquals(result, true);
+});
+
+Deno.test("session-bridge: shouldRelay returns false when recentApReply is true for activity channel", () => {
+  const result = shouldRelay("activity", "Some output", ["activity"], true);
+  assertEquals(result, false);
+});
+
+Deno.test("session-bridge: shouldRelay returns true for activity:errors filter on error content", () => {
+  const result = shouldRelay("activity", "Error: something went wrong", ["activity:errors"], false);
+  assertEquals(result, true);
+});
+
+Deno.test("session-bridge: shouldRelay returns false for activity:errors filter on non-error content", () => {
+  const result = shouldRelay("activity", "Task completed successfully", ["activity:errors"], false);
+  assertEquals(result, false);
+});
+
+Deno.test("session-bridge: shouldRelay default fallback returns true for activity channel text", () => {
+  const result = shouldRelay("activity", "Agent output text", ["activity"], false);
+  assertEquals(result, true);
+});
+
+// ---------------------------------------------------------------------------
+// 14. Session Bridge — formatRelayMessage
+// ---------------------------------------------------------------------------
+
+Deno.test("session-bridge: formatRelayMessage formats as [channel] from: content", () => {
+  const result = formatRelayMessage("log", "planner", "Session started");
+  assertEquals(result, "[log] planner: Session started");
+});
+
+// ---------------------------------------------------------------------------
+// 15. Session Bridge — aggregateRelayMessages
+// ---------------------------------------------------------------------------
+
+Deno.test("session-bridge: aggregateRelayMessages groups by channel", () => {
+  const messages = [
+    { channel: "log", from: "planner", content: "Started" },
+    { channel: "log", from: "coder", content: "Ready" },
+    { channel: "activity", from: "coder", content: "Output" },
+  ];
+  const result = aggregateRelayMessages(messages);
+  assertStringIncludes(result, "log");
+  assertStringIncludes(result, "Started");
+  assertStringIncludes(result, "Ready");
+  assertStringIncludes(result, "Output");
+});
+
+Deno.test("session-bridge: aggregateRelayMessages truncates at maxLength", () => {
+  const messages = [
+    { channel: "log", from: "planner", content: "a".repeat(600) },
+  ];
+  const result = aggregateRelayMessages(messages, 500);
+  assert(result.length <= 500);
+});
+
+// ---------------------------------------------------------------------------
+// 16. Session Bridge — buildHelpMessage
+// ---------------------------------------------------------------------------
+
+Deno.test("session-bridge: buildHelpMessage contains key sections", () => {
+  const agents = [
+    { name: "planner", role: "admin" },
+    { name: "coder", role: "worker" },
+  ];
+  const help = buildHelpMessage(agents);
+  assertStringIncludes(help, "Commands");
+  assertStringIncludes(help, "Addressing");
+  assertStringIncludes(help, "Subscriptions");
+  assertStringIncludes(help, "Info");
+});
+
+// ---------------------------------------------------------------------------
+// 17. Actor — Welcome message extended sections
+// ---------------------------------------------------------------------------
+
+Deno.test("actor: buildWelcomeMessage includes Subscriptions section", () => {
+  const team = makeTeam();
+  const msg = buildWelcomeMessage(team);
+  assertStringIncludes(msg, "Subscriptions:");
+  assertStringIncludes(msg, "#follow");
+});
+
+Deno.test("actor: buildWelcomeMessage includes Info section", () => {
+  const team = makeTeam();
+  const msg = buildWelcomeMessage(team);
+  assertStringIncludes(msg, "Info:");
+  assertStringIncludes(msg, "#help");
+  assertStringIncludes(msg, "#who");
 });

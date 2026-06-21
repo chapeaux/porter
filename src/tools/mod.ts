@@ -58,8 +58,6 @@ async function loadTool(name: ToolName): Promise<ToolEntry> {
       return (await import("./ap_post.ts")).default;
     case "ap_reply":
       return (await import("./ap_reply.ts")).default;
-    case "ap_boost":
-      return (await import("./ap_boost.ts")).default;
   }
 }
 

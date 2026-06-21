@@ -28,6 +28,7 @@ export interface ConversationMap {
   sessionName: string;
   createdAt: string;
   lastActivityAt: string;
+  subscriptions?: string[];
 }
 
 export interface PendingFollow {

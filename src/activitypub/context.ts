@@ -3,7 +3,7 @@
  *
  * Follows the same get/set pattern as getBus()/setBus() in
  * src/runtime/bus.ts. Set by the session bridge when an AP-initiated
- * session starts; read by agent AP tools (ap_post, ap_reply, ap_boost).
+ * session starts; read by agent AP tools (ap_post, ap_reply).
  */
 
 /** Options for creating a post to followers. */
@@ -32,8 +32,6 @@ export interface ApContext {
   post(options: PostOptions): Promise<void>;
   /** Reply directly in the DM thread. */
   reply(options: ReplyOptions): Promise<void>;
-  /** Boost a post by URL. */
-  boost(url: string): Promise<void>;
 }
 
 let _context: ApContext | null = null;

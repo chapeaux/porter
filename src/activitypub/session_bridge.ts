@@ -18,8 +18,10 @@ import type { SavedTeam } from "../auth/user_store.ts";
 // ---------------------------------------------------------------------------
 
 export interface ParsedMessage {
-  type: "command" | "chat";
-  command?: "/start" | "/stop" | "/status" | "/teams" | "/list";
+  type: "command" | "chat" | "subscription" | "info";
+  command?: string;
+  /** Channel name for subscription commands (normalized). */
+  subscriptionChannel?: string;
   /** Target agent name (from #agentname hashtag). */
   targetAgent?: string;
   /** Target role (from #role hashtag, when it matches a role not an agent name). */
@@ -58,6 +60,31 @@ const COMMANDS = new Set(["/start", "/stop", "/status", "/teams", "/list"]);
 // ---------------------------------------------------------------------------
 
 const KNOWN_ROLES = new Set(["admin", "worker", "reviewer"]);
+
+// ---------------------------------------------------------------------------
+// Channel name normalization for subscriptions
+// ---------------------------------------------------------------------------
+
+const CHANNEL_MAP: Record<string, string> = {
+  log: "log",
+  logs: "log",
+  activity: "activity",
+  all: "activity",
+  task: "task",
+  tasks: "task",
+  errors: "activity:errors",
+  review: "review",
+};
+
+/** Reserved hashtag commands that must be matched before agent/role routing. */
+const RESERVED_HASHTAGS = new Set([
+  "follow",
+  "unfollow",
+  "subscriptions",
+  "help",
+  "who",
+  "roster",
+]);
 
 // ---------------------------------------------------------------------------
 // parseMessage
@@ -116,6 +143,64 @@ export function parseMessage(
     }
   }
 
+  // --- Reserved hashtag commands (priority: before agent/role matching) ---
+  for (const ht of hashtagNames) {
+    const lower = ht.toLowerCase();
+
+    if (lower === "follow") {
+      // Look for the channel hashtag: #follow #channelname
+      const channelHt = hashtagNames.find(
+        (h) => h.toLowerCase() !== "follow" && h.toLowerCase() !== "unfollow",
+      );
+      const channelKey = channelHt?.toLowerCase() ?? "";
+      const normalized = CHANNEL_MAP[channelKey] ?? channelKey;
+      return {
+        type: "subscription",
+        command: "#follow",
+        subscriptionChannel: normalized,
+        content: trimmed,
+      };
+    }
+
+    if (lower === "unfollow") {
+      const channelHt = hashtagNames.find(
+        (h) => h.toLowerCase() !== "follow" && h.toLowerCase() !== "unfollow",
+      );
+      const channelKey = channelHt?.toLowerCase() ?? "";
+      const normalized = CHANNEL_MAP[channelKey] ?? channelKey;
+      return {
+        type: "subscription",
+        command: "#unfollow",
+        subscriptionChannel: normalized,
+        content: trimmed,
+      };
+    }
+
+    if (lower === "subscriptions") {
+      return {
+        type: "subscription",
+        command: "#subscriptions",
+        content: trimmed,
+      };
+    }
+
+    if (lower === "help") {
+      return {
+        type: "info",
+        command: "#help",
+        content: trimmed,
+      };
+    }
+
+    if (lower === "who" || lower === "roster") {
+      return {
+        type: "info",
+        command: "#who",
+        content: trimmed,
+      };
+    }
+  }
+
   // --- Match hashtags against agents, then roles ---
   const agentNameSet = new Map(
     agents.map((a) => [a.name.toLowerCase(), a.name]),
@@ -123,6 +208,9 @@ export function parseMessage(
 
   for (const ht of hashtagNames) {
     const lower = ht.toLowerCase();
+
+    // Skip reserved hashtags (already handled above)
+    if (RESERVED_HASHTAGS.has(lower)) continue;
 
     // Check agent names first
     if (agentNameSet.has(lower)) {
@@ -228,9 +316,17 @@ export async function handleDirectMessage(
   // 5. Build fedi identity
   const acct = extractAcct(fromActorId);
 
-  // 6. Handle commands vs chat
+  // 6. Handle by message type
   if (parsed.type === "command") {
     return handleCommand(parsed, conversationId, acct, fromActorId, ctx);
+  }
+
+  if (parsed.type === "subscription") {
+    return handleSubscription(parsed, conversationId, ctx);
+  }
+
+  if (parsed.type === "info") {
+    return handleInfo(parsed, conversationId, agents, ctx);
   }
 
   return handleChat(parsed, conversationId, acct, ctx);
@@ -386,6 +482,167 @@ async function handleCommand(
 }
 
 // ---------------------------------------------------------------------------
+// Subscription handling
+// ---------------------------------------------------------------------------
+
+async function handleSubscription(
+  parsed: ParsedMessage,
+  conversationId: string,
+  ctx: BridgeContext,
+): Promise<BridgeResponse> {
+  const conv = await findConversation(
+    ctx.store,
+    ctx.teamSlug,
+    conversationId,
+  );
+
+  if (!conv) {
+    return {
+      replyText:
+        "No active session. Send /start to begin a session first.",
+      handled: true,
+    };
+  }
+
+  const subs = conv.subscriptions ?? [];
+
+  switch (parsed.command) {
+    case "#follow": {
+      const channel = parsed.subscriptionChannel ?? "";
+      if (!channel) {
+        return {
+          replyText:
+            "Usage: #follow #channelname\nAvailable channels: logs, activity, errors, tasks, review",
+          handled: true,
+        };
+      }
+      if (subs.includes(channel)) {
+        return {
+          replyText: `Already subscribed to "${channel}".`,
+          handled: true,
+        };
+      }
+      const updated = [...subs, channel];
+      await ctx.store.saveConversation(ctx.teamSlug, {
+        ...conv,
+        subscriptions: updated,
+        lastActivityAt: new Date().toISOString(),
+      });
+      return {
+        replyText: `Subscribed to "${channel}". You will now receive updates from this channel.`,
+        handled: true,
+      };
+    }
+
+    case "#unfollow": {
+      const channel = parsed.subscriptionChannel ?? "";
+      if (!channel) {
+        return {
+          replyText: "Usage: #unfollow #channelname",
+          handled: true,
+        };
+      }
+      if (!subs.includes(channel)) {
+        return {
+          replyText: `Not subscribed to "${channel}".`,
+          handled: true,
+        };
+      }
+      const updated = subs.filter((s) => s !== channel);
+      await ctx.store.saveConversation(ctx.teamSlug, {
+        ...conv,
+        subscriptions: updated,
+        lastActivityAt: new Date().toISOString(),
+      });
+      return {
+        replyText: `Unsubscribed from "${channel}".`,
+        handled: true,
+      };
+    }
+
+    case "#subscriptions": {
+      if (subs.length === 0) {
+        return {
+          replyText:
+            "No active subscriptions. Use #follow #channelname to subscribe.",
+          handled: true,
+        };
+      }
+      const list = subs.map((s) => `  - ${s}`).join("\n");
+      return {
+        replyText: `Current subscriptions:\n${list}`,
+        handled: true,
+      };
+    }
+
+    default:
+      return { replyText: null, handled: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Info handling
+// ---------------------------------------------------------------------------
+
+async function handleInfo(
+  parsed: ParsedMessage,
+  conversationId: string,
+  agents: Array<{ name: string; role: string }>,
+  ctx: BridgeContext,
+): Promise<BridgeResponse> {
+  switch (parsed.command) {
+    case "#help": {
+      return {
+        replyText: buildHelpMessage(agents),
+        handled: true,
+      };
+    }
+
+    case "#who": {
+      const conv = await findConversation(
+        ctx.store,
+        ctx.teamSlug,
+        conversationId,
+      );
+
+      if (!conv) {
+        // No active session — just show the configured roster
+        if (agents.length === 0) {
+          return { replyText: "No agents configured.", handled: true };
+        }
+        const lines = agents.map((a) => `  ${a.name} (${a.role})`);
+        return {
+          replyText: `Team roster:\n${lines.join("\n")}`,
+          handled: true,
+        };
+      }
+
+      // Try to get live session status
+      const handle = await conversationToHandle(conv, ctx.teamSlug, ctx);
+      const status = await ctx.backend.getSessionStatus(handle);
+
+      if (!status) {
+        const lines = agents.map((a) => `  ${a.name} (${a.role})`);
+        return {
+          replyText: `Team roster:\n${lines.join("\n")}\nSession status: unknown`,
+          handled: true,
+        };
+      }
+
+      const runningLabel = status.running ? "running" : "stopped";
+      const lines = agents.map((a) => `  ${a.name} (${a.role})`);
+      return {
+        replyText: `Team roster (${runningLabel}, ${status.agentCount} agents):\n${lines.join("\n")}`,
+        handled: true,
+      };
+    }
+
+    default:
+      return { replyText: null, handled: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Chat handling
 // ---------------------------------------------------------------------------
 
@@ -475,6 +732,165 @@ function escapeHtml(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+// ---------------------------------------------------------------------------
+// Relay logic
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine whether a message on the given channel should be relayed
+ * to a fediverse user based on their subscriptions and recent activity.
+ */
+export function shouldRelay(
+  channel: string,
+  content: string,
+  subscriptions: string[],
+  recentApReply: boolean,
+): boolean {
+  // If this is the activity channel and the user just sent a reply,
+  // suppress relay to avoid echo
+  if (channel === "activity" && recentApReply) {
+    return false;
+  }
+
+  // If subscribed to activity:errors and channel is activity,
+  // only relay error/retry content
+  if (
+    subscriptions.includes("activity:errors") &&
+    channel === "activity"
+  ) {
+    const lower = content.toLowerCase();
+    return lower.includes("error") || lower.includes("retrying");
+  }
+
+  // Direct channel match against subscriptions
+  if (subscriptions.includes(channel)) {
+    return true;
+  }
+
+  // Default safety net: relay activity text events when no subscriptions
+  // and no recent AP reply
+  if (subscriptions.length === 0 && !recentApReply && channel === "activity") {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Format a relay message for delivery to a fediverse user.
+ *
+ * Format: `[channel] from: content`
+ * For task channel with routing arrows: `[task] planner -> coder: implement fix`
+ */
+export function formatRelayMessage(
+  channel: string,
+  from: string,
+  content: string,
+): string {
+  return `[${channel}] ${from}: ${content}`;
+}
+
+// ---------------------------------------------------------------------------
+// AP system prompt suffix
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a system prompt suffix for agents operating in an AP-bridged session.
+ */
+export function buildApSystemPromptSuffix(): string {
+  return `\n\nYou are communicating with a fediverse user via ActivityPub DMs.\nUse the ap_reply tool to respond directly to the user with your findings and results.\nUse ap_post to share notable findings with the team's followers.\nThe user does not see your internal tool calls or inter-agent messages unless they explicitly subscribe to those channels.`;
+}
+
+// ---------------------------------------------------------------------------
+// Help message
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the full hashtag/command reference text.
+ */
+export function buildHelpMessage(
+  agents: Array<{ name: string; role: string }>,
+): string {
+  const agentLines = agents.map((a) => `  #${a.name} (${a.role})`).join("\n");
+  const agentSection = agents.length > 0
+    ? `\nAgents:\n${agentLines}\n`
+    : "";
+
+  return [
+    "Commands:",
+    "  /start, /stop, /status, /teams",
+    "",
+    "Addressing:",
+    "  #agentname message → routes to that agent",
+    "  #role message → routes to all agents with that role",
+    "  No hashtag → broadcast to team",
+    "",
+    "Subscriptions:",
+    "  #follow #logs — agent status updates",
+    "  #follow #activity — all agent output",
+    "  #follow #errors — error notifications only",
+    "  #follow #tasks — inter-agent task assignments",
+    "  #unfollow #channel — stop receiving",
+    "  #subscriptions — list current",
+    "",
+    "Info:",
+    "  #help — show this reference",
+    "  #who — show active agents",
+    agentSection,
+  ].join("\n").trimEnd();
+}
+
+// ---------------------------------------------------------------------------
+// Relay message aggregation (flood batching)
+// ---------------------------------------------------------------------------
+
+/**
+ * Aggregate multiple relay messages into a single batched text,
+ * grouped by channel and truncated to maxLength.
+ */
+export function aggregateRelayMessages(
+  messages: Array<{ channel: string; from: string; content: string }>,
+  maxLength: number = 500,
+): string {
+  if (messages.length === 0) return "";
+
+  // Group messages by channel
+  const groups = new Map<string, Array<{ from: string; content: string }>>();
+  for (const msg of messages) {
+    let group = groups.get(msg.channel);
+    if (!group) {
+      group = [];
+      groups.set(msg.channel, group);
+    }
+    group.push({ from: msg.from, content: msg.content });
+  }
+
+  const parts: string[] = [];
+  let totalShown = 0;
+  const totalMessages = messages.length;
+
+  for (const [channel, items] of groups) {
+    for (const item of items) {
+      if (totalShown >= 5) break;
+      parts.push(formatRelayMessage(channel, item.from, item.content));
+      totalShown++;
+    }
+    if (totalShown >= 5) break;
+  }
+
+  let result = parts.join("\n");
+
+  if (totalMessages > 5) {
+    result += `\n(and ${totalMessages - 5} more...)`;
+  }
+
+  if (result.length > maxLength) {
+    result = result.slice(0, maxLength - 1) + "…";
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
