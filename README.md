@@ -652,15 +652,41 @@ Fediverse users interact with Porter teams by sending direct messages to the tea
 
 Hashtag routing checks agent names first (exact match, case-insensitive), then falls back to role matching. The hashtag is stripped from the message before delivery.
 
+**Channel subscriptions:**
+
+Users can opt into receiving agent output from specific bus channels:
+
+| Command | Description |
+|---------|-------------|
+| `#follow #logs` | Receive agent status updates |
+| `#follow #activity` | Receive all agent output (verbose) |
+| `#follow #errors` | Receive only error/retry events |
+| `#follow #tasks` | Receive inter-agent task assignments |
+| `#follow #review` | Receive review channel output |
+| `#unfollow #channel` | Stop receiving from a channel |
+| `#subscriptions` | List current subscriptions |
+
+By default, users only receive explicit `ap_reply` responses from agents. Subscriptions are opt-in for visibility into the agent workflow.
+
+Relayed messages include agent attribution: `[log] coder: refactored auth module`. Messages are batched within 10-second windows to prevent flooding.
+
+**Info commands:**
+
+| Command | Description |
+|---------|-------------|
+| `#help` | Show the full command/hashtag reference |
+| `#who` / `#roster` | Show active agents and their current status |
+
 ### Agent AP Tools
 
-During AP-initiated sessions, agents gain three additional tools for interacting with the fediverse:
+During AP-initiated sessions, agents gain two additional tools for interacting with the fediverse:
 
 | Tool | Description |
 |------|-------------|
 | `ap_post` | Post a message to the team's followers. Supports `public` or `followers_only` visibility and optional content warning summaries. |
 | `ap_reply` | Reply directly to the fediverse user who initiated the session. Supports file attachments (images, diffs, logs). |
-| `ap_boost` | Boost (repost) an ActivityPub post by URL to the team's followers. |
+
+Agents are instructed via system prompt that they're communicating with a fediverse user and should use `ap_reply` for responses. The passive relay serves as a fallback when agents don't explicitly reply.
 
 ### Approval Modes
 
@@ -698,15 +724,32 @@ In **router** mode (`porter router`), the router handles AP at the edge and prov
        /teams — List available teams
 
      Addressing:
-       #agentname message → routes to that agent
-       #role message → routes to all agents with that role
-       No hashtag → broadcast to the whole team
+       #agentname message — routes to that agent
+       #role message — routes to all agents with that role
+       No hashtag — broadcast to the whole team
+
+     Subscriptions:
+       #follow #logs — agent status updates
+       #follow #activity — all agent output
+       #follow #errors — error notifications only
+       #follow #tasks — inter-agent task assignments
+       #unfollow #channel — stop receiving
+       #subscriptions — list current
+
+     Info:
+       #help — show this reference
+       #who — show active agents
 
 4. DM: #coder fix the login bug
    → Message routed to the coder agent's task channel
    → Agent responds via ap_reply in the DM thread
 
-5. DM: /stop
+5. DM: #follow #logs
+   → Now receiving agent status updates as DMs
+   → [log] coder: analyzing login flow...
+   → [log] coder: found issue in auth middleware
+
+6. DM: /stop
    → Session ends, conversation mapping cleared
 ```
 
@@ -915,7 +958,6 @@ porter/
       memory_query.ts   SPARQL query against knowledge graph
       ap_post.ts        Post to AP followers (AP sessions)
       ap_reply.ts       Reply to fediverse user (AP sessions)
-      ap_boost.ts       Boost a post by URL (AP sessions)
     sandbox/
       mod.ts            Sandbox module exports
       paths.ts          Path validation (workspace boundary enforcement)
