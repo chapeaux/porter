@@ -173,7 +173,12 @@ export async function handleActivityPubRoutes(
 
     // 3. POST /ap/actors/{name}/inbox — receive activities
     if (subpath === "/inbox" && method === "POST") {
-      const team = await resolveTeam(ownerId, teamSlug, options);
+      const team = await resolveTeam(ownerId, teamSlug, options) ?? {
+        name: teamSlug,
+        config: { session: teamSlug, model: "", api_key_env: "", agents: [], working_dir: "." } as import("../core/config.ts").PorterConfig,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
       const base = apBaseUrl(config);
 
       const callbacks: InboxCallbacks = {
@@ -189,7 +194,7 @@ export async function handleActivityPubRoutes(
               keyPair.privateKey,
               keyPair.keyId,
             );
-            if (result.action === "accepted" && team) {
+            if (result.action === "accepted") {
               const welcome = buildWelcomeMessage(team);
               const welcomeNote = createNote(slug, config, {
                 content: `<p>${welcome.replace(/\n/g, "<br>")}</p>`,
@@ -202,17 +207,12 @@ export async function handleActivityPubRoutes(
           }
         },
         async onDirectMessage(slug, note, fromActorId) {
-          const dmTeam = team ?? await resolveTeam(ownerId, slug, options);
-          if (!dmTeam) {
-            console.error(`[inbox] DM dropped: team '${slug}' not found`);
-            return;
-          }
           const bridgeCtx: BridgeContext = {
             teamSlug: slug,
             config,
             store,
             backend,
-            team: dmTeam,
+            team,
           };
           const result = await handleDirectMessage(note, fromActorId, bridgeCtx);
           if (result.replyText) {
