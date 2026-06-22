@@ -75,10 +75,11 @@ function initEditor(dlg, pattern, readOnly) {
   let connectFrom = null;
   let dragState = null;
 
-  // Build UI
+  // Build UI — 3 sections: pattern props header, SVG canvas, role props footer
   const toolbar = h('div', { class: 'pattern-editor-toolbar' });
   const canvas = h('div', { class: 'pattern-editor-canvas' });
-  const propsPanel = h('div', { class: 'pattern-editor-props' });
+  const headerPanel = h('div', { class: 'pattern-editor-header' });
+  const footerPanel = h('div', { class: 'pattern-editor-footer' });
 
   if (!readOnly) {
     const addRoleBtn = h('button', { class: 'team-btn secondary' }, 'Add Role');
@@ -159,11 +160,11 @@ function initEditor(dlg, pattern, readOnly) {
     canvas,
   );
 
-  // CSS grid: two rows, each scrolls independently, fills the dialog
+  // CSS grid: 3 rows — pattern props, SVG canvas, role props
   body.style.cssText = '';
   body.classList.add('pattern-editor-grid');
 
-  replaceContent(body, canvasSection, propsPanel);
+  replaceContent(body, headerPanel, canvasSection, footerPanel);
 
   // SVG setup
   const svgNS = 'http://www.w3.org/2000/svg';
@@ -428,68 +429,61 @@ function initEditor(dlg, pattern, readOnly) {
   function renderProps() {
     const selected = nodes.find(n => n.id === selectedId);
 
-    const patternFields = [
-      h('div', { class: 'team-field' },
-        h('label', null, 'Pattern Name'),
-        readOnly
-          ? h('div', { style: 'font-size:0.85rem' }, patternProps.name)
-          : createInput('text', patternProps.name, v => { patternProps.name = v; patternProps.id = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }),
-      ),
-      h('div', { class: 'team-field' },
-        h('label', null, 'Description'),
-        readOnly
-          ? h('div', { style: 'font-size:0.85rem;color:var(--text-secondary)' }, patternProps.description)
-          : createInput('text', patternProps.description, v => { patternProps.description = v; }),
-      ),
-      h('div', { class: 'team-field' },
-        h('label', null, 'Max Rounds'),
-        readOnly
-          ? h('div', { style: 'font-size:0.85rem' }, String(patternProps.max_rounds || 'N/A'))
-          : createInput('number', patternProps.max_rounds, v => { patternProps.max_rounds = v ? parseInt(v) : ''; }),
-      ),
-    ];
-
-    if (!selected) {
-      replaceContent(propsPanel,
-        h('div', { style: 'margin-bottom:1rem' },
-          h('h4', { style: 'color:var(--accent-gold);margin-bottom:0.5rem;font-size:0.85rem' }, 'Pattern Properties'),
-          ...patternFields,
+    // Header: pattern properties (always visible)
+    replaceContent(headerPanel,
+      h('h4', { style: 'color:var(--accent-gold);margin:0 0 0.4rem;font-size:0.85rem' }, 'Pattern Properties'),
+      h('div', { style: 'display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-start' },
+        h('div', { style: 'flex:1;min-width:120px' },
+          h('label', { style: 'font-size:0.75rem;color:var(--text-dim)' }, 'Name'),
+          readOnly
+            ? h('div', { style: 'font-size:0.85rem' }, patternProps.name)
+            : createInput('text', patternProps.name, v => { patternProps.name = v; patternProps.id = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }),
         ),
-        h('div', { style: 'color:var(--text-dim);font-size:0.8rem;margin-top:1rem' },
+        h('div', { style: 'flex:2;min-width:200px' },
+          h('label', { style: 'font-size:0.75rem;color:var(--text-dim)' }, 'Description'),
+          readOnly
+            ? h('div', { style: 'font-size:0.85rem' }, patternProps.description)
+            : createInput('text', patternProps.description, v => { patternProps.description = v; }),
+        ),
+        h('div', { style: 'flex:0 0 4rem' },
+          h('label', { style: 'font-size:0.75rem;color:var(--text-dim)' }, 'Rounds'),
+          readOnly
+            ? h('div', { style: 'font-size:0.85rem' }, String(patternProps.max_rounds || '--'))
+            : createInput('number', patternProps.max_rounds, v => { patternProps.max_rounds = v ? parseInt(v) : ''; }),
+        ),
+      ),
+    );
+
+    // Footer: selected node properties
+    if (!selected) {
+      replaceContent(footerPanel,
+        h('div', { style: 'color:var(--text-dim);font-size:0.8rem;padding:0.5rem 0' },
           readOnly ? 'Click a node to view its properties.' : 'Click a node to edit its properties.'),
       );
       return;
     }
 
-    const nodeFields = [];
     if (selected.type === 'role') {
       const d = selected.data;
-      nodeFields.push(
-        h('h4', { style: 'color:var(--accent-gold);margin-bottom:0.5rem;font-size:0.85rem' }, 'Role Properties'),
+      replaceContent(footerPanel,
+        h('h4', { style: 'color:var(--accent-gold);margin:0 0 0.4rem;font-size:0.85rem' }, `Role: ${d.name || 'Untitled'}`),
         mkField('Name', 'text', d.name, v => { d.name = v; d.id = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); renderSvg(); }),
         mkField('Description', 'text', d.description, v => { d.description = v; }),
-        mkField('Min Agents', 'number', d.min, v => { d.min = parseInt(v) || 0; }),
-        mkField('Max Agents', 'number', d.max, v => { d.max = parseInt(v) || 1; }),
+        h('div', { style: 'display:flex;gap:0.5rem' },
+          h('div', { style: 'flex:1' }, mkField('Min Agents', 'number', d.min, v => { d.min = parseInt(v) || 0; })),
+          h('div', { style: 'flex:1' }, mkField('Max Agents', 'number', d.max, v => { d.max = parseInt(v) || 1; })),
+        ),
         mkTextarea('System Prompt Suffix', d.system_prompt_suffix, v => { d.system_prompt_suffix = v; }),
-        mkField('Auto Tools (comma-separated)', 'text', (d.auto_tools || []).join(', '), v => { d.auto_tools = v.split(',').map(s => s.trim()).filter(Boolean); }),
-        mkField('Subscribe Channels (comma-separated)', 'text', (d.subscribe || []).join(', '), v => { d.subscribe = v.split(',').map(s => s.trim()).filter(Boolean); }),
-        mkField('Default Tools (comma-separated)', 'text', (d.default_tools || []).join(', '), v => { d.default_tools = v.split(',').map(s => s.trim()).filter(Boolean); }),
+        mkField('Auto Tools', 'text', (d.auto_tools || []).join(', '), v => { d.auto_tools = v.split(',').map(s => s.trim()).filter(Boolean); }),
+        mkField('Subscribe Channels', 'text', (d.subscribe || []).join(', '), v => { d.subscribe = v.split(',').map(s => s.trim()).filter(Boolean); }),
+        mkField('Default Tools', 'text', (d.default_tools || []).join(', '), v => { d.default_tools = v.split(',').map(s => s.trim()).filter(Boolean); }),
       );
     } else {
-      nodeFields.push(
-        h('h4', { style: 'color:var(--accent-gold);margin-bottom:0.5rem;font-size:0.85rem' }, 'Channel Properties'),
+      replaceContent(footerPanel,
+        h('h4', { style: 'color:var(--accent-gold);margin:0 0 0.4rem;font-size:0.85rem' }, 'Channel Properties'),
         mkField('Name', 'text', selected.data.name, v => { selected.data.name = v; renderSvg(); }),
       );
     }
-
-    replaceContent(propsPanel,
-      h('div', { style: 'margin-bottom:1rem' },
-        h('h4', { style: 'color:var(--accent-gold);margin-bottom:0.5rem;font-size:0.85rem' }, 'Pattern Properties'),
-        ...patternFields,
-      ),
-      h('hr', { style: 'border:none;border-top:1px solid rgba(255,255,255,0.1);margin:0.75rem 0' }),
-      ...nodeFields,
-    );
   }
 
   function mkField(label, type, value, onChange) {

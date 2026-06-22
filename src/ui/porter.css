@@ -1936,10 +1936,11 @@ label.inline-check input[type="checkbox"] {
 .flow-branch-label { font-size: 0.7rem; color: rgba(255,255,255,0.5); font-style: italic; min-width: 3rem; }
 
 /* Pattern editor */
-.pattern-editor-grid { display: grid; grid-template-rows: 1fr 1fr; height: 100%; min-height: 0; }
+.pattern-editor-grid { display: grid; grid-template-rows: auto 1fr auto; height: 100%; min-height: 0; gap: 0; }
+.pattern-editor-header { padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.1); overflow-y: auto; max-height: 30%; }
 .pattern-editor-canvas { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; overflow: auto; min-height: 0; }
 .pattern-editor-canvas svg { display: block; }
-.pattern-editor-props { padding: 0.75rem; border-top: 1px solid rgba(255,255,255,0.15); overflow-y: auto; min-height: 0; }
+.pattern-editor-footer { padding: 0.75rem; border-top: 1px solid rgba(255,255,255,0.15); overflow-y: auto; max-height: 40%; }
 .pattern-editor-toolbar { display: flex; gap: 0.3rem; padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
 .pattern-editor-toolbar button { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
 .pattern-editor-toolbar button.active { border-color: var(--accent-gold); color: var(--accent-gold); }
