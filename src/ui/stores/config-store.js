@@ -236,6 +236,8 @@ export class ConfigStore extends CPXStore {
       sandbox: false,
       runtimeTools: [],
       repo: null,
+      pattern: 'sequential',
+      maxDeliberationRounds: 3,
     });
   }
 
@@ -264,6 +266,7 @@ export class ConfigStore extends CPXStore {
   setTeamName(s) { this.setState({ teamName: s, errors: { ...this.state.errors, teamName: null } }); }
   setWorkingDir(d) { this.setState({ workingDir: d, errors: { ...this.state.errors, workingDir: null } }); }
   setModel(m) { this.setState({ model: m }); }
+  setPattern(p) { this.setState({ pattern: p }); }
 
   addAgent(agent) {
     this.setState({ agents: [...this.state.agents, agent] });
@@ -305,6 +308,8 @@ export class ConfigStore extends CPXStore {
   toJSON() {
     const config = {
       session: this.state.teamName,
+      pattern: this.state.pattern !== 'sequential' ? this.state.pattern : undefined,
+      max_deliberation_rounds: this.state.pattern === 'deliberation' && this.state.maxDeliberationRounds !== 3 ? this.state.maxDeliberationRounds : undefined,
       model: this.state.model,
       working_dir: this.state.workingDir || '.',
       api_key_env: 'ANTHROPIC_API_KEY',
@@ -354,6 +359,8 @@ export class ConfigStore extends CPXStore {
         teamName: config.session || '',
         workingDir: config.working_dir || '',
         model,
+        pattern: config.pattern || 'sequential',
+        maxDeliberationRounds: config.max_deliberation_rounds ?? 3,
         repo: config.repo || null,
         providers: config.providers || [],
         mcpServers: { ...this.state.mcpServers, ...(config.mcp_servers || {}) },

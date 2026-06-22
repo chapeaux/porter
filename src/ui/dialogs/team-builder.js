@@ -415,6 +415,20 @@ export function renderStep1(body, s) {
       h('label', null, 'Default Model'),
       modelFieldContent
     ),
+    h('div', { class: 'team-field' },
+      h('label', null, 'Collaboration Pattern'),
+      h('select', { id: 'cfg-pattern' },
+        h('option', { value: 'sequential', selected: configState.pattern === 'sequential' }, 'Sequential (admin / worker / reviewer)'),
+        h('option', { value: 'mixture', selected: configState.pattern === 'mixture' }, 'Mixture (parallel specialists + synthesizer)'),
+        h('option', { value: 'deliberation', selected: configState.pattern === 'deliberation' }, 'Deliberation (reflector / worker loop)'),
+        h('option', { value: 'distillation', selected: configState.pattern === 'distillation' }, 'Distillation (expert plans, learner executes)'),
+      ),
+      h('div', { class: 'field-hint' }, 'How agents collaborate. Mixture and Deliberation patterns are optimized for small models.'),
+      h('div', { id: 'deliberation-rounds-field', class: 'team-field', style: configState.pattern === 'deliberation' ? 'margin-top:0.5rem' : 'display:none' },
+        h('label', null, 'Max Deliberation Rounds'),
+        h('input', { type: 'number', id: 'cfg-delib-rounds', value: configState.maxDeliberationRounds ?? 3, min: 1, max: 10, style: 'width:4rem' }),
+      ),
+    ),
     h('div', { class: 'team-divider' }, h('span', null, 'or')),
     h('div', { class: 'team-field', style: 'display:flex;gap:0.5rem' },
       h('div', { style: 'flex:1' },
@@ -515,6 +529,14 @@ export function renderStep1(body, s) {
   });
   body.querySelector('#cfg-model')?.addEventListener('change', e => {
     document.getElementById('config').setModel(e.target.value);
+  });
+  body.querySelector('#cfg-pattern')?.addEventListener('change', e => {
+    document.getElementById('config').setPattern(e.target.value);
+    const roundsField = body.querySelector('#deliberation-rounds-field');
+    if (roundsField) roundsField.style.display = e.target.value === 'deliberation' ? '' : 'none';
+  });
+  body.querySelector('#cfg-delib-rounds')?.addEventListener('input', e => {
+    document.getElementById('config').setState({ maxDeliberationRounds: parseInt(e.target.value) || 3 });
   });
   body.querySelector('#step1-setup-models')?.addEventListener('click', () => {
     renderModelSetup(true);
