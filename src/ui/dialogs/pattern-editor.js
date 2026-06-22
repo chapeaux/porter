@@ -154,12 +154,17 @@ function initEditor(dlg, pattern, readOnly) {
     toolbar.append(addRoleBtn, addChannelBtn, connectBtn, deleteBtn, layoutBtn);
   }
 
-  const leftPanel = h('div', { style: 'flex:1;display:flex;flex-direction:column;min-width:0' },
+  const canvasPanel = h('div', { style: 'display:flex;flex-direction:column;min-height:0' },
     toolbar,
     canvas,
   );
 
-  replaceContent(body, leftPanel, propsPanel);
+  // Stacked layout: scrollable SVG on top, scrollable details below
+  body.style.cssText = 'display:flex;flex-direction:column;height:70vh';
+  canvas.style.cssText += ';flex:1;min-height:200px;overflow:auto';
+  propsPanel.style.cssText += ';flex:0 0 auto;max-height:40%;overflow-y:auto;border-top:1px solid rgba(255,255,255,0.1);border-left:none';
+
+  replaceContent(body, canvasPanel, propsPanel);
 
   // SVG setup
   const svgNS = 'http://www.w3.org/2000/svg';
@@ -310,6 +315,14 @@ function initEditor(dlg, pattern, readOnly) {
   function renderSvg() {
     // Remove existing node/edge groups (keep defs)
     svg.querySelectorAll('.edge-group, .node-group').forEach(el => el.remove());
+
+    // Size SVG to fit all nodes with padding
+    if (nodes.length > 0) {
+      const maxX = Math.max(...nodes.map(n => n.x + NODE_W)) + 40;
+      const maxY = Math.max(...nodes.map(n => n.y + NODE_H)) + 40;
+      svg.setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
+      svg.style.minHeight = `${Math.max(200, maxY)}px`;
+    }
 
     // Render edges
     for (const edge of edges) {
@@ -559,15 +572,18 @@ function autoLayoutNodes(nodes, edges) {
     levels[lv].push(id);
   }
 
-  const xGap = 180;
-  const yGap = 70;
+  // Vertical layout: each level is a row (top to bottom), nodes within a level spread horizontally
+  const yGap = 80;
+  const xGap = 160;
   for (const [lv, ids] of Object.entries(levels)) {
-    const x = 40 + parseInt(lv) * xGap;
+    const y = 40 + parseInt(lv) * yGap;
+    const totalWidth = ids.length * NODE_W + (ids.length - 1) * (xGap - NODE_W);
+    const startX = Math.max(40, 200 - totalWidth / 2);
     ids.forEach((id, i) => {
       const node = nodes.find(n => n.id === id);
       if (node) {
-        node.x = x;
-        node.y = 40 + i * yGap;
+        node.x = startX + i * xGap;
+        node.y = y;
       }
     });
   }
