@@ -61,13 +61,12 @@ function initEditor(dlg, pattern, readOnly) {
     });
   }
 
-  // If there are roles, create edges between them in order and auto-layout
+  // If there are roles, create edges between them in order then auto-layout
   if (nodes.length > 0) {
-    autoLayoutNodes(nodes, edges);
-    // Create sequential edges for initial display
     for (let i = 0; i < nodes.length - 1; i++) {
       edges.push({ from: nodes[i].id, to: nodes[i + 1].id });
     }
+    autoLayoutNodes(nodes, edges);
   }
 
   // State
@@ -186,17 +185,16 @@ function initEditor(dlg, pattern, readOnly) {
 
   canvas.appendChild(svg);
 
-  // SVG interaction handlers
-  if (!readOnly) {
-    svg.addEventListener('mousedown', (e) => {
-      const target = e.target.closest('[data-node-id]');
-      if (target) {
-        const nodeId = target.dataset.nodeId;
+  // SVG interaction handlers — selection works in both modes, drag/connect only in edit mode
+  svg.addEventListener('mousedown', (e) => {
+    const target = e.target.closest('[data-node-id]');
+    if (target) {
+      const nodeId = target.dataset.nodeId;
 
-        if (connectMode) {
-          if (!connectFrom) {
-            connectFrom = nodeId;
-            target.querySelector('rect')?.setAttribute('stroke', '#c9a84c');
+      if (!readOnly && connectMode) {
+        if (!connectFrom) {
+          connectFrom = nodeId;
+          target.querySelector('rect')?.setAttribute('stroke', '#c9a84c');
           } else if (connectFrom !== nodeId) {
             // Check for duplicate edge
             const exists = edges.some(ed => ed.from === connectFrom && ed.to === nodeId);
@@ -213,16 +211,17 @@ function initEditor(dlg, pattern, readOnly) {
         }
 
         selectedId = nodeId;
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          const rect = svg.getBoundingClientRect();
-          dragState = {
-            nodeId,
-            startX: e.clientX,
-            startY: e.clientY,
-            origX: node.x,
-            origY: node.y,
-          };
+        if (!readOnly) {
+          const node = nodes.find(n => n.id === nodeId);
+          if (node) {
+            dragState = {
+              nodeId,
+              startX: e.clientX,
+              startY: e.clientY,
+              origX: node.x,
+              origY: node.y,
+            };
+          }
         }
         render();
       } else {
@@ -235,6 +234,7 @@ function initEditor(dlg, pattern, readOnly) {
       }
     });
 
+  if (!readOnly) {
     svg.addEventListener('mousemove', (e) => {
       if (!dragState) return;
       const node = nodes.find(n => n.id === dragState.nodeId);
@@ -319,10 +319,29 @@ function initEditor(dlg, pattern, readOnly) {
 
       const edgeId = `${edge.from}-${edge.to}`;
       const isSelected = selectedId === edgeId;
-      const x1 = fromNode.x + NODE_W;
-      const y1 = fromNode.y + NODE_H / 2;
-      const x2 = toNode.x;
-      const y2 = toNode.y + NODE_H / 2;
+
+      // Route edge from the nearest side of each node
+      const fromCx = fromNode.x + NODE_W / 2;
+      const fromCy = fromNode.y + NODE_H / 2;
+      const toCx = toNode.x + NODE_W / 2;
+      const toCy = toNode.y + NODE_H / 2;
+      const dx = toCx - fromCx;
+      const dy = toCy - fromCy;
+
+      let x1, y1, x2, y2;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        // Horizontal dominant — connect right/left sides
+        x1 = dx > 0 ? fromNode.x + NODE_W : fromNode.x;
+        y1 = fromCy;
+        x2 = dx > 0 ? toNode.x : toNode.x + NODE_W;
+        y2 = toCy;
+      } else {
+        // Vertical dominant — connect bottom/top sides
+        x1 = fromCx;
+        y1 = dy > 0 ? fromNode.y + NODE_H : fromNode.y;
+        x2 = toCx;
+        y2 = dy > 0 ? toNode.y : toNode.y + NODE_H;
+      }
 
       const g = document.createElementNS(svgNS, 'g');
       g.classList.add('edge-group');
