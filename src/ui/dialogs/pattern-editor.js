@@ -155,7 +155,7 @@ function initEditor(dlg, pattern, readOnly) {
     toolbar.append(addRoleBtn, addChannelBtn, connectBtn, deleteBtn, layoutBtn);
   }
 
-  const canvasSection = h('div', { style: 'display:flex;flex-direction:column;min-height:0;overflow:hidden' },
+  const canvasSection = h('div', null,
     toolbar,
     canvas,
   );
@@ -170,7 +170,7 @@ function initEditor(dlg, pattern, readOnly) {
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('width', '100%');
-  svg.setAttribute('height', '100%');
+  svg.setAttribute('viewBox', '0 0 400 200');
 
   // Arrowhead marker
   const defs = document.createElementNS(svgNS, 'defs');
@@ -316,12 +316,13 @@ function initEditor(dlg, pattern, readOnly) {
     // Remove existing node/edge groups (keep defs)
     svg.querySelectorAll('.edge-group, .node-group').forEach(el => el.remove());
 
-    // Size SVG to fit all nodes with padding
+    // Size SVG viewBox to fit all nodes
     if (nodes.length > 0) {
       const maxX = Math.max(...nodes.map(n => n.x + NODE_W)) + 40;
       const maxY = Math.max(...nodes.map(n => n.y + NODE_H)) + 40;
-      svg.setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
-      svg.style.minHeight = `${Math.max(200, maxY)}px`;
+      svg.setAttribute('viewBox', `0 0 ${Math.max(400, maxX)} ${Math.max(200, maxY)}`);
+    } else {
+      svg.setAttribute('viewBox', '0 0 400 200');
     }
 
     // Render edges
