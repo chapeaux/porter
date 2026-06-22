@@ -361,17 +361,25 @@ async function handleCommand(
     }
 
     case "/start": {
-      // Check for existing session
+      // Check for existing session — verify it's actually still running
       const existing = await findConversation(
         ctx.store,
         ctx.teamSlug,
         conversationId,
       );
       if (existing) {
-        return {
-          replyText: "A session is already active for this conversation. Use /stop to end it first.",
-          handled: true,
-        };
+        try {
+          const handle = await conversationToHandle(existing, ctx.teamSlug, ctx);
+          const status = await ctx.backend.getSessionStatus(handle);
+          if (status?.running) {
+            return {
+              replyText: "A session is already active for this conversation. Use /stop to end it first.",
+              handled: true,
+            };
+          }
+        } catch { /* session gone */ }
+        // Stale mapping — clean up and proceed
+        await ctx.store.removeConversation(ctx.teamSlug, conversationId);
       }
 
       // Resolve team owner
