@@ -123,46 +123,18 @@ export function renderAgentForm(agent) {
     mcpToolContent = h('div', { class: 'tool-grid' }, ...mcpChecks);
   }
 
-  // Prompt sections — simplified to a single "Expertise" section
-  // Pattern-specific behavior (communication, memory, processing) is injected by the orchestrator at runtime
-  const configStore2 = document.getElementById('config');
-  const currentPattern = configStore2?.state?.pattern || 'sequential';
-  const isPatternMode = currentPattern !== 'sequential';
+  // Single "Expertise" section — what the agent knows
+  // All pattern behavior (communication, channels, memory, processing) is injected by the orchestrator at runtime
+  const existingJob = (agent.promptSections || []).find(s => s.id === 'job');
+  const expertiseContent = existingJob?.content || agent.systemPrompt || '';
 
-  let sections;
-  if (isPatternMode) {
-    // In pattern mode: single expertise section — what the agent knows
-    const existingJob = (agent.promptSections || []).find(s => s.id === 'job');
-    const expertiseContent = existingJob?.content || agent.systemPrompt || '';
-    sections = [{ id: 'job', title: 'Expertise', content: expertiseContent }];
-  } else {
-    // Sequential mode: full 4-section layout (backwards compatible)
-    sections = agent.promptSections || parsePromptSections(agent.systemPrompt, agent.role);
-  }
-
-  const promptSectionEls = sections.map((s, i) => {
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'prompt-section-title';
-    titleSpan.contentEditable = !isPatternMode;
-    titleSpan.textContent = s.title;
-
-    const textarea = h('textarea', { class: 'prompt-section-content' });
-    textarea.value = s.content;
-
-    const headerChildren = [titleSpan];
-    if (!isPatternMode) {
-      headerChildren.push(
-        h('button', { type: 'button', class: 'prompt-section-revert', title: 'Revert to default', disabled: !(s.default || ['job','comm','memory','processing'].includes(s.id)) }, '↺'),
-        h('button', { type: 'button', class: 'prompt-section-remove', title: 'Remove section', disabled: ['job','comm','memory','processing'].includes(s.id) }, '✕'),
-      );
-    }
-    headerChildren.push(h('button', { type: 'button', class: 'prompt-section-toggle' }, '▾'));
-
-    return h('div', { class: 'prompt-section', 'data-section-id': s.id, 'data-idx': String(i) },
-      h('div', { class: 'prompt-section-header' }, ...headerChildren),
-      textarea
-    );
+  const expertiseTextarea = h('textarea', {
+    class: 'prompt-section-content',
+    id: 'agent-expertise',
+    style: 'min-height:6rem',
+    placeholder: 'Describe what this agent specializes in...',
   });
+  expertiseTextarea.value = expertiseContent;
 
   // File input
   const fileInput = h('input', { type: 'file', id: 'prompt-file-input', accept: '.txt,.md,.py,.sh,.ts,.js,.yaml,.yml,.json,.toml,.cfg,.sql,.go,.rs,.java,.c,.cpp,.rb' });
@@ -221,10 +193,6 @@ export function renderAgentForm(agent) {
       h('input', { type: 'text', id: 'agent-mcp-tools', placeholder: 'Additional: server.specific_tool', value: (agent.mcpTools || []).filter(t => !t.endsWith('.*')).join(', ') }),
     ),
     h('div', { class: 'team-field' },
-      h('label', null, 'Channels (comma-separated)'),
-      h('input', { type: 'text', id: 'agent-channels', value: agent.channels.join(', ') }),
-    ),
-    h('div', { class: 'team-field' },
       h('label', { class: 'inline-check' },
         h('input', { type: 'checkbox', id: 'agent-reasoning', checked: !!agent.reasoning }),
         ' Enable reasoning mode'
@@ -234,19 +202,14 @@ export function renderAgentForm(agent) {
       ),
     ),
     h('div', { class: 'team-field' },
-      h('label', null, isPatternMode ? 'Expertise' : 'System Prompt'),
-      isPatternMode
-        ? h('div', { class: 'field-hint', style: 'margin-bottom:0.3rem' }, 'Describe what this agent specializes in. Communication and coordination behavior is injected by the collaboration pattern at runtime.')
-        : null,
-      h('div', { class: 'prompt-sections', id: 'prompt-sections' }, ...promptSectionEls),
-      isPatternMode
-        ? null
-        : h('div', { class: 'prompt-section-actions' },
-            h('button', { type: 'button', id: 'add-prompt-section', class: 'prompt-upload-btn' }, '+ Add Section'),
-            h('button', { type: 'button', id: 'prompt-upload-btn', class: 'prompt-upload-btn' }, 'Upload File'),
-            fileInput,
-            h('span', { id: 'prompt-file-status', class: 'prompt-file-list' }),
-          ),
+      h('label', null, 'Expertise'),
+      h('div', { class: 'field-hint', style: 'margin-bottom:0.3rem' }, 'Describe what this agent specializes in. Channels, communication, and coordination behavior are injected by the collaboration pattern at runtime.'),
+      expertiseTextarea,
+      h('div', { class: 'prompt-section-actions' },
+        h('button', { type: 'button', id: 'prompt-upload-btn', class: 'prompt-upload-btn' }, 'Upload File'),
+        fileInput,
+        h('span', { id: 'prompt-file-status', class: 'prompt-file-list' }),
+      ),
     ),
     h('div', { class: 'team-field' },
       h('label', null, 'Max Tokens ',
@@ -375,15 +338,15 @@ export function handleAgentSave() {
     name: body.querySelector('#agent-name').value.trim(),
     role: body.querySelector('#agent-role-value')?.value || 'worker',
     model: body.querySelector('#agent-model')?.value || '',
-    promptSections: [...body.querySelectorAll('.prompt-section')].map(el => ({
-      id: el.dataset.sectionId,
-      title: el.querySelector('.prompt-section-title').textContent.trim(),
-      content: el.querySelector('.prompt-section-content').value,
+    promptSections: [{
+      id: 'job',
+      title: 'Expertise',
+      content: body.querySelector('#agent-expertise')?.value || '',
       default: '',
-    })),
-    systemPrompt: [...body.querySelectorAll('.prompt-section-content')].map(ta => ta.value).filter(Boolean).join('\n\n'),
+    }],
+    systemPrompt: body.querySelector('#agent-expertise')?.value || '',
     tools: [...body.querySelectorAll('#agent-tools input:checked')].map(cb => cb.value),
-    channels: body.querySelector('#agent-channels').value.split(',').map(s => s.trim()).filter(Boolean),
+    channels: [],
     maxTokens: parseInt(body.querySelector('#agent-max-tokens').value) || 8192,
     maxTurns: parseInt(body.querySelector('#agent-max-turns').value) || undefined,
     maxContextTokens: parseInt(body.querySelector('#agent-max-context-tokens').value) || undefined,
