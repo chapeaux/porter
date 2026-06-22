@@ -58,6 +58,22 @@ async function loadTool(name: ToolName): Promise<ToolEntry> {
       return (await import("./ap_post.ts")).default;
     case "ap_reply":
       return (await import("./ap_reply.ts")).default;
+    case "finding_write":
+      return (await import("./finding_write.ts")).default;
+    case "findings_query":
+      return (await import("./findings_query.ts")).default;
+    case "critique_write":
+      return (await import("./critique_write.ts")).default;
+    case "critiques_query":
+      return (await import("./critiques_query.ts")).default;
+    case "approve":
+      return (await import("./approve.ts")).default;
+    case "plan_write":
+      return (await import("./plan_write.ts")).default;
+    case "plan_query":
+      return (await import("./plan_query.ts")).default;
+    case "step_update":
+      return (await import("./step_update.ts")).default;
   }
 }
 

@@ -1,0 +1,23 @@
+{
+  "session": "careful-coder",
+  "pattern": "deliberation",
+  "max_deliberation_rounds": 3,
+  "model": "granite-3b",
+  "api_key_env": "OPENAI_API_KEY",
+  "working_dir": ".",
+  "agents": [
+    {
+      "name": "coder",
+      "role": "worker",
+      "system_prompt": "Implement the requested changes. After completing work, publish a summary to the 'deliberation' channel. If you receive critique, use critiques_query to see specific issues and address them.",
+      "tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "git"]
+    },
+    {
+      "name": "reviewer",
+      "role": "reflector",
+      "model": "granite-8b",
+      "system_prompt": "Review the coder's work for correctness, completeness, and quality. Use critique_write for each issue found. Use approve when the work meets standards.",
+      "tools": ["read_file", "glob", "grep"]
+    }
+  ]
+}

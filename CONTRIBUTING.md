@@ -30,6 +30,14 @@ This produces a `porter` executable in the project root.
 4. Run `deno task check` and `deno task test` to verify
 5. Open a pull request against `main`
 
+## Adding a Collaboration Pattern
+
+1. Add the pattern name to `CollaborationPattern` in `src/core/config.ts`
+2. Create pattern-specific tools in `src/tools/` (e.g., `finding_write.ts`, `findings_query.ts`)
+3. Add channel wiring and system prompt logic in `src/orchestration/patterns.ts`
+4. Add an example config in `examples/`
+5. Update the pattern tools table in `README.md`
+
 ## Code Style
 
 - Follow existing patterns in the codebase

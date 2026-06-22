@@ -138,6 +138,19 @@ export const PORTER = {
   discoveredBy: `${NS}discoveredBy`,
   severity: `${NS}severity`,
 
+  // Collaboration patterns
+  Finding: `${NS}Finding`,
+  Critique: `${NS}Critique`,
+  PlanStep: `${NS}PlanStep`,
+  StepStatus: `${NS}StepStatus`,
+  domain: `${NS}domain`,
+  confidence: `${NS}confidence`,
+  round: `${NS}round`,
+  approved: `${NS}approved`,
+  stepOrder: `${NS}stepOrder`,
+  stepState: `${NS}stepState`,
+  addresses: `${NS}addresses`,
+
   // Metrics
   inputTokens: `${NS}inputTokens`,
   outputTokens: `${NS}outputTokens`,

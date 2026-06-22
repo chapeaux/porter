@@ -1,0 +1,23 @@
+{
+  "session": "security-audit",
+  "pattern": "deliberation",
+  "max_deliberation_rounds": 5,
+  "model": "granite-3b",
+  "api_key_env": "OPENAI_API_KEY",
+  "working_dir": ".",
+  "agents": [
+    {
+      "name": "scanner",
+      "role": "worker",
+      "system_prompt": "Perform a security scan of the codebase. Search for common vulnerabilities, check dependencies, review auth flows, and test input validation. Report findings to the 'deliberation' channel.",
+      "tools": ["read_file", "grep", "glob", "bash"]
+    },
+    {
+      "name": "auditor",
+      "role": "reflector",
+      "model": "granite-8b",
+      "system_prompt": "Audit the scanner's findings for accuracy and completeness. Verify each vulnerability claim. Use critique_write for false positives or missed areas. Use approve when coverage is sufficient.",
+      "tools": ["read_file", "grep"]
+    }
+  ]
+}

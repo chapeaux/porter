@@ -1,5 +1,6 @@
 {
   "session": "my-project",
+  "pattern": "sequential",
   "model": "claude-sonnet-4-6",
   "working_dir": ".",
   "models": [

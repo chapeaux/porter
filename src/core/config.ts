@@ -20,10 +20,29 @@ export type ToolName =
   | "memory_write"
   | "memory_query"
   | "ap_post"
-  | "ap_reply";
+  | "ap_reply"
+  | "finding_write"
+  | "findings_query"
+  | "critique_write"
+  | "critiques_query"
+  | "approve"
+  | "plan_write"
+  | "plan_query"
+  | "step_update";
 
 /** Agent role for organizational purposes. */
-export type AgentRole = "admin" | "worker" | "reviewer";
+export type AgentRole =
+  | "admin"
+  | "worker"
+  | "reviewer"
+  | "specialist"
+  | "synthesizer"
+  | "reflector"
+  | "expert"
+  | "learner";
+
+/** Collaboration pattern for the team. */
+export type CollaborationPattern = "sequential" | "mixture" | "deliberation" | "distillation";
 
 /** Configuration for a single agent. */
 export interface AgentConfig {
@@ -59,6 +78,8 @@ export interface AgentConfig {
   mcp_tools?: string[];
   /** Auto-execute bash/shell code blocks found in model output. Default: false. */
   auto_execute_bash?: boolean;
+  /** Flag this agent as using a small model. Enables simplified tool schemas and the tool inference engine. Auto-detected from model name if not set. */
+  small_model?: boolean;
 }
 
 /** Vertex AI configuration. */
@@ -138,6 +159,10 @@ export interface PorterConfig {
   models?: import("../auth/model_store.ts").ModelConfig[];
   /** Runtime tools to inject into agent pods (e.g. "python3", "curl"). */
   runtime_tools?: RuntimeToolEntry[];
+  /** Collaboration pattern. Default: "sequential" (existing admin/worker/reviewer). */
+  pattern?: CollaborationPattern;
+  /** Maximum deliberation rounds (deliberation pattern only). Default: 3. */
+  max_deliberation_rounds?: number;
   /** Container sandbox configuration. When true, enables default sandbox. */
   sandbox?: boolean | SandboxConfig;
   /** ActivityPub federation configuration. Enables fediverse interaction with teams. */

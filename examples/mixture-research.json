@@ -1,0 +1,34 @@
+{
+  "session": "codebase-research",
+  "pattern": "mixture",
+  "model": "granite-3b",
+  "api_key_env": "OPENAI_API_KEY",
+  "working_dir": ".",
+  "agents": [
+    {
+      "name": "code-analyst",
+      "role": "specialist",
+      "system_prompt": "Analyze the code structure, key functions, and architectural patterns. Use finding_write to record each observation.",
+      "tools": ["read_file", "glob", "grep"]
+    },
+    {
+      "name": "doc-analyst",
+      "role": "specialist",
+      "system_prompt": "Analyze documentation, README, comments, and configuration files. Use finding_write to record each observation.",
+      "tools": ["read_file", "glob"]
+    },
+    {
+      "name": "test-analyst",
+      "role": "specialist",
+      "system_prompt": "Analyze the test suite, coverage, test patterns, and testing gaps. Use finding_write to record each observation.",
+      "tools": ["read_file", "glob", "grep", "bash"]
+    },
+    {
+      "name": "reporter",
+      "role": "synthesizer",
+      "model": "granite-8b",
+      "system_prompt": "Compile all analyst findings into a comprehensive codebase report. Use findings_query to retrieve observations, then produce a structured summary.",
+      "tools": []
+    }
+  ]
+}

@@ -35,7 +35,7 @@ porter start --config examples/solo-dev.json
 porter start --ui                             # with web dashboard
 ```
 
-See [`examples/`](examples/) for ready-to-use configs: `solo-dev.json`, `full-team.json`, `multi-model.json`.
+See [`examples/`](examples/) for ready-to-use configs: `solo-dev.json`, `full-team.json`, `multi-model.json`, plus collaboration pattern configs (`mixture-review.json`, `deliberation-coder.json`, `distillation-guided.json`).
 
 ### Three Deployment Modes
 
@@ -219,6 +219,11 @@ memory_query({sparql: "SELECT ?about ?finding WHERE { ... }"})
 | `admin` | `send_message`, `read_messages`, `memory_write`, `memory_query` |
 | `worker` | All tools |
 | `reviewer` | All tools |
+| `specialist` | Configured tools + `finding_write`, `send_message` (mixture pattern) |
+| `synthesizer` | `findings_query`, `send_message` (mixture pattern) |
+| `reflector` | Configured tools + `critique_write`, `approve`, `send_message` (deliberation pattern) |
+| `expert` | Configured tools + `plan_write`, `send_message` (distillation pattern) |
+| `learner` | Configured tools + `plan_query`, `step_update`, `send_message` (distillation pattern) |
 
 Admins cannot run commands or modify files directly. They delegate work to workers via `send_message` to the worker's task channel. When an agent tries to use a tool outside its role, the error message names other agents that have the needed capability.
 
@@ -755,6 +760,108 @@ In **router** mode (`porter router`), the router handles AP at the edge and prov
 
 ---
 
+## Collaboration Patterns
+
+Porter supports four collaboration patterns inspired by [RecursiveMAS](https://arxiv.org/abs/2502.09601) research. The default **sequential** pattern (admin/worker/reviewer) works well with large models. The **Mixture**, **Deliberation**, and **Distillation** patterns enable small models (3-8B) to achieve better results through structured teamwork, where agents share state through the RDF graph instead of parsing prose.
+
+Set the `pattern` field in your config to choose a pattern:
+
+```json
+{
+  "pattern": "mixture",
+  "agents": [...]
+}
+```
+
+### Mixture
+
+**When to use:** Multiple perspectives on the same problem -- code review, research, analysis.
+
+Specialists work the problem **in parallel**, each from their domain. Each writes structured findings to the shared graph. A synthesizer agent queries all findings via SPARQL and produces a unified result.
+
+```
+task --> [specialists in parallel] --> each writes findings to graph
+                                  --> synthesizer queries graph --> response
+```
+
+See [`examples/mixture-review.json`](examples/mixture-review.json) for a code review team with correctness, security, and performance specialists. See [`examples/mixture-research.json`](examples/mixture-research.json) for a codebase research team.
+
+### Deliberation
+
+**When to use:** Tasks requiring iterative refinement -- coding with review, security auditing, writing.
+
+A worker produces output, then a reflector critiques it. The graph tracks critique history to prevent regression. The loop continues until the reflector approves or `max_deliberation_rounds` is reached.
+
+```
+task --> worker --> graph(work) --> reflector queries graph
+                                    |
+                            [approve] --> response
+                            [critique] --> graph(critique) --> worker reads critique --> revise...
+```
+
+Set `max_deliberation_rounds` to control the maximum number of critique/revision cycles (default: 3).
+
+See [`examples/deliberation-coder.json`](examples/deliberation-coder.json) for a coding/review loop. See [`examples/deliberation-security.json`](examples/deliberation-security.json) for a security audit with 5 rounds.
+
+### Distillation
+
+**When to use:** A larger model should reason and plan while a smaller model executes -- guided development, mentored coding.
+
+An expert creates a detailed plan with ordered steps written to the graph. A learner reads steps one at a time, executes them, and marks each done or failed. The learner can request clarification on a dedicated channel.
+
+```
+task --> expert --> graph(plan steps) --> learner reads plan --> executes --> graph(step status)
+             ^                                                                    |
+             +-------------- learner writes clarify request ----------------------+
+```
+
+See [`examples/distillation-guided.json`](examples/distillation-guided.json) for an architect/developer team.
+
+### Pattern-Specific Tools
+
+Each pattern auto-injects role-specific tools. These tools are simpler and more constrained than the raw `memory_write`/`memory_query` tools, making them easier for small models to use correctly.
+
+| Pattern | Role | Auto-injected Tools |
+|---|---|---|
+| mixture | specialist | `finding_write`, `send_message` |
+| mixture | synthesizer | `findings_query`, `send_message` |
+| deliberation | worker | `critiques_query`, `send_message` |
+| deliberation | reflector | `critique_write`, `approve`, `send_message` |
+| distillation | expert | `plan_write`, `send_message` |
+| distillation | learner | `plan_query`, `step_update`, `send_message` |
+
+### Tool Inference Engine
+
+For small models, Porter includes a tool inference engine that helps agents select and invoke tools correctly. It classifies tool intent from natural language (e.g., "let me read the file" maps to `read_file`), simplifies tool schemas by reducing optional parameters, and provides structured recovery nudges when tool calls fail to parse.
+
+Set `small_model: true` on an agent to enable it explicitly, or let Porter auto-detect from the model name (names containing "1b", "3b", "7b" are treated as small).
+
+```json
+{
+  "name": "developer",
+  "role": "learner",
+  "small_model": true,
+  "tools": ["read_file", "write_file", "edit_file", "bash"]
+}
+```
+
+### Example Configs
+
+The [`examples/`](examples/) directory includes ready-to-use configurations:
+
+| File | Pattern | Description |
+|------|---------|-------------|
+| [`mixture-review.json`](examples/mixture-review.json) | mixture | Code review with correctness, security, and performance specialists |
+| [`mixture-research.json`](examples/mixture-research.json) | mixture | Codebase research with code, doc, and test analysts |
+| [`deliberation-coder.json`](examples/deliberation-coder.json) | deliberation | Coding with iterative review (3 rounds) |
+| [`deliberation-security.json`](examples/deliberation-security.json) | deliberation | Security audit with iterative verification (5 rounds) |
+| [`distillation-guided.json`](examples/distillation-guided.json) | distillation | Large model architect guides small model developer |
+| [`solo-dev.json`](examples/solo-dev.json) | sequential | Single developer agent |
+| [`full-team.json`](examples/full-team.json) | sequential | Admin, worker, and reviewer team |
+| [`multi-model.json`](examples/multi-model.json) | sequential | Mixed model team (different providers) |
+
+---
+
 ## Configuration Reference
 
 ### `porter.json` Format
@@ -791,6 +898,8 @@ In **router** mode (`porter router`), the router handles AP at the edge and prov
 | `vertex.region` | no | from env | GCP region |
 | `models` | no | | Model configurations array |
 | `mcp_servers` | no | | External MCP server definitions |
+| `pattern` | no | `"sequential"` | Collaboration pattern: `"sequential"`, `"mixture"`, `"deliberation"`, or `"distillation"` |
+| `max_deliberation_rounds` | no | `3` | Maximum critique/revision cycles (deliberation pattern only) |
 | `sandbox` | no | | Container sandbox (`true` or `{enabled, image?, runtime?}`) |
 | `runtime_tools` | no | | Runtime tools to inject into pods (`["python3", "curl"]`) |
 | `env` | no | | Environment variables for the session |
@@ -818,7 +927,7 @@ In **router** mode (`porter router`), the router handles AP at the edge and prov
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `name` | yes | | Agent name (unique within session) |
-| `role` | yes | | `"admin"`, `"worker"`, or `"reviewer"` |
+| `role` | yes | | `"admin"`, `"worker"`, `"reviewer"`, `"specialist"`, `"synthesizer"`, `"reflector"`, `"expert"`, or `"learner"` |
 | `system_prompt` | yes | | System prompt for the agent |
 | `tools` | yes | | Tools this agent can use |
 | `model` | no | session default | Override model for this agent |
@@ -828,6 +937,7 @@ In **router** mode (`porter router`), the router handles AP at the edge and prov
 | `max_context_tokens` | no | unlimited | Estimated input token budget (~4 chars/token) |
 | `reasoning` | no | `false` | Enable extended thinking |
 | `mcp_tools` | no | `[]` | MCP tools this agent can access |
+| `small_model` | no | auto-detect | Enable simplified tool schemas and tool inference engine |
 
 ### Environment Variables
 
@@ -1025,7 +1135,7 @@ porter/
     service.yaml        Bus ClusterIP service
     router.yaml         Multi-user router deployment + RBAC
     user-pod-template.yaml  Per-user orchestrator pod template
-  examples/             Ready-to-use configurations
+  examples/             Ready-to-use configurations (sequential, mixture, deliberation, distillation)
   docs/
     as2-agent-protocol.md  ActivityStreams 2.0 wire format reference
     tool-gateway.md        Tool system specification

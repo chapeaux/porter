@@ -1,0 +1,22 @@
+{
+  "session": "guided-dev",
+  "pattern": "distillation",
+  "model": "granite-3b",
+  "api_key_env": "OPENAI_API_KEY",
+  "working_dir": ".",
+  "agents": [
+    {
+      "name": "architect",
+      "role": "expert",
+      "model": "granite-8b",
+      "system_prompt": "Analyze the task and create a detailed implementation plan. Use plan_write for each step, in order. Identify potential pitfalls and edge cases. Do not execute — the developer will implement your plan.",
+      "tools": ["read_file", "glob", "grep", "list_dir"]
+    },
+    {
+      "name": "developer",
+      "role": "learner",
+      "system_prompt": "Follow the architect's plan step by step. Use plan_query to get the next step, execute it with your tools, then use step_update to mark it done or failed. Ask for clarification on the 'clarify' channel if needed.",
+      "tools": ["read_file", "write_file", "edit_file", "bash", "git"]
+    }
+  ]
+}

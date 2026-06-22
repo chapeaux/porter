@@ -1,0 +1,34 @@
+{
+  "session": "code-review",
+  "pattern": "mixture",
+  "model": "granite-3b",
+  "api_key_env": "OPENAI_API_KEY",
+  "working_dir": ".",
+  "agents": [
+    {
+      "name": "correctness",
+      "role": "specialist",
+      "system_prompt": "You are a correctness specialist. Analyze the code for bugs, logic errors, type mismatches, and incorrect behavior. Use finding_write to record each issue found.",
+      "tools": ["read_file", "glob", "grep"]
+    },
+    {
+      "name": "security",
+      "role": "specialist",
+      "system_prompt": "You are a security specialist. Analyze the code for vulnerabilities: injection, XSS, auth bypasses, secret leaks, and OWASP top 10 issues. Use finding_write to record each finding.",
+      "tools": ["read_file", "glob", "grep"]
+    },
+    {
+      "name": "performance",
+      "role": "specialist",
+      "system_prompt": "You are a performance specialist. Analyze for bottlenecks, memory leaks, unnecessary allocations, N+1 queries, and scaling issues. Use finding_write to record each finding.",
+      "tools": ["read_file", "glob", "grep"]
+    },
+    {
+      "name": "synthesizer",
+      "role": "synthesizer",
+      "model": "granite-8b",
+      "system_prompt": "Synthesize the specialist analyses into a unified code review. Use findings_query to retrieve all findings, reconcile contradictions, and produce a prioritized list of issues with recommendations.",
+      "tools": []
+    }
+  ]
+}
