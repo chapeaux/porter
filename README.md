@@ -219,11 +219,13 @@ memory_query({sparql: "SELECT ?about ?finding WHERE { ... }"})
 | `admin` | `send_message`, `read_messages`, `memory_write`, `memory_query` |
 | `worker` | All tools |
 | `reviewer` | All tools |
-| `specialist` | Configured tools + `finding_write`, `send_message` (mixture pattern) |
-| `synthesizer` | `findings_query`, `send_message` (mixture pattern) |
-| `reflector` | Configured tools + `critique_write`, `approve`, `send_message` (deliberation pattern) |
-| `expert` | Configured tools + `plan_write`, `send_message` (distillation pattern) |
-| `learner` | Configured tools + `plan_query`, `step_update`, `send_message` (distillation pattern) |
+| `specialist` | Configured tools + pattern auto-tools (`finding_write`, `send_message`) |
+| `synthesizer` | Pattern auto-tools (`findings_query`, `send_message`) |
+| `reflector` | Configured tools + pattern auto-tools (`critique_write`, `approve`, `send_message`) |
+| `expert` | Configured tools + pattern auto-tools (`plan_write`, `send_message`) |
+| `learner` | Configured tools + pattern auto-tools (`plan_query`, `step_update`, `send_message`) |
+
+Pattern-specific tools (specialist, synthesizer, reflector, expert, learner) are auto-injected based on the pattern definition's `auto_tools` field -- they do not need to be manually configured in the agent's `tools` array.
 
 Admins cannot run commands or modify files directly. They delegate work to workers via `send_message` to the worker's task channel. When an agent tries to use a tool outside its role, the error message names other agents that have the needed capability.
 
@@ -762,7 +764,9 @@ In **router** mode (`porter router`), the router handles AP at the edge and prov
 
 ## Collaboration Patterns
 
-Porter supports four collaboration patterns inspired by [RecursiveMAS](https://arxiv.org/abs/2502.09601) research. The default **sequential** pattern (admin/worker/reviewer) works well with large models. The **Mixture**, **Deliberation**, and **Distillation** patterns enable small models (3-8B) to achieve better results through structured teamwork, where agents share state through the RDF graph instead of parsing prose.
+Porter separates **agent identity** from **pattern behavior**. An agent defines domain expertise (name, system prompt, model, tools). A pattern defines coordination (channels, auto-tools, system prompt suffixes). The same agent can work in any pattern -- a "security-analyst" agent can serve as a Specialist in a Mixture team, a Reflector in Deliberation, or a Worker in Sequential. Agents are portable; patterns are pluggable.
+
+Porter ships four built-in patterns inspired by [RecursiveMAS](https://arxiv.org/abs/2502.09601) research. The default **Sequential** pattern (admin/worker/reviewer) works well with large models. The **Mixture**, **Deliberation**, and **Distillation** patterns enable small models (3-8B) to achieve better results through structured teamwork, where agents share state through the RDF graph instead of parsing prose.
 
 Set the `pattern` field in your config to choose a pattern:
 
@@ -773,35 +777,66 @@ Set the `pattern` field in your config to choose a pattern:
 }
 ```
 
+### Pattern Definition Format
+
+Patterns are defined as JSON files conforming to the `PatternDefinition` schema (see `src/orchestration/pattern_registry.ts`). Each definition specifies roles, channels, auto-injected tools, and system prompt suffixes:
+
+```json
+{
+  "id": "mixture",
+  "name": "Mixture",
+  "description": "Parallel specialists + synthesizer",
+  "bus_flow": "task -> [specialists in parallel] -> graph -> synthesizer -> response",
+  "builtin": true,
+  "roles": [
+    {
+      "id": "specialist",
+      "name": "Specialist",
+      "description": "Analyzes the problem from a specific domain perspective",
+      "min": 2, "max": 8,
+      "system_prompt_suffix": "You are a domain specialist...",
+      "auto_tools": ["finding_write", "send_message"],
+      "subscribe": ["task", "control"],
+      "subscribe_dynamic": null,
+      "default_tools": ["read_file", "glob", "grep", "list_dir"]
+    }
+  ]
+}
+```
+
+Built-in pattern definitions live in `src/orchestration/patterns/` (`sequential.json`, `mixture.json`, `deliberation.json`, `distillation.json`). See [`docs/collaboration-patterns.md`](docs/collaboration-patterns.md) for the full schema reference.
+
+### Sequential
+
+Traditional admin/worker/reviewer pipeline. The default pattern.
+
+**Roles:** Admin (0-1), Worker (1-8), Reviewer (0-2)
+
+**Definition:** [`src/orchestration/patterns/sequential.json`](src/orchestration/patterns/sequential.json)
+
 ### Mixture
 
 **When to use:** Multiple perspectives on the same problem -- code review, research, analysis.
 
 Specialists work the problem **in parallel**, each from their domain. Each writes structured findings to the shared graph. A synthesizer agent queries all findings via SPARQL and produces a unified result.
 
-```
-task --> [specialists in parallel] --> each writes findings to graph
-                                  --> synthesizer queries graph --> response
-```
+**Roles:** Specialist (2-8), Synthesizer (1)
 
-See [`examples/mixture-review.json`](examples/mixture-review.json) for a code review team with correctness, security, and performance specialists. See [`examples/mixture-research.json`](examples/mixture-research.json) for a codebase research team.
+**Definition:** [`src/orchestration/patterns/mixture.json`](src/orchestration/patterns/mixture.json)
+
+See [`examples/mixture-review.json`](examples/mixture-review.json) and [`examples/mixture-research.json`](examples/mixture-research.json).
 
 ### Deliberation
 
 **When to use:** Tasks requiring iterative refinement -- coding with review, security auditing, writing.
 
-A worker produces output, then a reflector critiques it. The graph tracks critique history to prevent regression. The loop continues until the reflector approves or `max_deliberation_rounds` is reached.
+A worker produces output, then a reflector critiques it. The graph tracks critique history to prevent regression. The loop continues until the reflector approves or `max_rounds` is reached (default: 3).
 
-```
-task --> worker --> graph(work) --> reflector queries graph
-                                    |
-                            [approve] --> response
-                            [critique] --> graph(critique) --> worker reads critique --> revise...
-```
+**Roles:** Worker (1), Reflector (1)
 
-Set `max_deliberation_rounds` to control the maximum number of critique/revision cycles (default: 3).
+**Definition:** [`src/orchestration/patterns/deliberation.json`](src/orchestration/patterns/deliberation.json)
 
-See [`examples/deliberation-coder.json`](examples/deliberation-coder.json) for a coding/review loop. See [`examples/deliberation-security.json`](examples/deliberation-security.json) for a security audit with 5 rounds.
+See [`examples/deliberation-coder.json`](examples/deliberation-coder.json) and [`examples/deliberation-security.json`](examples/deliberation-security.json).
 
 ### Distillation
 
@@ -809,17 +844,25 @@ See [`examples/deliberation-coder.json`](examples/deliberation-coder.json) for a
 
 An expert creates a detailed plan with ordered steps written to the graph. A learner reads steps one at a time, executes them, and marks each done or failed. The learner can request clarification on a dedicated channel.
 
-```
-task --> expert --> graph(plan steps) --> learner reads plan --> executes --> graph(step status)
-             ^                                                                    |
-             +-------------- learner writes clarify request ----------------------+
-```
+**Roles:** Expert (1), Learner (1)
 
-See [`examples/distillation-guided.json`](examples/distillation-guided.json) for an architect/developer team.
+**Definition:** [`src/orchestration/patterns/distillation.json`](src/orchestration/patterns/distillation.json)
+
+See [`examples/distillation-guided.json`](examples/distillation-guided.json).
+
+### Custom Patterns
+
+Custom patterns let you define your own coordination structures without modifying source code:
+
+- **Create in UI:** Open the Patterns panel, click "New Pattern", and define roles, channels, auto-tools, and system prompt suffixes.
+- **Create as JSON:** Write a `.json` file following the `PatternDefinition` schema and upload it through the Patterns panel.
+- **Download/share:** Click the download button on any pattern card to export its JSON definition. Upload `.json` files to import patterns from others.
+
+Custom patterns are stored per-user and sync to LWS/Solid Pods for SSO users. They appear alongside built-in patterns in the Team Builder's pattern selector.
 
 ### Pattern-Specific Tools
 
-Each pattern auto-injects role-specific tools. These tools are simpler and more constrained than the raw `memory_write`/`memory_query` tools, making them easier for small models to use correctly.
+Each pattern auto-injects role-specific tools at session start. These are defined in the pattern definition's `auto_tools` field and are added regardless of the agent's configured tool list. Pattern tools are simpler and more constrained than the raw `memory_write`/`memory_query` tools, making them easier for small models to use correctly.
 
 | Pattern | Role | Auto-injected Tools |
 |---|---|---|
@@ -843,6 +886,32 @@ Set `small_model: true` on an agent to enable it explicitly, or let Porter auto-
   "small_model": true,
   "tools": ["read_file", "write_file", "edit_file", "bash"]
 }
+```
+
+### Example: Same Agent in Different Patterns
+
+The same agent definition works across patterns. The pattern injects the coordination behavior:
+
+```json
+// Agent library definition
+{
+  "name": "security-analyst",
+  "system_prompt": "You are a security expert. Analyze code for vulnerabilities...",
+  "tools": ["read_file", "grep", "glob", "list_dir"]
+}
+
+// In a Mixture team: agent gets finding_write + send_message auto-injected
+{ "pattern": "mixture", "agents": [
+  { "name": "security-analyst", "role": "specialist" },
+  { "name": "perf-analyst", "role": "specialist" },
+  { "name": "reporter", "role": "synthesizer" }
+]}
+
+// In a Deliberation team: same agent gets critique_write + approve auto-injected
+{ "pattern": "deliberation", "agents": [
+  { "name": "coder", "role": "worker" },
+  { "name": "security-analyst", "role": "reflector" }
+]}
 ```
 
 ### Example Configs
@@ -1030,6 +1099,12 @@ porter/
       orchestrator.ts   Session startup (provisionRepo, start())
       session_manager.ts Multi-session manager (create/stop/delete)
       registry.ts       Session file registry (~/.porter/sessions.json)
+      pattern_registry.ts Pattern definition loading, validation, custom registration
+      patterns/         Built-in pattern definitions (JSON)
+        sequential.json   Admin/worker/reviewer pipeline
+        mixture.json      Parallel specialists + synthesizer
+        deliberation.json Reflector/worker critique loop
+        distillation.json Expert plans, learner executes
       transport.ts      Display transport (LocalTransport, NullTransport)
       display.ts        Agent event -> tmux pane streaming
       metrics.ts        Session metrics collection

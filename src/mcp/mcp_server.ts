@@ -275,6 +275,7 @@ const TOOLS: McpTool[] = [
       properties: {
         session: { type: "string", description: "Session/team name." },
         model: { type: "string", description: "Default model for agents." },
+        pattern: { type: "string", description: "Collaboration pattern: sequential (default), mixture, deliberation, distillation, or a custom pattern ID." },
         agents: {
           type: "array",
           description: "Array of agent definitions: {name, role, system_prompt, tools, subscribe}.",
@@ -449,6 +450,12 @@ const RESOURCES: McpResource[] = [
     uri: "porter://mcp-servers",
     name: "MCP Servers",
     description: "Configured MCP servers with transport type and local/remote context.",
+    mimeType: "application/json",
+  },
+  {
+    uri: "porter://patterns",
+    name: "Collaboration Patterns",
+    description: "Available collaboration pattern definitions (sequential, mixture, deliberation, distillation, and custom patterns)",
     mimeType: "application/json",
   },
   {
@@ -819,8 +826,9 @@ export class PorterMcpServer {
             fields: {
               session: { description: "Team/session name (e.g. 'my-project')", required: true },
               model: { description: "Default model for agents", required: true, options: agentModels.map(m => ({ id: m.id, name: m.display_name, context: m.context_window })) },
+              pattern: { description: "Collaboration pattern (optional)", required: false, options: ["sequential", "mixture", "deliberation", "distillation"] },
             },
-            hint: "After getting the name and model, ask about the agents. A typical team has 1 admin (planner), 1-3 workers, and optionally 1 reviewer. Provide this tool with the session, model, and agents array.",
+            hint: "After getting the name and model, ask about the agents. A typical team has 1 admin (planner), 1-3 workers, and optionally 1 reviewer. Optionally ask about the collaboration pattern (defaults to sequential). Provide this tool with the session, model, pattern, and agents array.",
             example_agents: [
               { name: "architect", role: "admin", system_prompt: "You plan and coordinate work. Break tasks into subtasks and assign them to workers.", tools: ["read_file", "glob", "grep", "list_dir", "send_message", "read_messages"], subscribe: ["log"] },
               { name: "worker-1", role: "worker", system_prompt: "You implement tasks assigned to you. Write clean, tested code.", tools: ALL_TOOLS, subscribe: ["task", "control"] },
@@ -867,9 +875,10 @@ export class PorterMcpServer {
           }, null, 2), true);
         }
 
-        const teamConfig = {
+        const teamConfig: Record<string, unknown> = {
           session: args.session,
           model: args.model || agentModels[0]?.id || "ibm-granite/granite-3.3-8b-instruct",
+          ...(args.pattern ? { pattern: args.pattern } : {}),
           agents: agents.map(a => ({
             name: a.name,
             role: a.role,
@@ -1441,6 +1450,18 @@ export class PorterMcpServer {
         }
         return this.ok(id, {
           contents: [{ uri, mimeType: "application/json", text: JSON.stringify(Object.values(servers), null, 2) }],
+        });
+      }
+
+      case "porter://patterns": {
+        const { listPatterns } = await import("../orchestration/pattern_registry.ts");
+        const patterns = listPatterns();
+        return this.ok(id, {
+          contents: [{
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(patterns, null, 2),
+          }],
         });
       }
 

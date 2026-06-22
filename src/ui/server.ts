@@ -1524,6 +1524,65 @@ export async function startUiServer(
       return new Response(JSON.stringify({ ok }), { headers: { "Content-Type": "application/json" } });
     }
 
+    // --- Pattern API endpoints ---
+
+    if (pathname === "/api/patterns" && req.method === "GET") {
+      const { listPatterns: listBuiltinPatterns } = await import("../orchestration/pattern_registry.ts");
+      const builtinPatterns = listBuiltinPatterns();
+      const userId = await resolveUserId(req);
+      const userPatterns = await userStore.listPatterns(userId);
+      // Merge: built-in first, then user patterns (user patterns with same id override)
+      const merged = new Map<string, import("../orchestration/pattern_registry.ts").PatternDefinition>();
+      for (const p of builtinPatterns) merged.set(p.id, p);
+      for (const p of userPatterns) merged.set(p.id, p);
+      return new Response(JSON.stringify({ patterns: [...merged.values()] }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (pathname === "/api/patterns" && req.method === "POST") {
+      const userId = await resolveUserId(req);
+      try {
+        const body = await req.json();
+        if (!body.id || !body.name || !body.roles) {
+          return new Response(JSON.stringify({ error: "id, name, and roles are required" }), {
+            status: 400, headers: { "Content-Type": "application/json" },
+          });
+        }
+        const pattern = body as import("../orchestration/pattern_registry.ts").PatternDefinition;
+        pattern.builtin = false;
+        await userStore.savePattern(userId, pattern);
+        const { registerCustomPattern } = await import("../orchestration/pattern_registry.ts");
+        registerCustomPattern(pattern);
+        return new Response(JSON.stringify({ ok: true, pattern: pattern.id }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    const patternDeleteMatch = pathname.match(/^\/api\/patterns\/([^/]+)$/);
+    if (patternDeleteMatch && req.method === "DELETE") {
+      const patternId = decodeURIComponent(patternDeleteMatch[1]);
+      // Only allow deleting non-builtin patterns
+      const { getPattern: getBuiltinPattern, removePattern } = await import("../orchestration/pattern_registry.ts");
+      const existing = getBuiltinPattern(patternId);
+      if (existing?.builtin) {
+        return new Response(JSON.stringify({ error: "Cannot delete a built-in pattern" }), {
+          status: 403, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const userId = await resolveUserId(req);
+      const deleted = await userStore.deletePattern(userId, patternId);
+      removePattern(patternId);
+      return new Response(JSON.stringify({ ok: deleted }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // --- ActivityPub config API (always available, even when AP is not enabled) ---
 
     if (pathname === "/api/activitypub/config" && req.method === "GET") {

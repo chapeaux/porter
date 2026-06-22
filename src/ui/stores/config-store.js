@@ -390,20 +390,58 @@ export class ConfigStore extends CPXStore {
     }
   }
 
-  createDefaultAgent(isFirst = false) {
-    const role = isFirst ? 'admin' : 'worker';
+  createDefaultAgent(isFirst = false, forRole = null) {
+    let role = forRole;
+    if (!role) {
+      // Determine role from the current pattern
+      const pattern = this.state.pattern || 'sequential';
+      const agents = this.state.agents;
+      if (pattern === 'mixture') {
+        // Last agent is synthesizer; all others are specialists
+        const hasSynthesizer = agents.some(a => a.role === 'synthesizer');
+        role = hasSynthesizer ? 'specialist' : (isFirst ? 'specialist' : 'specialist');
+        // If adding the last agent and we need a synthesizer, suggest synthesizer
+        // Otherwise default to specialist
+        if (!isFirst && agents.length >= 2 && !hasSynthesizer) {
+          role = 'synthesizer';
+        } else {
+          role = 'specialist';
+        }
+      } else if (pattern === 'deliberation') {
+        const hasWorker = agents.some(a => a.role === 'worker');
+        role = hasWorker ? 'reflector' : 'worker';
+      } else if (pattern === 'distillation') {
+        const hasExpert = agents.some(a => a.role === 'expert');
+        role = hasExpert ? 'learner' : 'expert';
+      } else {
+        // sequential: first → admin, rest → worker
+        role = isFirst ? 'admin' : 'worker';
+      }
+    }
+
     const idx = this.state.agents.length;
-    const name = isFirst ? 'planner' : `worker-${idx}`;
-    const toolBits = ROLE_TOOL_DEFAULTS[role];
+    // Generate a name based on role
+    const existingWithRole = this.state.agents.filter(a => a.role === role).length;
+    let name;
+    if (role === 'admin' || role === 'synthesizer' || role === 'reflector' || role === 'expert') {
+      name = existingWithRole > 0 ? `${role}-${existingWithRole + 1}` : role;
+    } else {
+      name = `${role}-${existingWithRole + 1}`;
+    }
+
+    // Fall back to sequential defaults for roles not in ROLE_TOOL_DEFAULTS
+    const toolRole = ROLE_TOOL_DEFAULTS[role] ? role : 'worker';
+    const toolBits = ROLE_TOOL_DEFAULTS[toolRole];
     const tools = ALL_TOOLS.filter((_, i) => toolBits[i]);
+    const promptRole = ROLE_SECTION_DEFAULTS[role] ? role : toolRole;
     return {
       name,
       role,
       model: '',
-      systemPrompt: ROLE_PROMPT_DEFAULTS[role],
-      promptSections: getDefaultSections(role),
+      systemPrompt: ROLE_PROMPT_DEFAULTS[promptRole] || ROLE_PROMPT_DEFAULTS.worker,
+      promptSections: getDefaultSections(promptRole),
       tools,
-      channels: [...ROLE_CHANNEL_DEFAULTS[role]],
+      channels: [...(ROLE_CHANNEL_DEFAULTS[role] || ROLE_CHANNEL_DEFAULTS.worker)],
       maxTokens: 8192,
       reasoning: false,
       mcpTools: [],

@@ -7,6 +7,7 @@
 
 import { dirname } from "@std/path";
 import type { PorterConfig } from "../core/config.ts";
+import type { PatternDefinition } from "../orchestration/pattern_registry.ts";
 
 export interface SavedTeam {
   name: string;
@@ -52,6 +53,16 @@ function agentsDir(userId: string): string {
 function agentPath(userId: string, name: string): string {
   const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
   return `${agentsDir(userId)}/${safe}.json`;
+}
+
+function patternsDir(userId: string): string {
+  const home = Deno.env.get("HOME") ?? Deno.cwd();
+  return `${home}/.porter/users/${userId}/patterns`;
+}
+
+function patternPath(userId: string, id: string): string {
+  const safe = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `${patternsDir(userId)}/${safe}.json`;
 }
 
 function snapshotsDir(userId: string): string {
@@ -144,6 +155,41 @@ export class UserStore {
 
   async deleteAgent(userId: string, name: string): Promise<boolean> {
     try { await Deno.remove(agentPath(userId, name)); return true; }
+    catch { return false; }
+  }
+
+  async listPatterns(userId: string): Promise<PatternDefinition[]> {
+    const dir = patternsDir(userId);
+    const patterns: PatternDefinition[] = [];
+    try {
+      for await (const entry of Deno.readDir(dir)) {
+        if (entry.isFile && entry.name.endsWith(".json")) {
+          try {
+            const text = await Deno.readTextFile(`${dir}/${entry.name}`);
+            patterns.push(JSON.parse(text) as PatternDefinition);
+          } catch { /* skip corrupt */ }
+        }
+      }
+    } catch { /* dir doesn't exist */ }
+    return patterns.sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  async getPattern(userId: string, id: string): Promise<PatternDefinition | null> {
+    try {
+      const text = await Deno.readTextFile(patternPath(userId, id));
+      return JSON.parse(text) as PatternDefinition;
+    } catch { return null; }
+  }
+
+  async savePattern(userId: string, pattern: PatternDefinition): Promise<void> {
+    const path = patternPath(userId, pattern.id);
+    const dir = dirname(path);
+    await Deno.mkdir(dir, { recursive: true });
+    await Deno.writeTextFile(path, JSON.stringify(pattern, null, 2));
+  }
+
+  async deletePattern(userId: string, id: string): Promise<boolean> {
+    try { await Deno.remove(patternPath(userId, id)); return true; }
     catch { return false; }
   }
 

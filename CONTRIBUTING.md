@@ -32,11 +32,14 @@ This produces a `porter` executable in the project root.
 
 ## Adding a Collaboration Pattern
 
-1. Add the pattern name to `CollaborationPattern` in `src/core/config.ts`
-2. Create pattern-specific tools in `src/tools/` (e.g., `finding_write.ts`, `findings_query.ts`)
-3. Add channel wiring and system prompt logic in `src/orchestration/patterns.ts`
+1. Create a JSON definition file following the `PatternDefinition` schema
+2. Place it in `src/orchestration/patterns/` for built-in patterns
+3. Add the filename to the builtins array in `src/orchestration/pattern_registry.ts`
 4. Add an example config in `examples/`
-5. Update the pattern tools table in `README.md`
+
+Custom patterns can also be created via the UI (Patterns panel) or by uploading a JSON file -- no code changes needed.
+
+See `docs/collaboration-patterns.md` for the full pattern definition format.
 
 ## Code Style
 

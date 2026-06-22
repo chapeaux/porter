@@ -9,6 +9,7 @@ import { openTeamBuilder } from '../dialogs/team-builder.js';
 import { showSessionLauncher } from '../dialogs/session-launcher.js';
 import { showMetricsDetail } from './metrics.js';
 import { showFederationDialog } from '../dialogs/federation-editor.js';
+import { showPatternsDialog } from '../dialogs/pattern-manager.js';
 
 export function setupFlipboard() {
   // Header gear toggle
@@ -26,6 +27,7 @@ export function setupFlipboard() {
   });
   document.getElementById('fb-agents')?.addEventListener('click', () => showAgentLibrary());
   document.getElementById('fb-teams')?.addEventListener('click', () => openTeamBuilder());
+  document.getElementById('fb-patterns')?.addEventListener('click', () => showPatternsDialog());
   document.getElementById('fb-federation')?.addEventListener('click', () => showFederationDialog());
   document.getElementById('fb-session')?.addEventListener('click', () => showSessionLauncher());
 
@@ -43,6 +45,7 @@ export function setupFlipboard() {
         }
         case 'agents': showAgentLibrary(); break;
         case 'teams': openTeamBuilder(); break;
+        case 'patterns': showPatternsDialog(); break;
         case 'federation': showFederationDialog(); break;
         case 'session': showSessionLauncher(); break;
       }
@@ -74,8 +77,34 @@ export function updateSetupBar() {
 
   updateTeamCount();
   updateAgentCount();
+  updatePatternCount();
   updateFederationStatus();
   document.querySelector('flipboard-bar')?._updateWidths?.();
+}
+
+export function updatePatternCount() {
+  const cell = document.getElementById('fb-patterns');
+  const val = document.getElementById('fb-patterns-val');
+  if (!cell || !val) return;
+  fetch('/api/patterns')
+    .then(r => r.ok ? r.json() : { patterns: [] })
+    .then(data => {
+      const count = data.patterns?.length ?? 0;
+      const builtinCount = (data.patterns || []).filter(p => p.builtin !== false).length;
+      const customCount = count - builtinCount;
+      if (count === 0) {
+        val.textContent = 'NONE';
+        cell.setAttribute('status', 'warn');
+      } else {
+        val.textContent = customCount > 0 ? `${builtinCount}+${customCount}` : `${builtinCount} BUILT-IN`;
+        cell.setAttribute('status', 'ok');
+      }
+      document.querySelector('flipboard-bar')?._updateWidths?.();
+    })
+    .catch(() => {
+      val.textContent = '--';
+      cell.removeAttribute('status');
+    });
 }
 
 export function updateFederationStatus() {

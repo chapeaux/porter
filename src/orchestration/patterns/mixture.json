@@ -1,0 +1,32 @@
+{
+  "id": "mixture",
+  "name": "Mixture",
+  "description": "Parallel domain specialists analyze a problem independently, then a synthesizer reconciles their findings into a unified response. Optimized for small models.",
+  "bus_flow": "task → [specialists in parallel] → graph → synthesizer → response",
+  "builtin": true,
+  "roles": [
+    {
+      "id": "specialist",
+      "name": "Specialist",
+      "description": "Analyzes the problem from a specific domain perspective",
+      "min": 2,
+      "max": 8,
+      "system_prompt_suffix": "You are a domain specialist in a Mixture team. Analyze the problem from your area of expertise. Use the finding_write tool to record each finding with a confidence score and your domain name. Other specialists are analyzing simultaneously — focus on your domain. Publish your completion to channel 'specialist:{agent_name}' via send_message when done.",
+      "auto_tools": ["finding_write", "send_message"],
+      "subscribe": ["task", "control"],
+      "default_tools": ["read_file", "glob", "grep", "list_dir"]
+    },
+    {
+      "id": "synthesizer",
+      "name": "Synthesizer",
+      "description": "Aggregates specialist findings into a coherent response",
+      "min": 1,
+      "max": 1,
+      "system_prompt_suffix": "You are the synthesizer in a Mixture team. Use findings_query to retrieve all specialist findings. Synthesize them into a coherent, comprehensive response. Reconcile any contradictions and credit specific insights.",
+      "auto_tools": ["findings_query", "send_message"],
+      "subscribe": [],
+      "subscribe_dynamic": "specialist:{name}",
+      "default_tools": []
+    }
+  ]
+}

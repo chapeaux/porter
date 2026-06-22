@@ -1,0 +1,42 @@
+{
+  "id": "sequential",
+  "name": "Sequential",
+  "description": "Traditional admin/worker/reviewer pipeline. An admin plans and coordinates, workers execute tasks, and reviewers verify the output.",
+  "bus_flow": "task → admin → task → workers → log → reviewer → response",
+  "builtin": true,
+  "roles": [
+    {
+      "id": "admin",
+      "name": "Admin",
+      "description": "Plans tasks, coordinates work, monitors progress",
+      "min": 0,
+      "max": 1,
+      "system_prompt_suffix": "You are the admin agent. Break down tasks, assign work to other agents via the 'task' channel, and monitor progress on the 'log' channel.",
+      "auto_tools": ["send_message", "read_messages"],
+      "subscribe": ["log"],
+      "default_tools": ["read_file", "glob", "grep", "list_dir", "memory_write", "memory_query"]
+    },
+    {
+      "id": "worker",
+      "name": "Worker",
+      "description": "Executes tasks using tools, reports results",
+      "min": 1,
+      "max": 8,
+      "system_prompt_suffix": "You are a worker agent. Execute tasks received on the 'task' channel. Report progress and results to the 'log' channel via send_message.",
+      "auto_tools": ["send_message", "read_messages"],
+      "subscribe": ["task", "control"],
+      "default_tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "list_dir", "git"]
+    },
+    {
+      "id": "reviewer",
+      "name": "Reviewer",
+      "description": "Reviews work for correctness and quality",
+      "min": 0,
+      "max": 2,
+      "system_prompt_suffix": "You are a reviewer agent. Review work submitted to the 'review' channel. Check for correctness, completeness, and quality.",
+      "auto_tools": ["send_message", "read_messages"],
+      "subscribe": ["review"],
+      "default_tools": ["read_file", "bash", "glob", "grep", "list_dir"]
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import { showAgentLibrary } from '../dialogs/agent-library.js';
 import { openTeamBuilder } from '../dialogs/team-builder.js';
 import { showSessionLauncher } from '../dialogs/session-launcher.js';
 import { showFederationDialog } from '../dialogs/federation-editor.js';
+import { showPatternsDialog } from '../dialogs/pattern-manager.js';
 import { checkAuthState, _authChecked, oidcAvailable } from './auth-state.js';
 
 // TODO: setupFilters, setupCompose, renderAgentDeck, renderTimeline are in
@@ -93,6 +94,7 @@ const STEP_DEFS = [
   { id: 'mcp', optional: true },
   { id: 'agents', optional: false },
   { id: 'team', optional: false },
+  { id: 'patterns', optional: true },
   { id: 'federation', optional: true },
   { id: 'launch', optional: false },
 ];
@@ -155,6 +157,7 @@ function _handleStepAction(action) {
       openTeamBuilder(hasTeams ? 0 : 1);
       break;
     }
+    case 'patterns': showPatternsDialog(); break;
     case 'federation': showFederationDialog(); break;
     case 'launch': showSessionLauncher(); break;
   }
@@ -209,17 +212,26 @@ export async function renderEmptyState() {
   // Fetch async data without blocking the UI
   let hasTeams = false;
   let agentCount = 0;
+  let patternCount = 0;
   try {
-    const [teamsResp, agentsResp] = await Promise.all([
+    const [teamsResp, agentsResp, patternsResp] = await Promise.all([
       fetch('/api/teams').catch(() => null),
       fetch('/api/agents').catch(() => null),
+      fetch('/api/patterns').catch(() => null),
     ]);
     if (teamsResp?.ok) { const d = await teamsResp.json(); hasTeams = (d.teams?.length ?? 0) > 0; }
     if (agentsResp?.ok) { const d = await agentsResp.json(); agentCount = d.agents?.length ?? 0; }
+    if (patternsResp?.ok) { const d = await patternsResp.json(); patternCount = d.patterns?.length ?? 0; }
   } catch { /* ignore */ }
 
   _updateStep('agents', agentCount > 0, agentCount > 0 ? `${agentCount} agent${agentCount > 1 ? 's' : ''} saved` : 'Create an agent', agentCount > 0 ? 'Manage' : 'Create');
   _updateStep('team', hasTeams, hasTeams ? 'Teams available' : 'Create a team', hasTeams ? 'Manage' : 'Create');
+
+  const hasPatterns = patternCount > 0;
+  _updateStep('patterns', hasPatterns,
+    hasPatterns ? `${patternCount} pattern${patternCount > 1 ? 's' : ''} available` : 'Patterns (optional)',
+    hasPatterns ? 'Manage' : 'View',
+    hasTeams);
 
   let hasFederation = false;
   if (hasTeams) {

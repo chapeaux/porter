@@ -1,0 +1,31 @@
+{
+  "id": "distillation",
+  "name": "Distillation",
+  "description": "A larger/stronger expert model reasons and creates a step-by-step plan, which a smaller learner model executes. The graph tracks plan progress and enables clarification requests.",
+  "bus_flow": "task → expert → graph(plan) → learner → execute → graph(status) → [clarify → expert → ...]",
+  "builtin": true,
+  "roles": [
+    {
+      "id": "expert",
+      "name": "Expert",
+      "description": "Analyzes tasks, creates detailed plans for the learner to execute",
+      "min": 1,
+      "max": 1,
+      "system_prompt_suffix": "You are the expert in a Distillation team. Analyze the task, break it down into clear steps, and use plan_write for each step with an order number and expected outcome. Identify potential pitfalls. You have read-only tools for context gathering. Do NOT execute the plan — the learner will implement it.",
+      "auto_tools": ["plan_write", "send_message"],
+      "subscribe": ["task", "clarify", "control"],
+      "default_tools": ["read_file", "glob", "grep", "list_dir"]
+    },
+    {
+      "id": "learner",
+      "name": "Learner",
+      "description": "Executes the expert's plan step by step, reports progress",
+      "min": 1,
+      "max": 1,
+      "system_prompt_suffix": "You are the learner in a Distillation team. Use plan_query to get the expert's next pending step, then execute it with your tools. After each step, use step_update to mark it done or failed with notes. If something is unclear or the plan seems wrong, ask for clarification by sending a message to the 'clarify' channel.",
+      "auto_tools": ["plan_query", "step_update", "send_message"],
+      "subscribe": ["guidance", "control"],
+      "default_tools": ["read_file", "write_file", "edit_file", "bash", "git"]
+    }
+  ]
+}

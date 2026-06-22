@@ -1890,3 +1890,32 @@ label.inline-check input[type="checkbox"] {
   border-radius: 4px;
   font-size: 0.8rem;
 }
+
+/* Pattern layout — role sections with flow arrows */
+.pattern-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.pattern-role-section {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: var(--bg-card);
+}
+.pattern-role-header {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+  color: var(--accent-gold);
+}
+.pattern-flow-arrow {
+  text-align: center;
+  font-size: 1.2rem;
+  color: var(--text-dim);
+  line-height: 1;
+  padding: 0.15rem 0;
+}
+.pattern-validation {
+  font-size: 0.85rem;
+}

@@ -1,0 +1,32 @@
+{
+  "id": "deliberation",
+  "name": "Deliberation",
+  "description": "A reflector iteratively critiques a worker's output, triggering corrections until the work is approved or the round limit is reached. Graph-tracked critiques prevent regression.",
+  "bus_flow": "task → worker → deliberation → reflector → [approve or revision → worker → ...]",
+  "builtin": true,
+  "max_rounds": 3,
+  "roles": [
+    {
+      "id": "worker",
+      "name": "Worker",
+      "description": "Executes tasks, revises based on reflector feedback",
+      "min": 1,
+      "max": 1,
+      "system_prompt_suffix": "You are the worker in a Deliberation team. Complete the task using your tools. When done, publish a summary of your work to the 'deliberation' channel via send_message. If you receive critique on the 'revision' channel, use critiques_query to see specific issues and address each one. You have {max_rounds} deliberation rounds.",
+      "auto_tools": ["critiques_query", "send_message"],
+      "subscribe": ["task", "revision", "control"],
+      "default_tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "list_dir", "git"]
+    },
+    {
+      "id": "reflector",
+      "name": "Reflector",
+      "description": "Reviews worker output, provides critique or approves",
+      "min": 1,
+      "max": 1,
+      "system_prompt_suffix": "You are the reflector in a Deliberation team. Review the worker's output on the 'deliberation' channel. Check for: correctness, completeness, edge cases, security issues. Use critique_write for each issue found — be specific and actionable. If the work is acceptable, use the approve tool to end the deliberation loop.",
+      "auto_tools": ["critique_write", "approve", "send_message"],
+      "subscribe": ["deliberation", "control"],
+      "default_tools": ["read_file", "glob", "grep", "list_dir"]
+    }
+  ]
+}

@@ -45,6 +45,11 @@
         <span slot="label">TEAMS</span>
         <span slot="value" id="fb-teams-val">--</span>
       </flipboard-cell>
+      <flipboard-cell id="fb-patterns" clickable>
+        <span slot="icon" class="fb-gear" data-action="patterns">&#9881;</span>
+        <span slot="label">PATTERNS</span>
+        <span slot="value" id="fb-patterns-val">--</span>
+      </flipboard-cell>
       <flipboard-cell id="fb-federation" clickable>
         <span slot="icon" class="fb-gear" data-action="federation">&#9881;</span>
         <span slot="label">FEDERATION</span>
@@ -156,6 +161,15 @@
     <div id="model-dialog-body" style="max-height:70vh;overflow-y:auto;padding:1rem"></div>
     <div data-dialog-footer>
       <button id="model-dialog-close" class="team-btn secondary">Close</button>
+    </div>
+  </template>
+
+  <!-- Pattern Manager -->
+  <template id="tpl-pattern-manager">
+    <div id="pattern-manager-body" style="max-height:70vh;overflow-y:auto;padding:1rem"></div>
+    <div data-dialog-footer>
+      <button id="pattern-manager-close" class="team-btn secondary">Close</button>
+      <button id="pattern-manager-upload" class="team-btn primary">Upload Pattern</button>
     </div>
   </template>
 

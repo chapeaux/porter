@@ -1,391 +1,223 @@
-# RecursiveMAS-inspired Collaboration Patterns for Porter
+# Collaboration Patterns
 
-## Context
+## Agent Identity vs Pattern Behavior
 
-Porter's current team model uses admin→worker→reviewer roles with a flat message bus. This works for large models but underserves small models (3-8B) which need structured collaboration patterns to compensate for individual weaknesses. RecursiveMAS demonstrates that architecture matters: Mixture (parallel specialists + synthesizer), Deliberation (reflector ↔ tool-caller loops), and Distillation (expert guides learner) patterns yield significant quality improvements even at the text level.
+Porter separates **agent identity** from **pattern behavior**. An agent defines domain expertise: its name, system prompt, model, and tool permissions. A pattern defines coordination: how agents communicate, what channels they subscribe to, and what specialized tools they receive at runtime.
 
-This effort adds three things:
-1. **Collaboration patterns** — Mixture, Deliberation, Distillation as first-class team configurations
-2. **Graph-backed coordination** — agents share structured state through the RDF graph instead of parsing prose
-3. **Tool-calling inference engine** — a smarter layer that helps small models select and invoke tools correctly
+This separation means the same agent can work in any pattern. A "security-analyst" agent configured with `read_file`, `grep`, and `glob` can serve as a specialist in a Mixture team, a reflector in a Deliberation team, or a worker in a Sequential team. The pattern injects the coordination behavior -- channels, auto-tools, and system prompt suffixes -- when the session starts.
 
----
-
-## 1. Collaboration Patterns
-
-### Mixture Pattern
-
-Multiple specialist agents work a problem **in parallel**, each from their domain perspective. A synthesizer agent aggregates via SPARQL queries on the shared graph.
-
-**Config:**
-```json
-{
-  "pattern": "mixture",
-  "agents": [
-    { "name": "code-expert", "role": "specialist", "model": "qwen-coder-3b" },
-    { "name": "arch-expert", "role": "specialist", "model": "granite-3b" },
-    { "name": "security-expert", "role": "specialist", "model": "granite-3b" },
-    { "name": "synthesizer", "role": "synthesizer", "model": "granite-8b" }
-  ]
-}
-```
-
-**Bus flow:**
-```
-task → [specialists in parallel] → each writes findings to graph
-                                 → synthesizer queries graph → response
-```
-
-### Deliberation Pattern
-
-A reflector iteratively critiques a worker's output. The graph tracks critique history to prevent regression.
-
-**Config:**
-```json
-{
-  "pattern": "deliberation",
-  "max_deliberation_rounds": 3,
-  "agents": [
-    { "name": "worker", "role": "worker", "tools": ["read_file", "write_file", "bash", ...] },
-    { "name": "reflector", "role": "reflector" }
-  ]
-}
-```
-
-**Bus flow:**
-```
-task → worker → graph(work) → reflector queries graph
-                                ↓
-                        [approve] → response
-                        [critique] → graph(critique) → worker reads critique → revise...
-```
-
-### Distillation Pattern
-
-A larger model reasons and plans; a smaller model executes. The graph tracks plan steps and completion status.
-
-**Config:**
-```json
-{
-  "pattern": "distillation",
-  "agents": [
-    { "name": "expert", "role": "expert", "model": "granite-8b", "tools": ["read_file", "glob", "grep"] },
-    { "name": "learner", "role": "learner", "model": "granite-3b", "tools": ["read_file", "write_file", "bash"] }
-  ]
-}
-```
-
-**Bus flow:**
-```
-task → expert → graph(plan steps) → learner reads plan → executes → graph(step status)
-                    ↑                                                      ↓
-                    └──────────── learner writes clarify request ──────────┘
-```
+Agents are portable. Patterns are pluggable. You build your agent library once and compose teams by placing agents into pattern roles.
 
 ---
 
-## 2. Graph-Backed Coordination
+## Pattern Definition Format
 
-Instead of agents parsing each other's prose from bus messages, they read and write structured facts through the graph. This is the key enabler for small models -- structured data is far more reliable than free-text parsing.
+Patterns are defined as JSON files conforming to the `PatternDefinition` schema (see `src/orchestration/pattern_registry.ts`). Each definition specifies the coordination structure: what roles exist, how they communicate, and what tools are injected.
 
-### Pattern-specific graph vocabularies
+### Full Schema
 
-Add to `src/graph/vocabulary.ts` in the PORTER namespace:
-
-```ts
-// Collaboration pattern classes
-Finding: `${NS}Finding`,          // Specialist observation (Mixture)
-Critique: `${NS}Critique`,        // Reflector feedback (Deliberation)
-PlanStep: `${NS}PlanStep`,        // Expert plan step (Distillation)
-StepStatus: `${NS}StepStatus`,    // Learner step completion (Distillation)
-
-// Properties
-domain: `${NS}domain`,            // Specialist's domain area
-confidence: `${NS}confidence`,    // Finding confidence (0-1)
-round: `${NS}round`,              // Deliberation round number
-approved: `${NS}approved`,        // Reflector approval flag
-stepOrder: `${NS}stepOrder`,      // Plan step sequence
-stepState: `${NS}stepState`,      // pending/active/done/failed
-addresses: `${NS}addresses`,      // Links critique to the finding it addresses
+```json
+{
+  "id": "string",
+  "name": "string",
+  "description": "string",
+  "bus_flow": "string",
+  "builtin": true | false,
+  "max_rounds": 3,
+  "roles": [
+    {
+      "id": "string",
+      "name": "string",
+      "description": "string",
+      "min": 1,
+      "max": 1,
+      "system_prompt_suffix": "string",
+      "auto_tools": ["string"],
+      "subscribe": ["string"],
+      "subscribe_dynamic": "string",
+      "default_tools": ["string"]
+    }
+  ]
+}
 ```
 
-### Pattern-specific tools
+### Top-Level Fields
 
-New tools injected per role (like AP tools are auto-injected for AP sessions):
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | `string` | yes | Unique identifier used in config files (e.g., `"mixture"`, `"deliberation"`) |
+| `name` | `string` | yes | Human-readable display name |
+| `description` | `string` | yes | What this pattern does and when to use it |
+| `bus_flow` | `string` | yes | ASCII diagram of the message flow between roles |
+| `builtin` | `boolean` | yes | Whether this is a built-in pattern (set automatically by the registry) |
+| `roles` | `PatternRole[]` | yes | Role definitions that agents are placed into |
+| `max_rounds` | `number` | no | Maximum iteration rounds (used by Deliberation; default: 3) |
 
-**Mixture specialists get `finding_write`:**
-```ts
+### PatternRole Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | `string` | yes | Role identifier matching the agent's `role` field in config |
+| `name` | `string` | yes | Human-readable role name shown in the UI |
+| `description` | `string` | yes | What this role does within the pattern |
+| `min` | `number` | yes | Minimum number of agents required for this role |
+| `max` | `number` | yes | Maximum number of agents allowed for this role |
+| `system_prompt_suffix` | `string` | yes | Text appended to the agent's system prompt at session start, providing pattern-specific instructions |
+| `auto_tools` | `string[]` | yes | Tools automatically injected for this role (e.g., `finding_write` for specialists). These are added regardless of the agent's configured tool list |
+| `subscribe` | `string[]` | yes | Bus channels this role subscribes to (e.g., `["task", "control"]`) |
+| `subscribe_dynamic` | `string` | no | Dynamic subscription template. Uses `{name}` placeholder to create per-agent channels (e.g., `"specialist:{name}"` subscribes the synthesizer to each specialist's output channel) |
+| `default_tools` | `string[]` | yes | Default tools given to agents in this role if the agent config does not specify its own `tools` array |
+
+### Complete Example
+
+```json
 {
-  name: "finding_write",
-  description: "Record a finding from your domain analysis.",
-  input_schema: {
-    properties: {
-      about: { type: "string", description: "What the finding is about" },
-      finding: { type: "string", description: "Your analysis" },
-      confidence: { type: "number", description: "0.0 to 1.0" },
-      domain: { type: "string", description: "Your area of expertise" },
+  "id": "mixture",
+  "name": "Mixture",
+  "description": "Parallel domain specialists analyze a problem independently, then a synthesizer reconciles their findings into a unified response.",
+  "bus_flow": "task -> [specialists in parallel] -> graph -> synthesizer -> response",
+  "builtin": true,
+  "roles": [
+    {
+      "id": "specialist",
+      "name": "Specialist",
+      "description": "Analyzes the problem from a specific domain perspective",
+      "min": 2,
+      "max": 8,
+      "system_prompt_suffix": "You are a domain specialist in a Mixture team. Analyze the problem from your area of expertise. Use the finding_write tool to record each finding with a confidence score and your domain name.",
+      "auto_tools": ["finding_write", "send_message"],
+      "subscribe": ["task", "control"],
+      "default_tools": ["read_file", "glob", "grep", "list_dir"]
     },
-    required: ["about", "finding"],
-  },
+    {
+      "id": "synthesizer",
+      "name": "Synthesizer",
+      "description": "Aggregates specialist findings into a coherent response",
+      "min": 1,
+      "max": 1,
+      "system_prompt_suffix": "You are the synthesizer in a Mixture team. Use findings_query to retrieve all specialist findings. Synthesize them into a coherent, comprehensive response.",
+      "auto_tools": ["findings_query", "send_message"],
+      "subscribe": [],
+      "subscribe_dynamic": "specialist:{name}",
+      "default_tools": []
+    }
+  ]
 }
 ```
-
-**Mixture synthesizer gets `findings_query`:**
-```ts
-{
-  name: "findings_query",
-  description: "Query all specialist findings. Returns structured results.",
-  input_schema: {
-    properties: {
-      domain: { type: "string", description: "Filter by domain (optional)" },
-      min_confidence: { type: "number", description: "Minimum confidence threshold (optional)" },
-    },
-  },
-}
-```
-
-**Deliberation reflector gets `critique_write` + `approve`:**
-- `critique_write`: Record specific feedback about the worker's output
-- `approve`: Mark the current work as accepted (ends deliberation)
-
-**Deliberation worker gets `critiques_query`:**
-- Returns unaddressed critiques from the current round
-
-**Distillation expert gets `plan_write`:**
-- Record a plan step with order, description, and expected outcome
-
-**Distillation learner gets `plan_query` + `step_update`:**
-- `plan_query`: Get the next pending step from the expert's plan
-- `step_update`: Mark a step as done/failed with notes
-
-These tools are simpler and more constrained than the raw `memory_write`/`memory_query` tools -- small models handle them better because each tool does one specific thing with clear parameters.
-
-### Implementation
-
-Create `src/orchestration/patterns.ts`:
-- `wirePattern(pattern, agents, graphStore)` -- sets up channels, injects tools and system prompts
-- `getPatternTools(role, pattern)` -- returns the role-specific graph tools
-- `getPatternSystemPrompt(role, pattern, agents)` -- returns the role-specific system prompt suffix
-- Pattern tools write/read RDF triples via `GraphStore` (already exists in `src/graph/store.ts`)
 
 ---
 
-## 3. Tool-Calling Inference Engine
+## Built-in Patterns
 
-Porter already has a 7-stage text parser (`tool_shim.ts`) and auto-repair (`shapes.ts`). But small models fail at a higher level: they don't know *which* tool to use, they hallucinate parameters, or they generate tool calls when they should just respond with text. The inference engine adds a smarter decision layer.
+Porter ships with four built-in patterns. Their definitions are in `src/orchestration/patterns/`.
 
-### Tool Intent Classifier
+### Sequential
 
-Before parsing tool calls from model output, classify the model's *intent*:
+Traditional admin/worker/reviewer pipeline. An admin plans and coordinates, workers execute tasks, and reviewers verify the output. This is the default pattern and works well with large models.
 
-```ts
-interface ToolIntent {
-  wantsToolCall: boolean;       // Does the output indicate tool-use intent?
-  likelyTool: string | null;    // Best-guess tool name
-  confidence: number;           // 0-1
-  suggestedParams: Record<string, unknown> | null;
-}
-```
+**Roles:** Admin (0-1), Worker (1-8), Reviewer (0-2)
 
-**How it works:**
-1. **Keyword/pattern scan** -- look for intent signals in the model's text output before trying to parse JSON:
-   - "let me read the file" / "I'll check" → `read_file`
-   - "I need to run" / "let me execute" → `bash`
-   - "I'll write" / "let me create" → `write_file`
-   - "searching for" / "looking for" → `grep` or `glob`
-   - Action verbs + nouns matched against tool descriptions
+**Bus flow:** `task -> admin -> task -> workers -> log -> reviewer -> response`
 
-2. **Context-aware tool suggestion** -- based on the conversation state and what tools have been used recently:
-   - After `read_file`, the model likely wants `edit_file` or `write_file` next
-   - After `grep` with results, likely wants `read_file` on a found file
-   - After `bash` error, likely wants `bash` retry or `read_file` to check
-   - Graph state: if the current plan step says "edit the config file", suggest `edit_file`
+**Definition:** `src/orchestration/patterns/sequential.json`
 
-3. **Parameter extraction from natural language** -- if the model writes "let me read src/main.ts", extract `{ path: "src/main.ts" }` even without JSON formatting.
+### Mixture
 
-### Simplified Tool Schemas for Small Models
+Parallel domain specialists analyze a problem independently, then a synthesizer reconciles their findings into a unified response. Each specialist writes structured findings to the shared graph. The synthesizer queries all findings via SPARQL and produces a unified result.
 
-When a model is flagged as small (via config or auto-detected from model name/size), reduce cognitive load:
+**When to use:** Multiple perspectives on the same problem -- code review, research, analysis.
 
-**Tool reduction:** Only show the 4-5 most relevant tools based on:
-- The current pattern role (specialist doesn't need `write_file`)
-- The current task context (graph state indicates which step we're on)
-- Recent tool usage (don't re-show tools that just succeeded)
+**Roles:** Specialist (2-8), Synthesizer (1)
 
-**Schema simplification:** For small models, use shorter descriptions and fewer optional parameters:
-```ts
-// Full schema (for large models):
-{ name: "edit_file", description: "Replace exact string in file...", 
-  input_schema: { properties: { path, old_string, new_string, replace_all } } }
+**Bus flow:** `task -> [specialists in parallel] -> graph -> synthesizer -> response`
 
-// Simplified (for small models):
-{ name: "edit_file", description: "Edit a file. Give the exact text to find and replace.",
-  input_schema: { properties: { path, old_string, new_string } } }
-```
+**Definition:** `src/orchestration/patterns/mixture.json`
 
-### Recovery loop
+### Deliberation
 
-When a tool call fails to parse or validate, instead of immediately returning an error to the model (which small models often can't recover from), the engine:
+A reflector iteratively critiques a worker's output, triggering corrections until the work is approved or the round limit is reached. The graph tracks critique history to prevent regression.
 
-1. Infers intent from the surrounding text
-2. If confident (>0.8), auto-constructs the tool call and executes
-3. If uncertain, sends a structured nudge with the exact JSON format to use:
-   ```
-   I couldn't parse your tool call. To read a file, use exactly:
-   {"tool": "read_file", "input": {"path": "the/file/path.ts"}}
-   ```
-4. Tracks which tools the model struggles with and pre-fills examples in future prompts
+**When to use:** Tasks requiring iterative refinement -- coding with review, security auditing, writing.
 
-### Implementation
+**Roles:** Worker (1), Reflector (1)
 
-Create `src/tools/inference_engine.ts`:
-- `classifyIntent(text, toolRegistry, graphState?)` → `ToolIntent`
-- `extractParamsFromText(text, toolName, schema)` → params or null
-- `simplifySchemas(tools, modelSize, role, context)` → reduced tool list
-- `buildRecoveryNudge(failedText, likelyTool, schema)` → structured error message
-- `getContextualToolOrder(recentTools, graphState, patternRole)` → prioritized tool list
+**Bus flow:** `task -> worker -> deliberation -> reflector -> [approve or revision -> worker -> ...]`
 
-Wire into the agent loop in `src/runtime/agent.ts`:
-- After `parseToolCalls()` returns empty but text looks like tool intent → try `classifyIntent()`
-- If classification confident → auto-construct and execute
-- If not → use `buildRecoveryNudge()` instead of generic error
-- Before each API call → use `simplifySchemas()` if model is small
+**Definition:** `src/orchestration/patterns/deliberation.json`
 
-**Model size detection:** Check `ModelConfig.context_window` or model name patterns (names containing "1b", "3b", "1.5b", "7b" → small; "70b", "claude", "gpt-4" → large). Add `small_model?: boolean` to `AgentConfig` for explicit override.
+### Distillation
+
+A larger/stronger expert model reasons and creates a step-by-step plan, which a smaller learner model executes. The graph tracks plan progress and enables clarification requests.
+
+**When to use:** A larger model should reason and plan while a smaller model executes -- guided development, mentored coding.
+
+**Roles:** Expert (1), Learner (1)
+
+**Bus flow:** `task -> expert -> graph(plan) -> learner -> execute -> graph(status) -> [clarify -> expert -> ...]`
+
+**Definition:** `src/orchestration/patterns/distillation.json`
 
 ---
 
-## Files to Create
+## Custom Patterns
 
-| File | Purpose |
-|------|---------|
-| `src/orchestration/patterns.ts` | Pattern wiring: channel setup, tool injection, system prompt generation, round tracking |
-| `src/tools/inference_engine.ts` | Tool intent classification, parameter extraction, schema simplification, recovery nudges |
-| `src/tools/finding_write.ts` | Mixture specialist: write finding to graph |
-| `src/tools/findings_query.ts` | Mixture synthesizer: query findings from graph |
-| `src/tools/critique_write.ts` | Deliberation reflector: write critique to graph |
-| `src/tools/critiques_query.ts` | Deliberation worker: query unaddressed critiques |
-| `src/tools/approve.ts` | Deliberation reflector: approve work (end loop) |
-| `src/tools/plan_write.ts` | Distillation expert: write plan step to graph |
-| `src/tools/plan_query.ts` | Distillation learner: get next pending step |
-| `src/tools/step_update.ts` | Distillation learner: mark step done/failed |
+Custom patterns let you define your own coordination structures without modifying Porter's source code.
 
-## Files to Modify
+### Creating a Custom Pattern
 
-| File | Changes |
-|------|---------|
-| `src/core/config.ts` | Add `pattern`, extend `AgentRole`, add `small_model?` to `AgentConfig` |
-| `src/graph/vocabulary.ts` | Add Finding, Critique, PlanStep, StepStatus classes and properties |
-| `src/orchestration/orchestrator.ts` | Call `wirePattern()` during `start()` |
-| `src/runtime/agent.ts` | Integrate inference engine into tool call pipeline |
-| `src/tools/mod.ts` | Add pattern tool loading |
-| `src/providers/tool_shim.ts` | Use simplified schemas for small models |
-| `src/cli/init.ts` | Pattern selection in interactive init |
-| `src/activitypub/actor.ts` | Pattern-aware welcome messages |
-| `src/activitypub/session_bridge.ts` | Pattern-aware `#who` output |
-| `porter.example.json` | Examples of each pattern |
-| `README.md` | Document patterns + inference engine |
+1. **Via the UI:** Open the Patterns panel in the dashboard. Click "New Pattern" and fill in the definition fields. The visual editor provides role slots where you set min/max, auto-tools, channels, and system prompt suffixes.
 
-## Documentation
+2. **Via JSON:** Write a JSON file following the `PatternDefinition` schema above. Upload it through the Patterns panel or register it via the API.
 
-### README.md
+### Storage
 
-Add a new "Collaboration Patterns" section (before or alongside the existing Configuration Reference). Cover:
+Custom patterns are stored per-user. For SSO/Solid users, they sync to the LWS Pod alongside teams, agents, and models. For local users, they persist in the user store.
 
-- **Overview** -- why patterns matter for small models, the three patterns with when to use each
-- **Mixture** -- config example, how specialists write findings to graph, synthesizer queries
-- **Deliberation** -- config example, reflector↔worker loop, max rounds, graph-tracked critiques
-- **Distillation** -- config example, expert plans in graph, learner executes and reports status
-- **Graph coordination** -- how agents share structured state, pattern-specific tools table
-- **Tool inference engine** -- what it does for small models (intent classification, schema simplification, recovery nudges), `small_model` config flag
-- **Combining with AP federation** -- how fediverse users interact with patterned teams, `#who` shows pattern roles
+### Sharing Patterns
 
-### Example configs
+Patterns are portable JSON files. To share:
 
-Create example config files in `examples/` directory:
+- **Download:** Click the download button on any pattern card in the Patterns panel. This exports the full JSON definition.
+- **Upload:** Click "Upload Pattern" and select a `.json` file. Porter validates the definition and registers it.
+- **Copy/paste:** Patterns are self-contained JSON -- copy from one Porter instance and upload to another.
 
-**`examples/mixture-review.json`** -- Code review team with parallel specialists:
-```json
-{
-  "session": "code-review",
-  "pattern": "mixture",
-  "model": "granite-3b",
-  "agents": [
-    { "name": "correctness", "role": "specialist", "system_prompt": "Analyze for bugs, logic errors, and incorrect behavior." },
-    { "name": "security", "role": "specialist", "system_prompt": "Analyze for security vulnerabilities, injection risks, and auth issues." },
-    { "name": "performance", "role": "specialist", "system_prompt": "Analyze for performance bottlenecks, memory leaks, and scaling issues." },
-    { "name": "synthesizer", "role": "synthesizer", "model": "granite-8b", "system_prompt": "Synthesize specialist analyses into a unified review." }
-  ]
-}
+Custom patterns appear alongside built-in patterns in the Team Builder's pattern selector. They work identically to built-in patterns.
+
+---
+
+## Visual Team Composition
+
+The Team Builder uses a slot-based UI for composing teams within a pattern. When you select a pattern, the builder shows the pattern's roles as slots with their min/max requirements.
+
+1. **Select a pattern** -- choose from built-in or custom patterns.
+2. **Fill role slots** -- drag agents from the library into role slots. Each slot shows its min/max (e.g., "Specialist: 2-8 agents"). Agents already in the library can be reused across teams.
+3. **Validation feedback** -- the builder highlights unfilled requirements (red border if below min) and prevents exceeding max. The "Save & Launch" button is disabled until all role minimums are met.
+
+The same agent can appear in different teams under different roles. A "security-analyst" agent placed into a Specialist slot gets `finding_write` and `send_message` auto-injected. Placed into a Reflector slot, it gets `critique_write` and `approve` instead. The agent's identity stays the same; only the pattern behavior changes.
+
+---
+
+## Validation
+
+Porter enforces pattern composition rules when teams are created or launched.
+
+### Min/Max Enforcement
+
+Each role in a pattern definition specifies `min` and `max` counts. The `validateTeamComposition()` function checks that the team's agent list satisfies these constraints:
+
+- If a role has fewer agents than its `min`, the team is invalid. The error message names the role and the shortfall.
+- If a role has more agents than its `max`, the team is invalid. The error message names the role and the excess.
+
+### Where Validation Runs
+
+- **Team Builder UI:** real-time validation as agents are added/removed. Role slots show visual feedback.
+- **Session launch:** validation runs before starting the session. If the team is invalid, the session fails with descriptive errors.
+- **API:** the `POST /api/sessions` endpoint validates composition and returns errors in the response body.
+
+### Example Errors
+
 ```
-
-**`examples/deliberation-coder.json`** -- Coding with reflection loop:
-```json
-{
-  "session": "careful-coder",
-  "pattern": "deliberation",
-  "max_deliberation_rounds": 3,
-  "model": "granite-3b",
-  "agents": [
-    { "name": "coder", "role": "worker", "tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep"] },
-    { "name": "reviewer", "role": "reflector", "model": "granite-8b", "tools": ["read_file", "glob", "grep"] }
-  ]
-}
+Requires at least 2 Specialists (have 1)
+Maximum 1 Synthesizer allowed (have 2)
+Requires a Worker
 ```
-
-**`examples/distillation-guided.json`** -- Large model guides small model:
-```json
-{
-  "session": "guided-dev",
-  "pattern": "distillation",
-  "agents": [
-    { "name": "architect", "role": "expert", "model": "granite-8b", "tools": ["read_file", "glob", "grep", "list_dir"] },
-    { "name": "developer", "role": "learner", "model": "granite-3b", "tools": ["read_file", "write_file", "edit_file", "bash", "git"] }
-  ]
-}
-```
-
-**`examples/mixture-research.json`** -- Research team with domain specialists:
-```json
-{
-  "session": "research",
-  "pattern": "mixture",
-  "agents": [
-    { "name": "code-analyst", "role": "specialist", "model": "qwen-coder-3b", "tools": ["read_file", "glob", "grep"] },
-    { "name": "doc-analyst", "role": "specialist", "model": "granite-3b", "tools": ["read_file", "glob"] },
-    { "name": "test-analyst", "role": "specialist", "model": "granite-3b", "tools": ["read_file", "glob", "grep", "bash"] },
-    { "name": "reporter", "role": "synthesizer", "model": "granite-8b" }
-  ]
-}
-```
-
-**`examples/deliberation-security.json`** -- Security audit with iterative review:
-```json
-{
-  "session": "security-audit",
-  "pattern": "deliberation",
-  "max_deliberation_rounds": 5,
-  "agents": [
-    { "name": "scanner", "role": "worker", "model": "granite-3b", "tools": ["read_file", "grep", "glob", "bash"] },
-    { "name": "auditor", "role": "reflector", "model": "granite-8b", "tools": ["read_file", "grep"] }
-  ]
-}
-```
-
-### CONTRIBUTING.md
-
-Note the new pattern system for contributors: how to add a new pattern (create tools, add to `patterns.ts`, wire channels).
-
-## Verification
-
-1. `deno check mod.ts`
-2. `deno test --allow-all` -- existing + new pattern/engine tests
-3. `porter init` -- select each pattern, verify generated config
-4. Unit tests:
-   - `classifyIntent("let me read src/main.ts", registry)` → `{ wantsToolCall: true, likelyTool: "read_file", confidence: 0.9 }`
-   - `extractParamsFromText("read src/main.ts", "read_file", schema)` → `{ path: "src/main.ts" }`
-   - `simplifySchemas(tools, "small", "specialist")` → reduced set
-   - Pattern tools write/query graph correctly
-   - Deliberation stops after max rounds
-   - Mixture synthesizer sees all specialist findings
-5. Integration test with small model on RHOAI

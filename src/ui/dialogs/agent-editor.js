@@ -53,7 +53,7 @@ export function wirePromptSectionEvents(scope) {
     btn.addEventListener('click', () => {
       const section = btn.closest('.prompt-section');
       const id = section.dataset.sectionId;
-      const role = scope.querySelector('input[name="agent-role"]:checked')?.value || 'worker';
+      const role = scope.querySelector('#agent-role-value')?.value || 'worker';
       const defaults = ROLE_SECTION_DEFAULTS[role] || [];
       const def = defaults.find(d => d.id === id);
       if (def) section.querySelector('.prompt-section-content').value = def.content;
@@ -166,26 +166,28 @@ export function renderAgentForm(agent) {
     return h('tr', null, ...row.map(cell => h(tag, null, cell)));
   });
 
+  // Role display: read-only label when role is assigned by pattern slot
+  const roleField = agent.role
+    ? h('div', { class: 'team-field' },
+        h('label', null, 'Role'),
+        h('div', { style: 'display:flex;align-items:center;gap:0.5rem' },
+          h('span', { id: 'agent-role-label', style: 'color:var(--accent-gold);font-weight:bold;text-transform:capitalize' }, agent.role),
+          h('span', { style: 'font-size:0.75rem;color:var(--text-dim)' }, '(assigned by pattern)'),
+        ),
+        h('input', { type: 'hidden', id: 'agent-role-value', value: agent.role }),
+      )
+    : h('div', { class: 'team-field' },
+        h('label', null, 'Role'),
+        h('div', { style: 'color:var(--text-dim);font-size:0.85rem' }, 'Role will be assigned by pattern slot'),
+        h('input', { type: 'hidden', id: 'agent-role-value', value: 'worker' }),
+      );
+
   replaceContent(body,
     h('div', { class: 'team-field' },
       h('label', null, 'Name'),
       h('input', { type: 'text', id: 'agent-name', value: agent.name }),
     ),
-    h('div', { class: 'team-field' },
-      h('label', null, 'Role'),
-      h('div', { class: 'role-group' },
-        h('label', null, h('input', { type: 'radio', name: 'agent-role', value: 'admin', checked: agent.role === 'admin' }), ' admin'),
-        h('label', null, h('input', { type: 'radio', name: 'agent-role', value: 'worker', checked: agent.role === 'worker' }), ' worker'),
-        h('label', null, h('input', { type: 'radio', name: 'agent-role', value: 'reviewer', checked: agent.role === 'reviewer' }), ' reviewer'),
-      ),
-      h('div', { class: 'field-hint' },
-        h('strong', null, 'Admin'), ' — Plans and coordinates. Typically ', h('strong', null, '1 per team'), '.',
-        h('br', null),
-        h('strong', null, 'Worker'), ' — Executes tasks. Add ', h('strong', null, '2-5 workers'), ' for parallel execution.',
-        h('br', null),
-        h('strong', null, 'Reviewer'), ' — Quality assurance. Typically ', h('strong', null, '0-1 per team'), '.',
-      )
-    ),
+    roleField,
     h('div', { class: 'team-field' },
       h('label', null, 'Model (optional override)'),
       h('select', { id: 'agent-model' }, ...modelOpts),
@@ -272,28 +274,6 @@ export function renderAgentForm(agent) {
     )
   );
 
-  // When role changes, update tool defaults and regenerate prompt sections
-  body.querySelectorAll('input[name="agent-role"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-      const role = e.target.value;
-      const bits = ROLE_TOOL_DEFAULTS[role];
-      body.querySelectorAll('#agent-tools input[type="checkbox"]').forEach((cb, i) => {
-        cb.checked = !!bits[i];
-      });
-      body.querySelector('#agent-channels').value = ROLE_CHANNEL_DEFAULTS[role].join(', ');
-      const customs = [...body.querySelectorAll('.prompt-section')].filter(el =>
-        !['job','comm','memory','processing'].includes(el.dataset.sectionId)
-      ).map(el => ({
-        id: el.dataset.sectionId,
-        title: el.querySelector('.prompt-section-title').textContent.trim(),
-        content: el.querySelector('.prompt-section-content').value,
-        default: '',
-      }));
-      const newSections = [...getDefaultSections(role), ...customs];
-      renderPromptSections(body.querySelector('#prompt-sections'), newSections);
-    });
-  });
-
   // Prompt section interactions
   wirePromptSectionEvents(body);
 
@@ -369,7 +349,7 @@ export function handleAgentSave() {
 
   const agent = {
     name: body.querySelector('#agent-name').value.trim(),
-    role: body.querySelector('input[name="agent-role"]:checked')?.value || 'worker',
+    role: body.querySelector('#agent-role-value')?.value || 'worker',
     model: body.querySelector('#agent-model')?.value || '',
     promptSections: [...body.querySelectorAll('.prompt-section')].map(el => ({
       id: el.dataset.sectionId,

@@ -272,6 +272,41 @@ export async function start(
     mcpClients = await connectMcpServers(config.mcp_servers);
   }
 
+  // Wire pattern-specific channel subscriptions before agent subscription
+  const { wirePattern, getPatternTools, getPatternSystemPrompt } = await import("./patterns.ts");
+  wirePattern(config, bus);
+
+  // Inject pattern tools and system prompt suffix into each agent config
+  const patternId = config.pattern ?? "sequential";
+  const teamRosterForPattern = config.agents.map(a => ({ name: a.name, role: a.role }));
+  for (const agentConfig of config.agents) {
+    // Add pattern-specific tools to the agent's tool list
+    const patternTools = getPatternTools(agentConfig.role as import("../core/config.ts").AgentRole, patternId);
+    if (patternTools.length > 0) {
+      const existingTools = agentConfig.tools ?? [];
+      const toolSet = new Set(existingTools);
+      for (const t of patternTools) {
+        if (!toolSet.has(t)) {
+          existingTools.push(t);
+          toolSet.add(t);
+        }
+      }
+      agentConfig.tools = existingTools;
+    }
+
+    // Append pattern-specific system prompt suffix
+    const patternPromptSuffix = getPatternSystemPrompt(
+      agentConfig.role as import("../core/config.ts").AgentRole,
+      patternId,
+      teamRosterForPattern,
+      config.max_deliberation_rounds,
+      agentConfig.name,
+    );
+    if (patternPromptSuffix) {
+      agentConfig.system_prompt = `${agentConfig.system_prompt}\n\n${patternPromptSuffix}`;
+    }
+  }
+
   for (const agentConfig of config.agents) {
     // Subscribe to configured channels plus a personal channel for direct targeting
     const channels = [...(agentConfig.subscribe ?? []), `task:${agentConfig.name}`, "control"];

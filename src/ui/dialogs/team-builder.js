@@ -576,29 +576,13 @@ export function renderStep1(body, s) {
 }
 
 export function renderStep2(body, s) {
-  const agentCards = s.agents.map((a, i) => {
-    const editBtn = h('button', null, 'Edit');
-    const removeBtn = h('button', null, 'Remove');
-    editBtn.addEventListener('click', () => window.editAgentAt(i));
-    removeBtn.addEventListener('click', () => window.removeAgentAt(i));
-
-    return h('div', { class: 'agent-preview', 'data-role': a.role },
-      h('div', { class: 'agent-name' }, a.name),
-      h('div', { class: 'agent-meta' }, `${a.role} · ${a.tools.length} tools`),
-      h('div', { class: 'agent-meta' }, a.channels.join(', ') || 'no channels'),
-      h('div', { class: 'agent-actions' }, editBtn, removeBtn)
-    );
-  });
+  const configStore = document.getElementById('config');
+  const pattern = s.pattern || 'sequential';
 
   const bodyChildren = [
     h('div', { class: 'team-explanation' },
       h('p', null, h('strong', null, 'Define Your Agents')),
       h('p', null, 'Each agent is an AI assistant with a specific role, set of tools, and communication channels. Agents run independently and coordinate through the message bus.'),
-      h('ul', null,
-        h('li', null, h('strong', null, 'Admin'), ' — Plans and coordinates work. Reads from log channel, sends tasks.'),
-        h('li', null, h('strong', null, 'Worker'), ' — Executes tasks. Has full tool access including file editing, bash, and git.'),
-        h('li', null, h('strong', null, 'Reviewer'), ' — Reviews completed work. Monitors the log channel for quality.'),
-      )
     ),
   ];
 
@@ -606,27 +590,181 @@ export function renderStep2(body, s) {
     bodyChildren.push(h('div', { class: 'error', style: 'margin-bottom:0.75rem' }, s.errors.agents));
   }
 
-  const addAgentBtn = h('button', { class: 'add-agent-btn', id: 'add-agent-btn', title: 'New agent' }, '+ New');
-  const addFromBtn = h('button', { class: 'add-agent-btn add-agent-from', id: 'add-agent-from-btn', title: 'Create from saved agent' }, 'From Saved...');
+  // For sequential pattern, show the original flat list since it has flexible role assignment
+  if (pattern === 'sequential') {
+    bodyChildren[0] = h('div', { class: 'team-explanation' },
+      h('p', null, h('strong', null, 'Define Your Agents')),
+      h('p', null, 'Each agent is an AI assistant with a specific role, set of tools, and communication channels. Agents run independently and coordinate through the message bus.'),
+      h('ul', null,
+        h('li', null, h('strong', null, 'Admin'), ' — Plans and coordinates work. Reads from log channel, sends tasks.'),
+        h('li', null, h('strong', null, 'Worker'), ' — Executes tasks. Has full tool access including file editing, bash, and git.'),
+        h('li', null, h('strong', null, 'Reviewer'), ' — Reviews completed work. Monitors the log channel for quality.'),
+      )
+    );
 
-  bodyChildren.push(
-    h('div', { class: 'agent-deck' },
-      ...agentCards,
-      h('div', { class: 'add-agent-actions' }, addAgentBtn, addFromBtn)
-    )
+    const agentCards = s.agents.map((a, i) => renderAgentCard(a, i));
+
+    const addAgentBtn = h('button', { class: 'add-agent-btn', id: 'add-agent-btn', title: 'New agent' }, '+ New');
+    const addFromBtn = h('button', { class: 'add-agent-btn add-agent-from', id: 'add-agent-from-btn', title: 'Create from saved agent' }, 'From Saved...');
+
+    bodyChildren.push(
+      h('div', { class: 'agent-deck' },
+        ...agentCards,
+        h('div', { class: 'add-agent-actions' }, addAgentBtn, addFromBtn)
+      )
+    );
+
+    replaceContent(body, ...bodyChildren);
+
+    addAgentBtn.addEventListener('click', () => {
+      const isFirst = configStore.state.agents.length === 0;
+      openAgentEditor(configStore.createDefaultAgent(isFirst));
+    });
+
+    addFromBtn.addEventListener('click', () => {
+      showSavedAgentPicker();
+    });
+    return;
+  }
+
+  // Non-sequential patterns: render role sections from pattern definition
+  renderPatternLayout(body, bodyChildren, s, pattern);
+}
+
+function renderAgentCard(a, i) {
+  const editBtn = h('button', null, 'Edit');
+  const removeBtn = h('button', null, 'Remove');
+  editBtn.addEventListener('click', () => window.editAgentAt(i));
+  removeBtn.addEventListener('click', () => window.removeAgentAt(i));
+
+  return h('div', { class: 'agent-preview', 'data-role': a.role },
+    h('div', { class: 'agent-name' }, a.name),
+    h('div', { class: 'agent-meta' }, `${a.role} · ${a.tools.length} tools`),
+    h('div', { class: 'agent-meta' }, a.channels.join(', ') || 'no channels'),
+    h('div', { class: 'agent-actions' }, editBtn, removeBtn)
   );
+}
 
+/**
+ * Fetch pattern definition from the API and render role sections.
+ */
+async function renderPatternLayout(body, bodyChildren, s, patternId) {
+  let patternDef = null;
+  try {
+    const resp = await fetch('/api/patterns');
+    if (resp.ok) {
+      const data = await resp.json();
+      patternDef = (data.patterns || []).find(p => p.id === patternId);
+    }
+  } catch { /* fallback to flat list */ }
+
+  if (!patternDef) {
+    // Fallback: render flat list
+    const agentCards = s.agents.map((a, i) => renderAgentCard(a, i));
+    const addBtn = h('button', { class: 'add-agent-btn' }, '+ New');
+    bodyChildren.push(h('div', { class: 'agent-deck' }, ...agentCards, addBtn));
+    replaceContent(body, ...bodyChildren);
+    addBtn.addEventListener('click', () => {
+      const configStore = document.getElementById('config');
+      openAgentEditor(configStore.createDefaultAgent(configStore.state.agents.length === 0));
+    });
+    return;
+  }
+
+  const configStore = document.getElementById('config');
+  const roleSections = [];
+
+  patternDef.roles.forEach((role, roleIdx) => {
+    // Show flow arrow between role sections
+    if (roleIdx > 0) {
+      roleSections.push(h('div', { class: 'pattern-flow-arrow' }, '↓'));
+    }
+
+    const roleAgents = s.agents
+      .map((a, i) => ({ agent: a, idx: i }))
+      .filter(({ agent }) => agent.role === role.id);
+
+    const agentCards = roleAgents.map(({ agent, idx }) => renderAgentCard(agent, idx));
+
+    // Requirement label
+    let reqText;
+    if (role.min === role.max) {
+      reqText = `Exactly ${role.min} required`;
+    } else if (role.min === 0) {
+      reqText = `Up to ${role.max} (optional)`;
+    } else {
+      reqText = `${role.min}-${role.max} required`;
+    }
+
+    const addBtn = h('button', { class: 'add-agent-btn', style: 'margin-top:0.5rem' }, `+ Add ${role.name}`);
+    addBtn.addEventListener('click', () => {
+      openAgentEditor(configStore.createDefaultAgent(false, role.id));
+    });
+
+    // Show add button only if we haven't hit max
+    const canAdd = roleAgents.length < role.max;
+
+    const section = h('div', { class: 'pattern-role-section', 'data-role-id': role.id },
+      h('div', { class: 'pattern-role-header' },
+        h('strong', null, role.name),
+        h('span', { style: 'font-size:0.75rem;color:var(--text-dim);margin-left:0.5rem' }, reqText),
+      ),
+      h('div', { style: 'font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem' }, role.description),
+      ...agentCards,
+      canAdd ? addBtn : null,
+    );
+
+    roleSections.push(section);
+  });
+
+  // Validation section
+  const validationErrors = validateComposition(patternDef, s.agents);
+  if (validationErrors.length > 0) {
+    const errorEls = validationErrors.map(e =>
+      h('div', { style: 'font-size:0.8rem;color:var(--status-error);padding:0.25rem 0' },
+        `${e.roleName}: ${e.message}`)
+    );
+    roleSections.push(
+      h('div', { class: 'pattern-validation', style: 'margin-top:0.75rem;padding:0.5rem;border:1px solid var(--status-error);border-radius:4px;background:rgba(184,115,51,0.1)' },
+        h('strong', { style: 'font-size:0.85rem;color:var(--status-error)' }, 'Composition Issues'),
+        ...errorEls,
+      )
+    );
+  }
+
+  // Add "From Saved..." button at the bottom
+  const addFromBtn = h('button', { class: 'add-agent-btn add-agent-from', style: 'margin-top:0.75rem' }, 'From Saved...');
+  addFromBtn.addEventListener('click', () => showSavedAgentPicker());
+
+  bodyChildren.push(h('div', { class: 'pattern-layout' }, ...roleSections, addFromBtn));
   replaceContent(body, ...bodyChildren);
+}
 
-  addAgentBtn.addEventListener('click', () => {
-    const configStore = document.getElementById('config');
-    const isFirst = configStore.state.agents.length === 0;
-    openAgentEditor(configStore.createDefaultAgent(isFirst));
-  });
-
-  addFromBtn.addEventListener('click', () => {
-    showSavedAgentPicker();
-  });
+/**
+ * Client-side composition validation (mirrors validateTeamComposition from pattern_registry.ts).
+ */
+function validateComposition(patternDef, agents) {
+  const errors = [];
+  for (const role of patternDef.roles) {
+    const count = agents.filter(a => a.role === role.id).length;
+    if (count < role.min) {
+      errors.push({
+        roleId: role.id,
+        roleName: role.name,
+        message: role.min === 1
+          ? `Requires a ${role.name}`
+          : `Requires at least ${role.min} ${role.name}s (have ${count})`,
+      });
+    }
+    if (count > role.max) {
+      errors.push({
+        roleId: role.id,
+        roleName: role.name,
+        message: `Maximum ${role.max} ${role.name}${role.max > 1 ? 's' : ''} allowed (have ${count})`,
+      });
+    }
+  }
+  return errors;
 }
 
 export function renderStep3(body, s) {
