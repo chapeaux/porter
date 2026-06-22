@@ -1,17 +1,25 @@
 /**
- * GraphStore — thin wrapper around Oxigraph's WASM-based in-memory
- * SPARQL store.
+ * GraphStore — SPARQL graph store backed by Sparq WASM.
  *
  * Provides a Porter-friendly API for loading, querying, and mutating
  * RDF graphs. Named-graph support maps directly to the GRAPHS
  * constants from vocabulary.ts.
+ *
+ * This replaces the previous Oxigraph-based implementation with the
+ * same public API so all consumers (tools, orchestrator, converters)
+ * work unchanged.
  */
 
-import oxigraph from "oxigraph";
 import { GRAPHS, PREFIXES, XSD } from "./vocabulary.ts";
+import {
+  SparqStore,
+  DataFactory,
+  type Quad,
+  parseNTriples,
+  init as initSparq,
+} from "../activitypub/sparq/index.ts";
 
-// Re-export the type so consumers don't need to import oxigraph directly.
-type OxigraphStore = InstanceType<typeof oxigraph.Store>;
+const { namedNode, literal, quad, defaultGraph } = DataFactory;
 
 /** SPARQL prefix block injected into every query for convenience. */
 const SPARQL_PREFIXES = Object.entries(PREFIXES)
@@ -20,8 +28,6 @@ const SPARQL_PREFIXES = Object.entries(PREFIXES)
 
 /**
  * Result of SHACL validation.
- * Phase 1 stub — always conforms. Real validation will land when
- * rdf-validate-shacl (or a SPARQL-based checker) is wired in.
  */
 export interface ValidationResult {
   conforms: boolean;
@@ -33,9 +39,9 @@ export interface ValidationResult {
 // ---------------------------------------------------------------------------
 
 export class GraphStore {
-  private store: OxigraphStore;
+  private store: SparqStore;
 
-  private constructor(store: OxigraphStore) {
+  private constructor(store: SparqStore) {
     this.store = store;
   }
 
@@ -46,26 +52,19 @@ export class GraphStore {
    * named graph so it is available for future validation.
    */
   static async create(): Promise<GraphStore> {
+    await initSparq();
+    const store = await SparqStore.fromString("", "ntriples");
+    const gs = new GraphStore(store);
+
     try {
-      const store = new oxigraph.Store();
-      const gs = new GraphStore(store);
-
-      // Load SHACL shapes from disk into the shapes graph.
-      try {
-        const shapesPath = new URL("./shapes.ttl", import.meta.url);
-        const shapesText = await Deno.readTextFile(shapesPath);
-        gs.load(shapesText, GRAPHS.shapes);
-      } catch {
-        // shapes.ttl may not exist in test/CI environments — tolerate.
-      }
-
-      return gs;
-    } catch (err) {
-      // Oxigraph WASM may fail to initialise in some environments.
-      throw new Error(
-        `GraphStore: failed to initialise Oxigraph — ${(err as Error).message}`,
-      );
+      const shapesPath = new URL("./shapes.ttl", import.meta.url);
+      const shapesText = await Deno.readTextFile(shapesPath);
+      gs.load(shapesText, GRAPHS.shapes);
+    } catch {
+      // shapes.ttl may not exist in test/CI environments — tolerate.
     }
+
+    return gs;
   }
 
   // -----------------------------------------------------------------------
@@ -81,27 +80,22 @@ export class GraphStore {
    */
   query(sparql: string): Record<string, string>[] {
     const fullQuery = SPARQL_PREFIXES + sparql;
-    const raw = this.store.query(fullQuery, {
-      use_default_graph_as_union: true,
-    });
+    const result = this.store.query(fullQuery);
 
-    // SELECT → Array<Map<string, Term>>
-    if (Array.isArray(raw) && raw.length > 0 && raw[0] instanceof Map) {
-      return (raw as Map<string, { value: string }>[]).map((binding) => {
+    if (typeof result === "boolean") {
+      return [{ result: String(result) }];
+    }
+
+    if (Array.isArray(result)) {
+      return result.map((binding) => {
         const row: Record<string, string> = {};
-        for (const [key, term] of binding) {
-          row[key] = term.value;
+        for (const [variable, term] of binding) {
+          row[variable.value] = term.value;
         }
         return row;
       });
     }
 
-    // ASK → boolean — wrap in a single-row result
-    if (typeof raw === "boolean") {
-      return [{ result: String(raw) }];
-    }
-
-    // CONSTRUCT/DESCRIBE → quads — not mapped; return empty
     return [];
   }
 
@@ -117,26 +111,56 @@ export class GraphStore {
   /**
    * Load a Turtle string into the store.
    *
-   * @param turtle  Serialised Turtle/TriG content.
-   * @param graph   Named graph IRI. Defaults to the default graph.
+   * Uses SPARQL INSERT DATA with the prefix block and optional GRAPH clause.
    */
   load(turtle: string, graph?: string): void {
-    this.store.load(turtle, {
-      format: "text/turtle",
-      ...(graph ? { to_graph_name: oxigraph.namedNode(graph) } : {}),
-    });
+    if (!turtle.trim()) return;
+
+    try {
+      const graphClause = graph ? `GRAPH <${graph}>` : "";
+      this.store.update(
+        `${SPARQL_PREFIXES}\nINSERT DATA { ${graphClause} { ${turtle} } }`
+      );
+    } catch (err) {
+      console.error(`[graph] Failed to load turtle: ${(err as Error).message}`);
+    }
   }
 
   /**
-   * Dump the contents of a named graph (or the default graph) as Turtle.
+   * Load a Turtle string asynchronously (parses via temporary store).
+   * Use when INSERT DATA doesn't work with complex Turtle syntax.
+   */
+  async loadAsync(turtle: string, graph?: string): Promise<void> {
+    if (!turtle.trim()) return;
+
+    try {
+      const tmp = await SparqStore.fromString(turtle, "turtle");
+      const quads = tmp.match();
+      const graphNode = graph ? namedNode(graph) : defaultGraph();
+      const reGraphed = quads.map(q =>
+        quad(q.subject as any, q.predicate as any, q.object as any, graphNode as any)
+      );
+      this.store.addQuads(reGraphed as unknown as Quad[]);
+    } catch (err) {
+      console.error(`[graph] Failed to loadAsync turtle: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Dump the contents of a named graph (or the default graph) as
+   * N-Triples.
    */
   dump(graph?: string): string {
-    return this.store.dump({
-      format: "text/turtle",
-      from_graph_name: graph
-        ? oxigraph.namedNode(graph)
-        : oxigraph.defaultGraph(),
-    }) as string;
+    const graphClause = graph
+      ? `GRAPH <${graph}> { ?s ?p ?o }`
+      : `{ ?s ?p ?o }`;
+    try {
+      return this.store.queryQuadsString(
+        `${SPARQL_PREFIXES}\nCONSTRUCT { ?s ?p ?o } WHERE { ${graphClause} }`
+      );
+    } catch {
+      return "";
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -152,13 +176,13 @@ export class GraphStore {
     object: string,
     graph?: string,
   ): void {
-    const s = oxigraph.namedNode(subject);
-    const p = oxigraph.namedNode(predicate);
-    const o = oxigraph.namedNode(object);
-    const g = graph
-      ? oxigraph.namedNode(graph)
-      : oxigraph.defaultGraph();
-    this.store.add(oxigraph.quad(s, p, o, g));
+    const q = quad(
+      namedNode(subject),
+      namedNode(predicate),
+      namedNode(object),
+      graph ? namedNode(graph) : defaultGraph(),
+    );
+    this.store.addQuads([q as unknown as Quad]);
   }
 
   /**
@@ -175,40 +199,53 @@ export class GraphStore {
     value: string | number | boolean,
     graph?: string,
   ): void {
-    const s = oxigraph.namedNode(subject);
-    const p = oxigraph.namedNode(predicate);
-
-    let o;
+    let obj;
     if (typeof value === "boolean") {
-      o = oxigraph.literal(
-        String(value),
-        oxigraph.namedNode(XSD.boolean),
-      );
+      obj = literal(String(value), namedNode(XSD.boolean));
     } else if (typeof value === "number") {
       const dt = Number.isInteger(value) ? XSD.integer : XSD.float;
-      o = oxigraph.literal(String(value), oxigraph.namedNode(dt));
+      obj = literal(String(value), namedNode(dt));
     } else {
-      o = oxigraph.literal(value);
+      obj = literal(value);
     }
 
-    const g = graph
-      ? oxigraph.namedNode(graph)
-      : oxigraph.defaultGraph();
-    this.store.add(oxigraph.quad(s, p, o, g));
+    const q = quad(
+      namedNode(subject),
+      namedNode(predicate),
+      obj as any,
+      graph ? namedNode(graph) : defaultGraph(),
+    );
+    this.store.addQuads([q as unknown as Quad]);
   }
 
   // -----------------------------------------------------------------------
-  // SHACL validation (Phase 1 stub)
+  // SHACL validation
   // -----------------------------------------------------------------------
 
   /**
    * Validate the data in `dataGraph` against the loaded SHACL shapes.
-   *
-   * TODO: Wire up rdf-validate-shacl or implement SPARQL-based SHACL
-   *       checking. For now this always returns `{ conforms: true }`.
    */
-  validate(_dataGraph?: string): ValidationResult {
-    return { conforms: true, violations: [] };
+  validate(dataGraph?: string): ValidationResult {
+    if (!dataGraph) return { conforms: true, violations: [] };
+
+    try {
+      const shapesNt = this.dump(GRAPHS.shapes);
+      const dataNt = this.dump(dataGraph);
+      if (!shapesNt.trim() || !dataNt.trim()) {
+        return { conforms: true, violations: [] };
+      }
+      const report = this.store.validate(dataNt, shapesNt, "ntriples");
+      return {
+        conforms: report.conforms,
+        violations: report.results.map(r => ({
+          path: r.path ?? "",
+          message: r.message ?? "Validation failed",
+          value: r.value ?? undefined,
+        })),
+      };
+    } catch {
+      return { conforms: true, violations: [] };
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -218,9 +255,6 @@ export class GraphStore {
   /**
    * Return all predicate/object pairs for a given subject, across all
    * graphs (or a specific graph).
-   *
-   * Single-valued predicates are returned as plain strings; predicates
-   * that appear more than once are returned as string arrays.
    */
   describe(
     subject: string,

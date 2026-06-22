@@ -175,7 +175,7 @@ export async function start(
   const messageStore = new MessageStore(config.session);
   await messageStore.init();
 
-  // Initialize RDF graph store (optional — continues without if Oxigraph fails)
+  // Initialize RDF graph store (optional — continues without if Sparq fails)
   let graphStoreRef: import("../graph/store.ts").GraphStore | null = null;
   try {
     const { initGraphStore } = await import("../graph/store.ts");

@@ -20,8 +20,7 @@
     "npm:@anthropic-ai/sdk@0.39": "0.39.0",
     "npm:@anthropic-ai/vertex-sdk@0.6": "0.6.4",
     "npm:@rdfjs/types@2": "2.0.1",
-    "npm:fzstd@0.1": "0.1.1",
-    "npm:oxigraph@0.5": "0.5.8"
+    "npm:fzstd@0.1": "0.1.1"
   },
   "jsr": {
     "@bradenmacdonald/s3-lite-client@0.9.6": {
@@ -379,9 +378,6 @@
         "whatwg-url"
       ]
     },
-    "oxigraph@0.5.8": {
-      "integrity": "sha512-ZwAVUf/Vh8OCaIrnmsYie/A/hVPSvrIi+CFWe6YbaAp4llTb6ozPIHYqBvUQgGju0D4gcQAAyXjPV8pGNsPCbQ=="
-    },
     "safe-buffer@5.2.1": {
       "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ=="
     },
@@ -453,8 +449,7 @@
       "jsr:@std/path@1",
       "jsr:@std/testing@1",
       "npm:@rdfjs/types@2",
-      "npm:fzstd@0.1",
-      "npm:oxigraph@0.5"
+      "npm:fzstd@0.1"
     ]
   }
 }
