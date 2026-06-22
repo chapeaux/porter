@@ -154,17 +154,16 @@ function initEditor(dlg, pattern, readOnly) {
     toolbar.append(addRoleBtn, addChannelBtn, connectBtn, deleteBtn, layoutBtn);
   }
 
-  const canvasPanel = h('div', { style: 'display:flex;flex-direction:column;min-height:0' },
+  const canvasSection = h('div', { style: 'display:flex;flex-direction:column;min-height:0;overflow:hidden' },
     toolbar,
     canvas,
   );
 
-  // Stacked layout: scrollable SVG on top, scrollable details below
-  body.style.cssText = 'display:flex;flex-direction:column;height:70vh';
-  canvas.style.cssText += ';flex:1;min-height:200px;overflow:auto';
-  propsPanel.style.cssText += ';flex:0 0 auto;max-height:40%;overflow-y:auto;border-top:1px solid rgba(255,255,255,0.1);border-left:none';
+  // CSS grid: two rows, each scrolls independently, fills the dialog
+  body.style.cssText = '';
+  body.classList.add('pattern-editor-grid');
 
-  replaceContent(body, canvasPanel, propsPanel);
+  replaceContent(body, canvasSection, propsPanel);
 
   // SVG setup
   const svgNS = 'http://www.w3.org/2000/svg';
