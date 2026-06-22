@@ -1,0 +1,77 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix porter: <https://porter.chapeaux.io/vocab#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+porter:PatternShape a sh:NodeShape ;
+  sh:targetClass porter:Pattern ;
+  sh:property [
+    sh:path porter:name ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:name "Pattern name" ;
+  ] ;
+  sh:property [
+    sh:path porter:description ;
+    sh:datatype xsd:string ;
+    sh:maxCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:busFlow ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:hasRole ;
+    sh:node porter:PatternRoleShape ;
+    sh:minCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:maxRounds ;
+    sh:datatype xsd:integer ;
+    sh:maxCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:isBuiltin ;
+    sh:datatype xsd:boolean ;
+    sh:maxCount 1 ;
+  ] .
+
+porter:PatternRoleShape a sh:NodeShape ;
+  sh:targetClass porter:PatternRole ;
+  sh:property [
+    sh:path porter:roleId ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:name ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:description ;
+    sh:datatype xsd:string ;
+    sh:maxCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:minCount ;
+    sh:datatype xsd:integer ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:maxCount ;
+    sh:datatype xsd:integer ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:systemPromptSuffix ;
+    sh:datatype xsd:string ;
+    sh:maxCount 1 ;
+  ] .

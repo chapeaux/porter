@@ -5,6 +5,8 @@
 import { h, replaceContent } from '../dom.js';
 import { getDlg, showDialog } from './dialog-helpers.js';
 import { updateSetupBar } from '../features/flipboard-setup.js';
+import { renderBusFlow } from '../render/flow-diagram.js';
+import { openPatternEditor } from './pattern-editor.js';
 
 /**
  * Build a human-readable role summary from a pattern definition.
@@ -45,7 +47,7 @@ function renderPatternCards(body, patterns) {
     const downloadBtn = h('button', { class: 'team-btn secondary', style: 'font-size:0.75rem;padding:0.15rem 0.5rem' }, 'Download');
 
     viewBtn.addEventListener('click', () => {
-      showDialog(`Pattern: ${p.name}`, JSON.stringify(p, null, 2));
+      openPatternEditor(p, true);
     });
 
     downloadBtn.addEventListener('click', () => {
@@ -65,7 +67,7 @@ function renderPatternCards(body, patterns) {
     } else {
       const editBtn = h('button', { class: 'team-btn secondary', style: 'font-size:0.75rem;padding:0.15rem 0.5rem' }, 'Edit');
       editBtn.addEventListener('click', () => {
-        showDialog(`Edit Pattern: ${p.name}`, 'Pattern editing is not yet implemented. You can download, modify the JSON, and re-upload.');
+        openPatternEditor(p, false);
       });
 
       const deleteBtn = h('button', { class: 'team-btn secondary', style: 'font-size:0.75rem;padding:0.15rem 0.5rem;color:var(--status-error)' }, 'Delete');
@@ -97,7 +99,7 @@ function renderPatternCards(body, patterns) {
       ),
       h('div', { style: 'font-size:0.75rem;color:var(--text-dim)' }, p.description || ''),
       h('div', { style: 'font-size:0.75rem;color:var(--text-secondary)' }, summary),
-      p.bus_flow ? h('div', { style: 'font-size:0.7rem;color:var(--text-dim);font-style:italic' }, p.bus_flow) : null,
+      p.bus_flow ? renderBusFlow(p.bus_flow, { compact: true }) : null,
       h('div', { style: 'display:flex;gap:0.3rem;margin-top:0.25rem' }, ...actionBtns),
     );
   });

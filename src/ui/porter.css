@@ -1919,3 +1919,26 @@ label.inline-check input[type="checkbox"] {
 .pattern-validation {
   font-size: 0.85rem;
 }
+
+/* Flow diagram */
+.flow-diagram { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0; }
+.flow-diagram.flow-compact { padding: 0.25rem 0; }
+.flow-line { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.flow-node { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; white-space: nowrap; display: inline-block; }
+.flow-node.role { border: 2px solid var(--accent-gold, #c9a84c); background: rgba(201,168,76,0.1); font-weight: 600; }
+.flow-node.role.multi { box-shadow: 3px 3px 0 rgba(201,168,76,0.3); }
+.flow-node.channel { background: rgba(255,255,255,0.08); border-radius: 999px; padding: 0.15rem 0.6rem; }
+.flow-node.store { border: 2px dashed rgba(255,255,255,0.3); font-style: italic; }
+.flow-arrow { color: rgba(255,255,255,0.4); font-size: 0.9rem; margin: 0 0.1rem; }
+.flow-parallel { display: flex; flex-direction: column; gap: 0.15rem; border-left: 2px solid var(--accent-gold, #c9a84c); padding-left: 0.4rem; margin: 0 0.2rem; }
+.flow-branch { display: flex; flex-direction: column; gap: 0.2rem; margin: 0 0.2rem; }
+.flow-branch-path { display: flex; align-items: center; gap: 0.2rem; }
+.flow-branch-label { font-size: 0.7rem; color: rgba(255,255,255,0.5); font-style: italic; min-width: 3rem; }
+
+/* Pattern editor */
+.pattern-editor-canvas { flex: 1; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+.pattern-editor-canvas svg { width: 100%; height: 100%; }
+.pattern-editor-props { width: 280px; padding: 0.75rem; border-left: 1px solid rgba(255,255,255,0.1); overflow-y: auto; }
+.pattern-editor-toolbar { display: flex; gap: 0.3rem; padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.pattern-editor-toolbar button { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
+.pattern-editor-toolbar button.active { border-color: var(--accent-gold); color: var(--accent-gold); }

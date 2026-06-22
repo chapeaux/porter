@@ -1,11 +1,35 @@
 {
+  "@context": {
+    "porter": "https://porter.chapeaux.io/vocab#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "id": "@id",
+    "type": "@type",
+    "name": "porter:name",
+    "description": "porter:description",
+    "bus_flow": "porter:busFlow",
+    "builtin": { "@id": "porter:isBuiltin", "@type": "xsd:boolean" },
+    "max_rounds": { "@id": "porter:maxRounds", "@type": "xsd:integer" },
+    "roles": { "@id": "porter:hasRole", "@container": "@set" },
+    "min": { "@id": "porter:minCount", "@type": "xsd:integer" },
+    "max": { "@id": "porter:maxCount", "@type": "xsd:integer" },
+    "system_prompt_suffix": "porter:systemPromptSuffix",
+    "auto_tools": { "@id": "porter:autoTool", "@container": "@set" },
+    "subscribe": { "@id": "porter:subscribesTo", "@container": "@set" },
+    "subscribe_dynamic": "porter:subscribeDynamic",
+    "default_tools": { "@id": "porter:defaultTool", "@container": "@set" },
+    "Pattern": "porter:Pattern",
+    "PatternRole": "porter:PatternRole"
+  },
+  "@id": "porter:pattern/sequential",
+  "@type": "Pattern",
   "id": "sequential",
   "name": "Sequential",
   "description": "Traditional admin/worker/reviewer pipeline. An admin plans and coordinates, workers execute tasks, and reviewers verify the output.",
-  "bus_flow": "task → admin → task → workers → log → reviewer → response",
+  "bus_flow": "task -> role:admin -> task -> role:worker* -> log -> role:reviewer -> response",
   "builtin": true,
   "roles": [
     {
+      "@type": "PatternRole",
       "id": "admin",
       "name": "Admin",
       "description": "Plans tasks, coordinates work, monitors progress",
@@ -17,6 +41,7 @@
       "default_tools": ["read_file", "glob", "grep", "list_dir", "memory_write", "memory_query"]
     },
     {
+      "@type": "PatternRole",
       "id": "worker",
       "name": "Worker",
       "description": "Executes tasks using tools, reports results",
@@ -28,6 +53,7 @@
       "default_tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "list_dir", "git"]
     },
     {
+      "@type": "PatternRole",
       "id": "reviewer",
       "name": "Reviewer",
       "description": "Reviews work for correctness and quality",

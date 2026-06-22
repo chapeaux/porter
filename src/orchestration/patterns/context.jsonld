@@ -1,0 +1,25 @@
+{
+  "@context": {
+    "porter": "https://porter.chapeaux.io/vocab#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "id": "@id",
+    "type": "@type",
+    "name": "porter:name",
+    "description": "porter:description",
+    "busFlow": "porter:busFlow",
+    "isBuiltin": { "@id": "porter:isBuiltin", "@type": "xsd:boolean" },
+    "maxRounds": { "@id": "porter:maxRounds", "@type": "xsd:integer" },
+    "hasRole": { "@id": "porter:hasRole", "@container": "@set" },
+    "roleId": "porter:roleId",
+    "minCount": { "@id": "porter:minCount", "@type": "xsd:integer" },
+    "maxCount": { "@id": "porter:maxCount", "@type": "xsd:integer" },
+    "systemPromptSuffix": "porter:systemPromptSuffix",
+    "autoTool": { "@id": "porter:autoTool", "@container": "@set" },
+    "subscribesTo": { "@id": "porter:subscribesTo", "@container": "@set" },
+    "subscribeDynamic": "porter:subscribeDynamic",
+    "defaultTool": { "@id": "porter:defaultTool", "@container": "@set" },
+    "Pattern": "porter:Pattern",
+    "PatternRole": "porter:PatternRole"
+  }
+}

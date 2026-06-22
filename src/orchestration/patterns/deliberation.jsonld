@@ -1,12 +1,36 @@
 {
+  "@context": {
+    "porter": "https://porter.chapeaux.io/vocab#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "id": "@id",
+    "type": "@type",
+    "name": "porter:name",
+    "description": "porter:description",
+    "bus_flow": "porter:busFlow",
+    "builtin": { "@id": "porter:isBuiltin", "@type": "xsd:boolean" },
+    "max_rounds": { "@id": "porter:maxRounds", "@type": "xsd:integer" },
+    "roles": { "@id": "porter:hasRole", "@container": "@set" },
+    "min": { "@id": "porter:minCount", "@type": "xsd:integer" },
+    "max": { "@id": "porter:maxCount", "@type": "xsd:integer" },
+    "system_prompt_suffix": "porter:systemPromptSuffix",
+    "auto_tools": { "@id": "porter:autoTool", "@container": "@set" },
+    "subscribe": { "@id": "porter:subscribesTo", "@container": "@set" },
+    "subscribe_dynamic": "porter:subscribeDynamic",
+    "default_tools": { "@id": "porter:defaultTool", "@container": "@set" },
+    "Pattern": "porter:Pattern",
+    "PatternRole": "porter:PatternRole"
+  },
+  "@id": "porter:pattern/deliberation",
+  "@type": "Pattern",
   "id": "deliberation",
   "name": "Deliberation",
   "description": "A reflector iteratively critiques a worker's output, triggering corrections until the work is approved or the round limit is reached. Graph-tracked critiques prevent regression.",
-  "bus_flow": "task → worker → deliberation → reflector → [approve or revision → worker → ...]",
+  "bus_flow": "task -> role:worker -> deliberation -> role:reflector -> (approve -> response | revision -> role:worker)",
   "builtin": true,
   "max_rounds": 3,
   "roles": [
     {
+      "@type": "PatternRole",
       "id": "worker",
       "name": "Worker",
       "description": "Executes tasks, revises based on reflector feedback",
@@ -18,6 +42,7 @@
       "default_tools": ["read_file", "write_file", "edit_file", "bash", "glob", "grep", "list_dir", "git"]
     },
     {
+      "@type": "PatternRole",
       "id": "reflector",
       "name": "Reflector",
       "description": "Reviews worker output, provides critique or approves",

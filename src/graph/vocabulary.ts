@@ -151,6 +151,19 @@ export const PORTER = {
   stepState: `${NS}stepState`,
   addresses: `${NS}addresses`,
 
+  // Pattern ontology
+  Pattern: `${NS}Pattern`,
+  PatternRole: `${NS}PatternRole`,
+  busFlow: `${NS}busFlow`,
+  isBuiltin: `${NS}isBuiltin`,
+  roleId: `${NS}roleId`,
+  minCount: `${NS}minCount`,
+  maxCount: `${NS}maxCount`,
+  systemPromptSuffix: `${NS}systemPromptSuffix`,
+  autoTool: `${NS}autoTool`,
+  subscribeDynamic: `${NS}subscribeDynamic`,
+  defaultTool: `${NS}defaultTool`,
+
   // Metrics
   inputTokens: `${NS}inputTokens`,
   outputTokens: `${NS}outputTokens`,
@@ -178,4 +191,5 @@ export const GRAPHS = {
   memory: `${NS}graph/memory`,
   metrics: `${NS}graph/metrics`,
   shapes: `${NS}graph/shapes`,
+  patterns: `${NS}graph/patterns`,
 } as const;

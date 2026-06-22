@@ -5,6 +5,7 @@
 import { classifyMcpContext, isContextCompatible } from '../constants.js';
 import { h, text, replaceContent } from '../dom.js';
 import { getDlg, getOverlayDlg, dlgQuery, showDialog } from './dialog-helpers.js';
+import { renderBusFlow } from '../render/flow-diagram.js';
 import {
   injectMcpTokens,
   getAvailableModels, formatModelOption, generateSessionName,
@@ -673,6 +674,15 @@ async function renderPatternLayout(body, bodyChildren, s, patternId) {
 
   const configStore = document.getElementById('config');
   const roleSections = [];
+
+  // Show flow diagram at the top for non-sequential patterns
+  if (patternDef.bus_flow) {
+    roleSections.push(
+      h('div', { style: 'margin-bottom:0.5rem' },
+        renderBusFlow(patternDef.bus_flow, { compact: false }),
+      )
+    );
+  }
 
   patternDef.roles.forEach((role, roleIdx) => {
     // Show flow arrow between role sections

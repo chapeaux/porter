@@ -1,11 +1,35 @@
 {
+  "@context": {
+    "porter": "https://porter.chapeaux.io/vocab#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "id": "@id",
+    "type": "@type",
+    "name": "porter:name",
+    "description": "porter:description",
+    "bus_flow": "porter:busFlow",
+    "builtin": { "@id": "porter:isBuiltin", "@type": "xsd:boolean" },
+    "max_rounds": { "@id": "porter:maxRounds", "@type": "xsd:integer" },
+    "roles": { "@id": "porter:hasRole", "@container": "@set" },
+    "min": { "@id": "porter:minCount", "@type": "xsd:integer" },
+    "max": { "@id": "porter:maxCount", "@type": "xsd:integer" },
+    "system_prompt_suffix": "porter:systemPromptSuffix",
+    "auto_tools": { "@id": "porter:autoTool", "@container": "@set" },
+    "subscribe": { "@id": "porter:subscribesTo", "@container": "@set" },
+    "subscribe_dynamic": "porter:subscribeDynamic",
+    "default_tools": { "@id": "porter:defaultTool", "@container": "@set" },
+    "Pattern": "porter:Pattern",
+    "PatternRole": "porter:PatternRole"
+  },
+  "@id": "porter:pattern/mixture",
+  "@type": "Pattern",
   "id": "mixture",
   "name": "Mixture",
   "description": "Parallel domain specialists analyze a problem independently, then a synthesizer reconciles their findings into a unified response. Optimized for small models.",
-  "bus_flow": "task → [specialists in parallel] → graph → synthesizer → response",
+  "bus_flow": "task -> [role:specialist*] -> graph -> role:synthesizer -> response",
   "builtin": true,
   "roles": [
     {
+      "@type": "PatternRole",
       "id": "specialist",
       "name": "Specialist",
       "description": "Analyzes the problem from a specific domain perspective",
@@ -17,6 +41,7 @@
       "default_tools": ["read_file", "glob", "grep", "list_dir"]
     },
     {
+      "@type": "PatternRole",
       "id": "synthesizer",
       "name": "Synthesizer",
       "description": "Aggregates specialist findings into a coherent response",
