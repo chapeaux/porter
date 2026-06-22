@@ -123,24 +123,43 @@ export function renderAgentForm(agent) {
     mcpToolContent = h('div', { class: 'tool-grid' }, ...mcpChecks);
   }
 
-  // Prompt sections
-  const sections = agent.promptSections || parsePromptSections(agent.systemPrompt, agent.role);
+  // Prompt sections — simplified to a single "Expertise" section
+  // Pattern-specific behavior (communication, memory, processing) is injected by the orchestrator at runtime
+  const configStore2 = document.getElementById('config');
+  const currentPattern = configStore2?.state?.pattern || 'sequential';
+  const isPatternMode = currentPattern !== 'sequential';
+
+  let sections;
+  if (isPatternMode) {
+    // In pattern mode: single expertise section — what the agent knows
+    const existingJob = (agent.promptSections || []).find(s => s.id === 'job');
+    const expertiseContent = existingJob?.content || agent.systemPrompt || '';
+    sections = [{ id: 'job', title: 'Expertise', content: expertiseContent }];
+  } else {
+    // Sequential mode: full 4-section layout (backwards compatible)
+    sections = agent.promptSections || parsePromptSections(agent.systemPrompt, agent.role);
+  }
+
   const promptSectionEls = sections.map((s, i) => {
     const titleSpan = document.createElement('span');
     titleSpan.className = 'prompt-section-title';
-    titleSpan.contentEditable = 'true';
+    titleSpan.contentEditable = !isPatternMode;
     titleSpan.textContent = s.title;
 
     const textarea = h('textarea', { class: 'prompt-section-content' });
     textarea.value = s.content;
 
-    return h('div', { class: 'prompt-section', 'data-section-id': s.id, 'data-idx': String(i) },
-      h('div', { class: 'prompt-section-header' },
-        titleSpan,
+    const headerChildren = [titleSpan];
+    if (!isPatternMode) {
+      headerChildren.push(
         h('button', { type: 'button', class: 'prompt-section-revert', title: 'Revert to default', disabled: !(s.default || ['job','comm','memory','processing'].includes(s.id)) }, '↺'),
         h('button', { type: 'button', class: 'prompt-section-remove', title: 'Remove section', disabled: ['job','comm','memory','processing'].includes(s.id) }, '✕'),
-        h('button', { type: 'button', class: 'prompt-section-toggle' }, '▾'),
-      ),
+      );
+    }
+    headerChildren.push(h('button', { type: 'button', class: 'prompt-section-toggle' }, '▾'));
+
+    return h('div', { class: 'prompt-section', 'data-section-id': s.id, 'data-idx': String(i) },
+      h('div', { class: 'prompt-section-header' }, ...headerChildren),
       textarea
     );
   });
@@ -215,14 +234,19 @@ export function renderAgentForm(agent) {
       ),
     ),
     h('div', { class: 'team-field' },
-      h('label', null, 'System Prompt'),
+      h('label', null, isPatternMode ? 'Expertise' : 'System Prompt'),
+      isPatternMode
+        ? h('div', { class: 'field-hint', style: 'margin-bottom:0.3rem' }, 'Describe what this agent specializes in. Communication and coordination behavior is injected by the collaboration pattern at runtime.')
+        : null,
       h('div', { class: 'prompt-sections', id: 'prompt-sections' }, ...promptSectionEls),
-      h('div', { class: 'prompt-section-actions' },
-        h('button', { type: 'button', id: 'add-prompt-section', class: 'prompt-upload-btn' }, '+ Add Section'),
-        h('button', { type: 'button', id: 'prompt-upload-btn', class: 'prompt-upload-btn' }, 'Upload File'),
-        fileInput,
-        h('span', { id: 'prompt-file-status', class: 'prompt-file-list' }),
-      ),
+      isPatternMode
+        ? null
+        : h('div', { class: 'prompt-section-actions' },
+            h('button', { type: 'button', id: 'add-prompt-section', class: 'prompt-upload-btn' }, '+ Add Section'),
+            h('button', { type: 'button', id: 'prompt-upload-btn', class: 'prompt-upload-btn' }, 'Upload File'),
+            fileInput,
+            h('span', { id: 'prompt-file-status', class: 'prompt-file-list' }),
+          ),
     ),
     h('div', { class: 'team-field' },
       h('label', null, 'Max Tokens ',
