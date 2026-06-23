@@ -39,11 +39,9 @@ export async function syncAgentsToPod(agents) {
   const authFetch = window._podSync._fetch;
 
   // Ensure agents/ container exists
-  await ensureContainer(authFetch, `${podRoot}porter/agents/`);
-
-  // Get existing agent files on Pod
-  const existingFiles = await listContainer(authFetch, `${podRoot}porter/agents/`);
-  const agentNames = new Set(agents.map(a => a.name).filter(Boolean));
+  const containerUrl = `${podRoot}porter/agents/`;
+  console.log(`[porter-pod] ensureContainer: ${containerUrl}`);
+  await ensureContainer(authFetch, containerUrl);
 
   // Write each agent as a Turtle file
   for (const agent of agents) {
@@ -51,11 +49,21 @@ export async function syncAgentsToPod(agents) {
     if (!name) continue;
     const url = `${podRoot}porter/agents/${encodeURIComponent(name)}.ttl`;
     const turtle = agentToTurtle(agent, url);
-    await authFetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'text/turtle' },
-      body: turtle,
-    });
+    console.log(`[porter-pod] PUT agent: ${url} (${turtle.length} bytes)`);
+    try {
+      const resp = await authFetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/turtle' },
+        body: turtle,
+      });
+      console.log(`[porter-pod] PUT response: ${resp.status} ${resp.statusText}`);
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => '');
+        console.error(`[porter-pod] PUT failed: ${resp.status} ${body}`);
+      }
+    } catch (err) {
+      console.error(`[porter-pod] PUT error:`, err);
+    }
   }
 
   // Don't delete orphans here — the server may not have all agents yet
@@ -307,9 +315,13 @@ export async function ensureContainer(authFetch, url) {
         headers: { 'Link': linkType, 'Content-Type': 'text/turtle' },
         body: '',
       });
+      console.log(`[porter-pod] ensureContainer ${url}: ${resp.status} (${linkType.includes('lws') ? 'LWS' : 'LDP'})`);
       if (resp.ok || resp.status === 201 || resp.status === 409) return;
-    } catch { /* try next type */ }
+    } catch (err) {
+      console.error(`[porter-pod] ensureContainer error:`, err);
+    }
   }
+  console.warn(`[porter-pod] ensureContainer: all attempts failed for ${url}`);
 }
 
 export async function listContainer(authFetch, url) {
