@@ -79,12 +79,12 @@ export function showAgentLibrary() {
         });
       }
 
-      const importUrlBtn = h('button', { class: 'team-btn', id: 'lib-import-url' }, 'Import from URL');
+      const importBtn2 = h('button', { class: 'team-btn', id: 'lib-import' }, 'Import');
 
       replaceContent(body,
         h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem' },
           h('p', { style: 'color:var(--text-dim);margin:0' }, `${agents.length} saved agent${agents.length !== 1 ? 's' : ''}`),
-          h('div', { style: 'display:flex;gap:0.5rem' }, buildTeamBtn, importUrlBtn, newAgentBtn)
+          h('div', { style: 'display:flex;gap:0.5rem' }, buildTeamBtn, importBtn2, newAgentBtn)
         ),
         h('div', { class: 'saved-agent-list' }, ...listContent)
       );
@@ -202,95 +202,180 @@ export function showAgentLibrary() {
         });
       });
 
-      // Import from URL
-      importUrlBtn.addEventListener('click', () => {
-        showImportFromUrlDialog(() => showAgentLibrary());
+      // Import (URL or file)
+      importBtn2.addEventListener('click', () => {
+        showImportDialog(() => showAgentLibrary());
       });
     },
   });
 }
 
 /**
- * Show import-from-URL dialog. Lets the user paste a URL to an agent definition
- * and choose whether to link or copy it into the local library.
+ * Unified import dialog — URL or file upload.
+ * URL supports Link (remote reference) or Copy (local ownership).
+ * File upload always creates a local copy.
  */
-function showImportFromUrlDialog(onSuccess) {
+function showImportDialog(onSuccess) {
   const dlg = getOverlayDlg();
   dlg.openTemplate('tpl-detail', {
-    title: 'Import Agent from URL',
+    title: 'Import Agent',
     onOpen: () => {
       const body = dlg.bodyEl.querySelector('#dialog-body');
 
+      // Source tabs
+      const tabUrl = h('button', { class: 'team-btn primary', style: 'flex:1' }, 'From URL');
+      const tabFile = h('button', { class: 'team-btn secondary', style: 'flex:1' }, 'From File');
+      const tabs = h('div', { style: 'display:flex;gap:0.3rem;margin-bottom:0.75rem' }, tabUrl, tabFile);
+
+      // URL section
       const urlInput = h('input', {
         type: 'url',
-        id: 'import-agent-url',
         placeholder: 'https://example.com/agents/my-agent.jsonld',
-        style: 'width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary)',
+        style: 'width:100%',
       });
-
       const modeLink = h('input', { type: 'radio', name: 'import-mode', value: 'link', checked: true });
       const modeCopy = h('input', { type: 'radio', name: 'import-mode', value: 'copy' });
-
-      const importBtn = h('button', { class: 'team-btn primary', style: 'width:100%;margin-top:0.75rem' }, 'Import');
-      const statusEl = h('div', { id: 'import-url-status', style: 'margin-top:0.5rem;font-size:0.85rem;display:none' });
-
-      replaceContent(body,
+      const urlSection = h('div', { id: 'import-url-section' },
         h('div', { class: 'team-field' },
           h('label', null, 'Agent URL'),
           urlInput,
-          h('div', { class: 'field-hint' }, 'URL to a JSON or JSON-LD agent definition.'),
+          h('div', { class: 'field-hint' }, 'Accepts .jsonld, .ttl, or .json from any URL (GitHub raw, Solid Pod, etc.)'),
         ),
-        h('div', { class: 'team-field', style: 'margin-top:0.75rem' },
+        h('div', { class: 'team-field', style: 'margin-top:0.5rem' },
           h('label', null, 'Import Mode'),
           h('div', { style: 'display:flex;gap:1rem;margin-top:0.25rem' },
-            h('label', { style: 'display:flex;align-items:center;gap:0.3rem;cursor:pointer' }, modeLink, 'Link (reference only)'),
-            h('label', { style: 'display:flex;align-items:center;gap:0.3rem;cursor:pointer' }, modeCopy, 'Copy (full local copy)'),
+            h('label', { style: 'display:flex;align-items:center;gap:0.3rem;cursor:pointer' }, modeLink, 'Link (remote reference)'),
+            h('label', { style: 'display:flex;align-items:center;gap:0.3rem;cursor:pointer' }, modeCopy, 'Copy (local ownership)'),
           ),
-          h('div', { class: 'field-hint' }, 'Link keeps a reference to the remote agent. Copy downloads the full definition.'),
+          h('div', { class: 'field-hint' }, 'Link keeps a live reference — updates at the source propagate. Copy is independent.'),
         ),
-        importBtn,
-        statusEl,
       );
 
-      importBtn.addEventListener('click', async () => {
-        const url = urlInput.value.trim();
-        if (!url) {
-          statusEl.textContent = 'Please enter a URL';
-          statusEl.style.color = 'var(--status-error)';
-          statusEl.style.display = '';
-          return;
-        }
+      // File section
+      const fileInput = h('input', {
+        type: 'file',
+        accept: '.jsonld,.ttl,.json',
+        style: 'width:100%',
+      });
+      const fileSection = h('div', { id: 'import-file-section', style: 'display:none' },
+        h('div', { class: 'team-field' },
+          h('label', null, 'Agent File'),
+          fileInput,
+          h('div', { class: 'field-hint' }, 'Upload a .jsonld, .ttl, or .json agent definition. Creates a local copy.'),
+        ),
+      );
 
-        const mode = body.querySelector('input[name="import-mode"]:checked')?.value || 'link';
+      const importBtn = h('button', { class: 'team-btn primary', style: 'width:100%;margin-top:0.75rem' }, 'Import');
+      const statusEl = h('div', { style: 'margin-top:0.5rem;font-size:0.85rem;display:none' });
+
+      replaceContent(body, tabs, urlSection, fileSection, importBtn, statusEl);
+
+      // Tab switching
+      let activeTab = 'url';
+      tabUrl.addEventListener('click', () => {
+        activeTab = 'url';
+        tabUrl.className = 'team-btn primary';
+        tabFile.className = 'team-btn secondary';
+        urlSection.style.display = '';
+        fileSection.style.display = 'none';
+        statusEl.style.display = 'none';
+      });
+      tabFile.addEventListener('click', () => {
+        activeTab = 'file';
+        tabFile.className = 'team-btn primary';
+        tabUrl.className = 'team-btn secondary';
+        fileSection.style.display = '';
+        urlSection.style.display = 'none';
+        statusEl.style.display = 'none';
+      });
+
+      importBtn.addEventListener('click', async () => {
+        statusEl.style.display = 'none';
         importBtn.textContent = 'Importing...';
         importBtn.disabled = true;
 
         try {
-          const resp = await fetch('/api/agents/import', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, mode }),
-          });
-
-          if (resp.ok) {
-            statusEl.textContent = 'Agent imported successfully';
-            statusEl.style.color = 'var(--status-ok)';
-            statusEl.style.display = '';
-            setTimeout(() => {
-              dlg.close();
-              if (onSuccess) onSuccess();
-              updateSetupBar();
-            }, 800);
+          if (activeTab === 'url') {
+            // URL import
+            const url = urlInput.value.trim();
+            if (!url) {
+              statusEl.textContent = 'Please enter a URL';
+              statusEl.style.color = 'var(--status-error)';
+              statusEl.style.display = '';
+              importBtn.textContent = 'Import';
+              importBtn.disabled = false;
+              return;
+            }
+            const mode = body.querySelector('input[name="import-mode"]:checked')?.value || 'link';
+            const resp = await fetch('/api/agents/import', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url, mode }),
+            });
+            if (!resp.ok) {
+              const data = await resp.json().catch(() => ({}));
+              throw new Error(data.error || 'Import failed');
+            }
           } else {
-            const data = await resp.json().catch(() => ({}));
-            statusEl.textContent = data.error || 'Import failed';
-            statusEl.style.color = 'var(--status-error)';
-            statusEl.style.display = '';
-            importBtn.textContent = 'Import';
-            importBtn.disabled = false;
+            // File import — always copy
+            const file = fileInput.files?.[0];
+            if (!file) {
+              statusEl.textContent = 'Please select a file';
+              statusEl.style.color = 'var(--status-error)';
+              statusEl.style.display = '';
+              importBtn.textContent = 'Import';
+              importBtn.disabled = false;
+              return;
+            }
+            const text = await file.text();
+            let agentData;
+            if (file.name.endsWith('.ttl')) {
+              // Parse Turtle — extract fields via regex
+              const { parseTurtleAgent } = await import('../sync/sync-helpers.js');
+              agentData = parseTurtleAgent(text);
+              if (!agentData) throw new Error('Could not parse Turtle file');
+            } else {
+              // JSON or JSON-LD
+              agentData = JSON.parse(text);
+            }
+            // Normalize field names
+            const agent = {
+              name: agentData.name || agentData['porter:name'] || file.name.replace(/\.(jsonld|json|ttl)$/, ''),
+              role: agentData.role || agentData['porter:assignedRole'] || 'worker',
+              model: agentData.model || agentData['porter:usesModel'] || '',
+              system_prompt: agentData.expertise || agentData.system_prompt || agentData.systemPrompt || agentData['porter:agentExpertise'] || '',
+              tools: agentData.tools || agentData['porter:hasTool'] || [],
+              channels: [],
+              mcp_tools: agentData.mcp_tools || [],
+              max_tokens: agentData.maxTokens || agentData.max_tokens || 8192,
+              max_turns: agentData.maxTurns || agentData.max_turns || undefined,
+              max_context_tokens: agentData.maxContextTokens || agentData.max_context_tokens || undefined,
+              reasoning: agentData.reasoning || false,
+              derived_from: `file:${file.name}`,
+            };
+            const resp = await fetch('/api/agents', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(agent),
+            });
+            if (!resp.ok) throw new Error('Failed to save agent');
           }
+
+          statusEl.textContent = 'Agent imported successfully';
+          statusEl.style.color = 'var(--status-ok)';
+          statusEl.style.display = '';
+          // Sync to Pod
+          fetch('/api/agents')
+            .then(r => r.ok ? r.json() : { agents: [] })
+            .then(data => syncAgentsToPod(data.agents || []))
+            .catch(() => {});
+          setTimeout(() => {
+            dlg.close();
+            if (onSuccess) onSuccess();
+            updateSetupBar();
+          }, 800);
         } catch (e) {
-          statusEl.textContent = `Error: ${e.message}`;
+          statusEl.textContent = e.message || 'Import failed';
           statusEl.style.color = 'var(--status-error)';
           statusEl.style.display = '';
           importBtn.textContent = 'Import';
