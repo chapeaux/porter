@@ -304,6 +304,23 @@ function showImportDialog(onSuccess) {
               return;
             }
             const mode = body.querySelector('input[name="import-mode"]:checked')?.value || 'link';
+            // Check for duplicate before URL import
+            const urlCheckResp = await fetch('/api/agents/import', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url, mode, dry_run: true }),
+            });
+            if (urlCheckResp.ok) {
+              const checkData = await urlCheckResp.json();
+              if (checkData.exists) {
+                const confirmed = confirm(`An agent named "${checkData.agent}" already exists. Replace it?`);
+                if (!confirmed) {
+                  importBtn.textContent = 'Import';
+                  importBtn.disabled = false;
+                  return;
+                }
+              }
+            }
             const resp = await fetch('/api/agents/import', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -350,6 +367,16 @@ function showImportDialog(onSuccess) {
               reasoning: agentData.reasoning || false,
               derived_from: `file:${file.name}`,
             };
+            // Check for duplicate
+            const existsResp = await fetch(`/api/agents/${encodeURIComponent(agent.name)}`);
+            if (existsResp.ok) {
+              const confirmed = confirm(`An agent named "${agent.name}" already exists. Replace it?`);
+              if (!confirmed) {
+                importBtn.textContent = 'Import';
+                importBtn.disabled = false;
+                return;
+              }
+            }
             const resp = await fetch('/api/agents', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

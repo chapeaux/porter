@@ -1643,6 +1643,14 @@ export async function startUiServer(
           });
         }
 
+        // Dry run: just check if agent exists, don't save
+        if (body.dry_run) {
+          const existing = await userStore.getAgent(userId, agent.name);
+          return new Response(JSON.stringify({ exists: !!existing, agent: agent.name }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
         if (mode === "link") {
           // Store as a linked reference — save the URL, mark as linked
           agent._context = "linked";
