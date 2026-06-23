@@ -16,9 +16,12 @@
  */
 
 export { loadConfig } from "./src/core/config.ts";
+export { isAgentRef } from "./src/core/config.ts";
 export type {
   AgentConfig,
+  AgentRef,
   AgentRole,
+  CollaborationPattern,
   PorterConfig,
   RepoConfig,
   RemoteConfig,

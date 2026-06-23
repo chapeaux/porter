@@ -299,6 +299,11 @@ export class ConfigStore extends CPXStore {
       const names = this.state.agents.map(a => a.name);
       const dupes = names.filter((n, i) => names.indexOf(n) !== i);
       if (dupes.length > 0) errors.agents = `Duplicate agent name: ${dupes[0]}`;
+      const missing = this.state.agents.filter(a => a._missing);
+      if (missing.length > 0) {
+        const mNames = missing.map(a => a.name || a.ref).join(', ');
+        errors.agents = `${missing.length} agent(s) not found in library: ${mNames}`;
+      }
     }
 
     this.setState({ errors });
@@ -326,6 +331,13 @@ export class ConfigStore extends CPXStore {
           ))
         : undefined,
       agents: this.state.agents.map(a => {
+        // If agent came from the library, serialize as a reference
+        if (a._isRef || a._fromLibrary) {
+          const ref = { ref: a.ref || a.name, name: a.name, role: a.role };
+          if (a.model) ref.model = a.model;
+          return ref;
+        }
+        // Otherwise serialize as full inline agent
         const agent = {
           name: a.name,
           role: a.role,
@@ -368,26 +380,87 @@ export class ConfigStore extends CPXStore {
         sessionEnv: config.env || {},
         sandbox: !!config.sandbox,
         runtimeTools: config.runtime_tools || [],
-        agents: (config.agents || []).map(a => ({
-          name: a.name,
-          role: a.role || 'worker',
-          model: a.model || '',
-          systemPrompt: a.system_prompt || '',
-          promptSections: a.prompt_sections || parsePromptSections(a.system_prompt || '', a.role || 'worker'),
-          tools: a.tools || [],
-          channels: a.subscribe || [],
-          maxTokens: a.max_tokens || 8192,
-          maxTurns: a.max_turns || undefined,
-          maxContextTokens: a.max_context_tokens || undefined,
-          reasoning: a.reasoning || false,
-          mcpTools: a.mcp_tools || [],
-        })),
+        agents: (config.agents || []).map(a => {
+          // Detect agent references (has ref, no system_prompt)
+          if (a.ref && !a.system_prompt) {
+            return {
+              name: a.name || a.ref,
+              role: a.role || 'worker',
+              model: a.model || '',
+              systemPrompt: '',
+              promptSections: [],
+              tools: [],
+              channels: [],
+              maxTokens: 8192,
+              reasoning: false,
+              mcpTools: [],
+              _isRef: true,
+              _missing: true,
+              ref: a.ref,
+            };
+          }
+          // Full inline agent (existing format)
+          return {
+            name: a.name,
+            role: a.role || 'worker',
+            model: a.model || '',
+            systemPrompt: a.system_prompt || '',
+            promptSections: a.prompt_sections || parsePromptSections(a.system_prompt || '', a.role || 'worker'),
+            tools: a.tools || [],
+            channels: a.subscribe || [],
+            maxTokens: a.max_tokens || 8192,
+            maxTurns: a.max_turns || undefined,
+            maxContextTokens: a.max_context_tokens || undefined,
+            reasoning: a.reasoning || false,
+            mcpTools: a.mcp_tools || [],
+          };
+        }),
         step: 2,
         errors: {},
       });
     } catch (e) {
       console.error('Failed to parse config:', e);
     }
+  }
+
+  /**
+   * Resolve agent references by fetching from the agent library API.
+   * Agents marked with _isRef and _missing will be resolved in-place.
+   * Returns true if any agents were resolved.
+   */
+  async resolveAgentRefs() {
+    const agents = this.state.agents;
+    let changed = false;
+    const resolved = await Promise.all(agents.map(async a => {
+      if (!a._isRef || !a._missing) return a;
+      try {
+        const resp = await fetch(`/api/agents/${encodeURIComponent(a.ref)}`);
+        if (resp.ok) {
+          const saved = await resp.json();
+          changed = true;
+          return {
+            name: saved.name,
+            role: a.role || saved.role || 'worker',
+            model: a.model || saved.model || '',
+            systemPrompt: saved.system_prompt || '',
+            promptSections: saved.prompt_sections || parsePromptSections(saved.system_prompt || '', a.role || saved.role || 'worker'),
+            tools: saved.tools || [],
+            channels: saved.channels || saved.subscribe || [],
+            maxTokens: saved.max_tokens || 8192,
+            maxTurns: saved.max_turns || undefined,
+            maxContextTokens: saved.max_context_tokens || undefined,
+            reasoning: saved.reasoning || false,
+            mcpTools: saved.mcp_tools || [],
+            _isRef: true,
+            _fromLibrary: true,
+            ref: a.ref,
+          };
+        }
+      } catch { /* resolve failed — keep as missing */ }
+      return a;
+    }));
+    if (changed) this.setState({ agents: resolved });
+    return changed;
   }
 
   createDefaultAgent(isFirst = false, forRole = null) {

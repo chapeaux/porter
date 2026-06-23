@@ -45,6 +45,30 @@ export type AgentRole =
 export type CollaborationPattern = "sequential" | "mixture" | "deliberation" | "distillation";
 
 /** Configuration for a single agent. */
+/**
+ * Agent reference — a team references an agent by name or URI
+ * instead of embedding the full config. Resolved at session launch.
+ */
+export interface AgentRef {
+  /** Agent name (local library) or URI (remote/Solid Pod). */
+  ref: string;
+  /** Display name (defaults to ref if not set). */
+  name: string;
+  /** Role assigned by the team's pattern. */
+  role: AgentRole;
+  /** Optional model override for this team context. */
+  model?: string;
+  /** True if this is a remote link (not a local copy). */
+  _linked?: boolean;
+  /** True if the ref could not be resolved. */
+  _missing?: boolean;
+}
+
+/** Check whether an agent entry is a reference or a full config. */
+export function isAgentRef(a: AgentConfig | AgentRef): a is AgentRef {
+  return "ref" in a && !("system_prompt" in a);
+}
+
 export interface AgentConfig {
   /** Display name for this agent. */
   name: string;

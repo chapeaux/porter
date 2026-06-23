@@ -28,7 +28,7 @@ export interface SavedAgent {
   max_tokens: number;
   reasoning: boolean;
   _context?: string;
-  visibility?: "private" | "shared";
+  visibility?: "private" | "shared" | "linked";
   author?: string;
   created_at: string;
   updated_at: string;

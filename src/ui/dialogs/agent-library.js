@@ -4,7 +4,7 @@
 
 import { isContextCompatible } from '../constants.js';
 import { h, text, replaceContent } from '../dom.js';
-import { getDlg } from './dialog-helpers.js';
+import { getDlg, getOverlayDlg } from './dialog-helpers.js';
 import { parsePromptSections, ROLE_CHANNEL_DEFAULTS } from '../stores/config-store.js';
 import { openAgentEditor } from './agent-editor.js';
 import { openTeamBuilder } from './team-builder.js';
@@ -68,23 +68,33 @@ export function showAgentLibrary() {
             cb,
             h('span', { class: 'saved-agent-name', style: 'flex:1' }, ...nameChildren),
             h('span', { class: 'saved-agent-role' }, a.role),
+            h('button', { class: 'mcp-action-btn lib-download-agent', 'data-name': a.name, title: 'Download as JSON-LD' }, 'Download'),
+            h('button', { class: 'mcp-action-btn lib-share-agent', 'data-name': a.name, title: 'Share URI' }, 'Share'),
             h('button', { class: 'mcp-action-btn lib-edit-agent', 'data-name': a.name }, 'Edit'),
             h('button', { class: 'mcp-action-btn lib-delete-agent', 'data-name': a.name, style: 'background:var(--status-error)' }, 'Delete'),
           );
         });
       }
 
+      const importUrlBtn = h('button', { class: 'team-btn', id: 'lib-import-url' }, 'Import from URL');
+
       replaceContent(body,
         h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem' },
           h('p', { style: 'color:var(--text-dim);margin:0' }, `${agents.length} saved agent${agents.length !== 1 ? 's' : ''}`),
-          h('div', { style: 'display:flex;gap:0.5rem' }, buildTeamBtn, newAgentBtn)
+          h('div', { style: 'display:flex;gap:0.5rem' }, buildTeamBtn, importUrlBtn, newAgentBtn)
         ),
         h('div', { class: 'saved-agent-list' }, ...listContent)
       );
 
       buildTeamBtn.addEventListener('click', () => {
         const configStore = document.getElementById('config');
-        const teamAgents = [...selected].map(i => convertSavedAgent(agents[i]));
+        const teamAgents = [...selected].map(i => {
+          const a = convertSavedAgent(agents[i]);
+          a._isRef = true;
+          a._fromLibrary = true;
+          a.ref = agents[i].name;
+          return a;
+        });
         configStore.setState({ agents: teamAgents, step: 2, teamName: '', errors: {} });
         dlg.close();
         openTeamBuilder(2, 'Build Team');
@@ -126,6 +136,140 @@ export function showAgentLibrary() {
           showAgentLibrary();
           updateSetupBar();
         });
+      });
+
+      // Download as JSON-LD
+      body.querySelectorAll('.lib-download-agent').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const name = btn.dataset.name;
+          try {
+            const resp = await fetch(`/api/agents/${encodeURIComponent(name)}`, {
+              headers: { 'Accept': 'application/ld+json' },
+            });
+            if (!resp.ok) throw new Error('Download failed');
+            const data = await resp.text();
+            const blob = new Blob([data], { type: 'application/ld+json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${name}.jsonld`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+          } catch {
+            btn.textContent = 'Failed';
+            setTimeout(() => { btn.textContent = 'Download'; }, 2000);
+          }
+        });
+      });
+
+      // Share URI
+      body.querySelectorAll('.lib-share-agent').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const name = btn.dataset.name;
+          const agentUri = `${location.origin}/api/agents/${encodeURIComponent(name)}`;
+          try {
+            await navigator.clipboard.writeText(agentUri);
+            btn.textContent = 'Copied';
+          } catch {
+            btn.textContent = 'URI copied';
+          }
+          setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+        });
+      });
+
+      // Import from URL
+      importUrlBtn.addEventListener('click', () => {
+        showImportFromUrlDialog(() => showAgentLibrary());
+      });
+    },
+  });
+}
+
+/**
+ * Show import-from-URL dialog. Lets the user paste a URL to an agent definition
+ * and choose whether to link or copy it into the local library.
+ */
+function showImportFromUrlDialog(onSuccess) {
+  const dlg = getOverlayDlg();
+  dlg.openTemplate('tpl-detail', {
+    title: 'Import Agent from URL',
+    onOpen: () => {
+      const body = dlg.bodyEl.querySelector('#dialog-body');
+
+      const urlInput = h('input', {
+        type: 'url',
+        id: 'import-agent-url',
+        placeholder: 'https://example.com/agents/my-agent.jsonld',
+        style: 'width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary)',
+      });
+
+      const modeLink = h('input', { type: 'radio', name: 'import-mode', value: 'link', checked: true });
+      const modeCopy = h('input', { type: 'radio', name: 'import-mode', value: 'copy' });
+
+      const importBtn = h('button', { class: 'team-btn primary', style: 'width:100%;margin-top:0.75rem' }, 'Import');
+      const statusEl = h('div', { id: 'import-url-status', style: 'margin-top:0.5rem;font-size:0.85rem;display:none' });
+
+      replaceContent(body,
+        h('div', { class: 'team-field' },
+          h('label', null, 'Agent URL'),
+          urlInput,
+          h('div', { class: 'field-hint' }, 'URL to a JSON or JSON-LD agent definition.'),
+        ),
+        h('div', { class: 'team-field', style: 'margin-top:0.75rem' },
+          h('label', null, 'Import Mode'),
+          h('div', { style: 'display:flex;gap:1rem;margin-top:0.25rem' },
+            h('label', { style: 'display:flex;align-items:center;gap:0.3rem;cursor:pointer' }, modeLink, 'Link (reference only)'),
+            h('label', { style: 'display:flex;align-items:center;gap:0.3rem;cursor:pointer' }, modeCopy, 'Copy (full local copy)'),
+          ),
+          h('div', { class: 'field-hint' }, 'Link keeps a reference to the remote agent. Copy downloads the full definition.'),
+        ),
+        importBtn,
+        statusEl,
+      );
+
+      importBtn.addEventListener('click', async () => {
+        const url = urlInput.value.trim();
+        if (!url) {
+          statusEl.textContent = 'Please enter a URL';
+          statusEl.style.color = 'var(--status-error)';
+          statusEl.style.display = '';
+          return;
+        }
+
+        const mode = body.querySelector('input[name="import-mode"]:checked')?.value || 'link';
+        importBtn.textContent = 'Importing...';
+        importBtn.disabled = true;
+
+        try {
+          const resp = await fetch('/api/agents/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, mode }),
+          });
+
+          if (resp.ok) {
+            statusEl.textContent = 'Agent imported successfully';
+            statusEl.style.color = 'var(--status-ok)';
+            statusEl.style.display = '';
+            setTimeout(() => {
+              dlg.close();
+              if (onSuccess) onSuccess();
+              updateSetupBar();
+            }, 800);
+          } else {
+            const data = await resp.json().catch(() => ({}));
+            statusEl.textContent = data.error || 'Import failed';
+            statusEl.style.color = 'var(--status-error)';
+            statusEl.style.display = '';
+            importBtn.textContent = 'Import';
+            importBtn.disabled = false;
+          }
+        } catch (e) {
+          statusEl.textContent = `Error: ${e.message}`;
+          statusEl.style.color = 'var(--status-error)';
+          statusEl.style.display = '';
+          importBtn.textContent = 'Import';
+          importBtn.disabled = false;
+        }
       });
     },
   });
@@ -188,7 +332,11 @@ export async function showSavedAgentPicker() {
       addBtn.addEventListener('click', () => {
         const configStore = document.getElementById('config');
         for (const i of selected) {
-          configStore.addAgent(convertSavedAgent(saved[i]));
+          const agentForTeam = convertSavedAgent(saved[i]);
+          agentForTeam._isRef = true;
+          agentForTeam._fromLibrary = true;
+          agentForTeam.ref = saved[i].name;
+          configStore.addAgent(agentForTeam);
         }
         dlg.close();
         openTeamBuilder(2);

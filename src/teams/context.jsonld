@@ -1,0 +1,16 @@
+{
+  "@context": {
+    "porter": "https://porter.chapeaux.io/vocab#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "id": "@id",
+    "type": "@type",
+    "Team": "porter:Team",
+    "name": "porter:name",
+    "pattern": { "@id": "porter:teamPattern", "@type": "@id" },
+    "agents": { "@id": "porter:hasAgentRef", "@container": "@set" },
+    "ref": { "@id": "porter:agentRef", "@type": "@id" },
+    "role": "porter:assignedRole",
+    "model": "porter:usesModel",
+    "AgentRef": "porter:AgentRef"
+  }
+}

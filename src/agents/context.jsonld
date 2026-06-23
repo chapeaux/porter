@@ -1,0 +1,18 @@
+{
+  "@context": {
+    "porter": "https://porter.chapeaux.io/vocab#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "id": "@id",
+    "type": "@type",
+    "Agent": "porter:Agent",
+    "name": "porter:name",
+    "expertise": "porter:agentExpertise",
+    "model": "porter:usesModel",
+    "tools": { "@id": "porter:hasTool", "@container": "@set" },
+    "reasoning": { "@id": "porter:reasoning", "@type": "xsd:boolean" },
+    "maxTokens": { "@id": "porter:maxTokens", "@type": "xsd:integer" },
+    "visibility": "porter:visibility",
+    "derivedFrom": { "@id": "porter:derivedFrom", "@type": "@id" },
+    "linkedFrom": { "@id": "porter:linkedFrom", "@type": "@id" }
+  }
+}

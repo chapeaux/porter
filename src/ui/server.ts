@@ -29,6 +29,7 @@ import {
   type OidcDiscovery,
   type AuthenticatedUser,
 } from "../auth/mod.ts";
+import type { SavedAgent, SavedTeam } from "../auth/user_store.ts";
 
 // Load UI assets from disk relative to this file
 const UI_DIR = import.meta.dirname!;
@@ -140,6 +141,100 @@ function mcpAuthResultPage(
     .replace("{{STORAGE_KEY}}", JSON.stringify(storageKey))
     .replace("{{SERVER_NAME}}", JSON.stringify(serverName))
     .replace("{{ERROR_MSG}}", JSON.stringify(errorMsg));
+}
+
+// --- Agent/Team serialization helpers ---
+
+/** Convert a JSON-LD (or plain JSON) agent document to a SavedAgent. */
+function jsonLdToSavedAgent(json: Record<string, unknown>): SavedAgent | null {
+  const name = (json.name ?? json["porter:name"]) as string;
+  if (!name) return null;
+  return {
+    name,
+    role: (json.role ?? "worker") as string,
+    model: (json.model ?? json["porter:usesModel"]) as string | undefined,
+    system_prompt: (json.expertise ?? json.system_prompt ?? json["porter:agentExpertise"] ?? "") as string,
+    tools: (json.tools ?? json["porter:hasTool"] ?? []) as string[],
+    channels: [],
+    mcp_tools: [],
+    max_tokens: (json.maxTokens ?? json.max_tokens ?? 8192) as number,
+    reasoning: (json.reasoning ?? false) as boolean,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/** Serialize a SavedAgent as JSON-LD. */
+function agentToJsonLd(agent: SavedAgent, userId: string): Record<string, unknown> {
+  return {
+    "@context": "https://porter.chapeaux.io/agents/context.jsonld",
+    "@id": `porter:${userId}/agents/${agent.name}`,
+    "@type": "Agent",
+    name: agent.name,
+    expertise: agent.system_prompt,
+    tools: agent.tools,
+    model: agent.model,
+    reasoning: agent.reasoning,
+    maxTokens: agent.max_tokens,
+    visibility: agent.visibility ?? "private",
+  };
+}
+
+/** Serialize a SavedAgent as Turtle. */
+function agentToTurtle(agent: SavedAgent, userId: string): string {
+  const uri = `<https://porter.chapeaux.io/vocab#${userId}/agents/${agent.name}>`;
+  const lines = [
+    "@prefix porter: <https://porter.chapeaux.io/vocab#> .",
+    '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .',
+    "",
+    `${uri} a porter:Agent ;`,
+    `  porter:name "${agent.name}" ;`,
+    `  porter:agentExpertise """${(agent.system_prompt || "").replace(/"""/g, '\\"\\"\\"')}""" ;`,
+  ];
+  for (const t of agent.tools || []) {
+    lines.push(`  porter:hasTool "${t}" ;`);
+  }
+  if (agent.model) lines.push(`  porter:usesModel "${agent.model}" ;`);
+  lines.push(`  porter:visibility "${agent.visibility ?? "private"}" .`);
+  return lines.join("\n");
+}
+
+/** Serialize a SavedTeam as JSON-LD. */
+function teamToJsonLd(team: SavedTeam): Record<string, unknown> {
+  return {
+    "@context": "https://porter.chapeaux.io/teams/context.jsonld",
+    "@type": "Team",
+    name: team.name,
+    pattern: team.config.pattern,
+    agents: team.config.agents.map((a) => ({
+      "@type": "AgentRef",
+      ref: (a as unknown as Record<string, unknown>).ref ?? a.name,
+      role: a.role,
+      model: a.model,
+    })),
+  };
+}
+
+/** Serialize a SavedTeam as Turtle. */
+function teamToTurtle(team: SavedTeam): string {
+  const uri = `<https://porter.chapeaux.io/vocab#teams/${team.name}>`;
+  const lines = [
+    "@prefix porter: <https://porter.chapeaux.io/vocab#> .",
+    '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .',
+    "",
+    `${uri} a porter:Team ;`,
+    `  porter:name "${team.name}" ;`,
+  ];
+  if (team.config.pattern) {
+    lines.push(`  porter:teamPattern "${team.config.pattern}" ;`);
+  }
+  for (const a of team.config.agents) {
+    const ref = (a as unknown as Record<string, unknown>).ref ?? a.name;
+    lines.push(`  porter:hasAgentRef [ porter:agentRef "${ref}" ; porter:assignedRole "${a.role}" ] ;`);
+  }
+  // Replace trailing " ;" on the last triple with " ."
+  lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " .");
+  return lines.join("\n");
 }
 
 /**
@@ -1507,6 +1602,69 @@ export async function startUiServer(
       return new Response(JSON.stringify({ ok: true, agent: agent.name }), { headers: { "Content-Type": "application/json" } });
     }
 
+    // POST /api/agents/import — import an agent from a remote URL
+    if (pathname === "/api/agents/import" && req.method === "POST") {
+      const userId = await resolveUserId(req);
+      try {
+        const body = await req.json();
+        const importUrl = body.url as string;
+        const mode = (body.mode as string) || "copy";
+
+        if (!importUrl) {
+          return new Response(JSON.stringify({ error: "Missing url" }), {
+            status: 400, headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        // Fetch the agent definition
+        const resp = await fetch(importUrl, {
+          headers: { "Accept": "application/ld+json, application/json" },
+        });
+        if (!resp.ok) {
+          return new Response(JSON.stringify({ error: `Failed to fetch: ${resp.status}` }), {
+            status: 502, headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const text = await resp.text();
+        let json: Record<string, unknown>;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          return new Response(JSON.stringify({ error: "Could not parse response as JSON" }), {
+            status: 400, headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const agent = jsonLdToSavedAgent(json);
+        if (!agent) {
+          return new Response(JSON.stringify({ error: "Invalid agent format" }), {
+            status: 400, headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        if (mode === "link") {
+          // Store as a linked reference — save the URL, mark as linked
+          agent._context = "linked";
+          agent.visibility = "linked";
+          // Store source URI for re-fetching
+          (agent as unknown as Record<string, unknown>).linked_from = importUrl;
+        } else {
+          // Copy mode — store derived-from provenance
+          (agent as unknown as Record<string, unknown>).derived_from = importUrl;
+        }
+
+        await userStore.saveAgent(userId, agent);
+        return new Response(JSON.stringify({ ok: true, agent: agent.name }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (pathname.startsWith("/api/agents/") && req.method === "GET") {
       const agentName = decodeURIComponent(pathname.slice("/api/agents/".length));
       const userId = await resolveUserId(req);
@@ -1514,6 +1672,22 @@ export async function startUiServer(
       if (!agent) {
         return new Response(JSON.stringify({ error: "Agent not found" }), { status: 404, headers: { "Content-Type": "application/json" } });
       }
+
+      // Content negotiation
+      const accept = req.headers.get("accept") || "";
+      if (accept.includes("application/ld+json")) {
+        const jsonld = agentToJsonLd(agent, userId);
+        return new Response(JSON.stringify(jsonld, null, 2), {
+          headers: { "Content-Type": "application/ld+json" },
+        });
+      }
+      if (accept.includes("text/turtle")) {
+        const turtle = agentToTurtle(agent, userId);
+        return new Response(turtle, {
+          headers: { "Content-Type": "text/turtle" },
+        });
+      }
+      // Default: plain JSON (existing behavior)
       return new Response(JSON.stringify(agent), { headers: { "Content-Type": "application/json" } });
     }
 
@@ -1737,6 +1911,22 @@ export async function startUiServer(
           status: 404, headers: { "Content-Type": "application/json" },
         });
       }
+
+      // Content negotiation
+      const accept = req.headers.get("accept") || "";
+      if (accept.includes("application/ld+json")) {
+        const jsonld = teamToJsonLd(team);
+        return new Response(JSON.stringify(jsonld, null, 2), {
+          headers: { "Content-Type": "application/ld+json" },
+        });
+      }
+      if (accept.includes("text/turtle")) {
+        const turtle = teamToTurtle(team);
+        return new Response(turtle, {
+          headers: { "Content-Type": "text/turtle" },
+        });
+      }
+      // Default: plain JSON (existing behavior)
       return new Response(JSON.stringify(team), {
         headers: { "Content-Type": "application/json" },
       });
@@ -1957,6 +2147,59 @@ export async function startUiServer(
         // Resolve credentials from user's store and inject into providers
         const userId = await resolveUserId(req);
         await injectCredentials(body.config, userId);
+
+        // Resolve agent references before launching
+        const agents = body.config.agents as Record<string, unknown>[];
+        for (let i = 0; i < agents.length; i++) {
+          const a = agents[i];
+          if (a.ref && !a.system_prompt) {
+            let resolved: SavedAgent | null = null;
+
+            const ref = a.ref as string;
+            if (ref.startsWith("http://") || ref.startsWith("https://")) {
+              // Remote URI — fetch agent definition
+              try {
+                const resp = await fetch(ref, {
+                  headers: { "Accept": "application/ld+json, application/json, text/turtle" },
+                });
+                if (resp.ok) {
+                  const contentType = resp.headers.get("content-type") || "";
+                  const text = await resp.text();
+                  // Detect format from content-type or URL extension
+                  if (contentType.includes("turtle") || ref.endsWith(".ttl")) {
+                    // TODO: parse turtle to agent
+                    resolved = null;
+                  } else {
+                    const json = JSON.parse(text);
+                    resolved = jsonLdToSavedAgent(json);
+                  }
+                }
+              } catch { /* remote fetch failed */ }
+            } else {
+              // Local agent library lookup
+              resolved = await userStore.getAgent(userId, ref);
+            }
+
+            if (!resolved) {
+              return new Response(JSON.stringify({
+                error: `Agent "${ref}" not found`,
+                missing_agent: ref,
+              }), { status: 400, headers: { "Content-Type": "application/json" } });
+            }
+
+            // Merge: role from team ref, everything else from resolved agent
+            agents[i] = {
+              name: resolved.name,
+              role: a.role || resolved.role,
+              model: a.model || resolved.model,
+              system_prompt: resolved.system_prompt,
+              tools: resolved.tools,
+              max_tokens: resolved.max_tokens,
+              reasoning: resolved.reasoning,
+              mcp_tools: resolved.mcp_tools,
+            };
+          }
+        }
 
         // Associate session with the authenticated user for ownership enforcement.
         // In local mode (no OIDC), ownerId is undefined so sessions remain public.

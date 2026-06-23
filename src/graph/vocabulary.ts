@@ -102,6 +102,16 @@ export const PORTER = {
   hasTool: `${NS}hasTool`,
   subscribes: `${NS}subscribes`,
   systemPrompt: `${NS}systemPrompt`,
+  agentExpertise: `${NS}agentExpertise`,
+  agentUri: `${NS}agentUri`,
+  derivedFrom: `${NS}derivedFrom`,
+  linkedFrom: `${NS}linkedFrom`,
+
+  // Team properties (reference-based)
+  hasAgentRef: `${NS}hasAgentRef`,
+  agentRef: `${NS}agentRef`,
+  assignedRole: `${NS}assignedRole`,
+  teamPattern: `${NS}teamPattern`,
 
   // Model properties
   providerType: `${NS}providerType`,

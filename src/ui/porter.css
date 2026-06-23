@@ -837,6 +837,11 @@ dialog::backdrop {
 }
 .agent-preview[data-role="admin"]    { border-top-color: var(--accent-gold); }
 .agent-preview[data-role="reviewer"] { border-top-color: var(--status-ok); }
+.agent-preview.missing {
+  border-top-color: var(--status-error);
+  border: 1px solid var(--status-error);
+  opacity: 0.7;
+}
 .agent-preview .agent-name {
   font-weight: bold;
   font-size: 0.9rem;

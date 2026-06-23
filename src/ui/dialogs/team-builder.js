@@ -217,7 +217,11 @@ export function renderTeamList(body) {
         nameChildren.push(h('span', { class: `context-badge ${teamCtx}` }, teamCtx));
       }
 
-      const metaParts = `${agentCount} agent${agentCount !== 1 ? 's' : ''}${model ? ' · ' + model : ''}${updated ? ' · ' + updated : ''}`;
+      const agentRefs = (t.config?.agents || []).filter(a => a.ref && !a.system_prompt);
+      const refCount = agentRefs.length;
+      let metaParts = `${agentCount} agent${agentCount !== 1 ? 's' : ''}`;
+      if (refCount > 0) metaParts += ` (${refCount} ref${refCount !== 1 ? 's' : ''})`;
+      metaParts += `${model ? ' · ' + model : ''}${updated ? ' · ' + updated : ''}`;
 
       return h('div', { class: `team-list-card ${compatible ? '' : 'context-incompatible'}`, 'data-team': t.name },
         h('div', { class: 'team-list-info' },
@@ -266,6 +270,30 @@ export function renderTeamList(body) {
             if (!resp.ok) throw new Error('Team not found');
             const team = await resp.json();
             const config = { ...team.config, session: team.config.session || name };
+
+            // Check for unresolved agent refs
+            const missingRefs = (config.agents || []).filter(a => a.ref && !a.system_prompt);
+            if (missingRefs.length > 0) {
+              // Try to resolve refs before launching
+              const resolved = await Promise.all(config.agents.map(async a => {
+                if (!a.ref || a.system_prompt) return a;
+                try {
+                  const r = await fetch(`/api/agents/${encodeURIComponent(a.ref)}`);
+                  if (r.ok) {
+                    const saved = await r.json();
+                    return { ...saved, role: a.role || saved.role, model: a.model || saved.model };
+                  }
+                } catch { /* unresolvable */ }
+                return a;
+              }));
+              config.agents = resolved;
+              // Check if any are still unresolved
+              const stillMissing = config.agents.filter(a => a.ref && !a.system_prompt);
+              if (stillMissing.length > 0) {
+                const names = stillMissing.map(a => a.name || a.ref).join(', ');
+                throw new Error(`Cannot launch: agent(s) not found: ${names}`);
+              }
+            }
             if (config.mcp_servers) {
               config.mcp_servers = injectMcpTokens(config.mcp_servers);
             }
@@ -576,9 +604,17 @@ export function renderStep1(body, s) {
   });
 }
 
-export function renderStep2(body, s) {
+export async function renderStep2(body, s) {
   const configStore = document.getElementById('config');
   const pattern = s.pattern || 'sequential';
+
+  // Resolve any unresolved agent refs from the library
+  const hasUnresolved = s.agents.some(a => a._isRef && a._missing);
+  if (hasUnresolved) {
+    replaceContent(body, h('p', { style: 'color:var(--text-dim)' }, 'Resolving agent references...'));
+    const resolved = await configStore.resolveAgentRefs();
+    if (resolved) s = configStore.state;
+  }
 
   const bodyChildren = [
     h('div', { class: 'team-explanation' },
@@ -633,15 +669,29 @@ export function renderStep2(body, s) {
 }
 
 function renderAgentCard(a, i) {
-  const editBtn = h('button', null, 'Edit');
   const removeBtn = h('button', null, 'Remove');
-  editBtn.addEventListener('click', () => window.editAgentAt(i));
   removeBtn.addEventListener('click', () => window.removeAgentAt(i));
 
+  // Missing agent ref — show error card
+  if (a._missing) {
+    return h('div', { class: 'agent-preview missing', 'data-role': a.role },
+      h('div', { class: 'agent-name', style: 'color:var(--status-error)' }, `! ${a.name || a.ref}`),
+      h('div', { class: 'agent-meta' }, 'Agent not found in library'),
+      h('div', { class: 'agent-meta', style: 'font-size:0.7rem;color:var(--text-dim)' }, `ref: ${a.ref || 'unknown'}`),
+      h('div', { class: 'agent-actions' }, removeBtn)
+    );
+  }
+
+  const editBtn = h('button', null, 'Edit');
+  editBtn.addEventListener('click', () => window.editAgentAt(i));
+
+  // Resolved ref — show with indicator
+  const nameText = a._isRef ? `${a.name} (ref)` : a.name;
+
   return h('div', { class: 'agent-preview', 'data-role': a.role },
-    h('div', { class: 'agent-name' }, a.name),
-    h('div', { class: 'agent-meta' }, `${a.role} · ${a.tools.length} tools`),
-    h('div', { class: 'agent-meta' }, a.channels.join(', ') || 'no channels'),
+    h('div', { class: 'agent-name' }, nameText),
+    h('div', { class: 'agent-meta' }, `${a.role} · ${(a.tools || []).length} tools`),
+    h('div', { class: 'agent-meta' }, (a.channels || []).join(', ') || 'no channels'),
     h('div', { class: 'agent-actions' }, editBtn, removeBtn)
   );
 }
@@ -785,7 +835,7 @@ export function renderStep3(body, s) {
   const downloadBtn = h('button', { id: 'json-download' }, 'Download');
   const saveTeamBtn = h('button', { id: 'json-save-team', class: 'team-save-btn' }, 'Save Team');
 
-  replaceContent(body,
+  const step3Children = [
     h('div', { class: 'team-explanation' },
       h('p', null, h('strong', null, 'Review & Save')),
       h('p', null, 'This is the complete team configuration that will be saved. When launched, the orchestrator will:'),
@@ -796,9 +846,27 @@ export function renderStep3(body, s) {
         h('li', null, 'Stream all activity to this dashboard in real time'),
       )
     ),
-    h('div', { class: 'json-actions' }, copyBtn, downloadBtn, saveTeamBtn),
-    h('pre', { class: 'json-preview' }, json)
-  );
+  ];
+
+  if (s.errors.save) {
+    step3Children.push(h('div', { class: 'error', style: 'margin-bottom:0.75rem' }, s.errors.save));
+  }
+
+  // Warn about missing agent refs in the review
+  const missingAgents = s.agents.filter(a => a._missing);
+  if (missingAgents.length > 0) {
+    const names = missingAgents.map(a => a.name || a.ref).join(', ');
+    step3Children.push(
+      h('div', { class: 'error', style: 'margin-bottom:0.75rem' },
+        `Warning: ${missingAgents.length} agent(s) could not be resolved: ${names}. The team cannot be launched until these agents are available in the library.`
+      )
+    );
+  }
+
+  step3Children.push(h('div', { class: 'json-actions' }, copyBtn, downloadBtn, saveTeamBtn));
+  step3Children.push(h('pre', { class: 'json-preview' }, json));
+
+  replaceContent(body, ...step3Children);
 
   copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(json);
@@ -847,6 +915,15 @@ export async function handleTeamSave() {
   console.log('[porter] handleTeamSave triggered');
   const configStore = document.getElementById('config');
   if (!configStore.validate(3)) { renderTeamStep(); return; }
+
+  // Check for missing agent refs — refuse to launch
+  const missingAgents = configStore.state.agents.filter(a => a._missing);
+  if (missingAgents.length > 0) {
+    const names = missingAgents.map(a => a.name || a.ref).join(', ');
+    configStore.setState({ errors: { save: `Cannot launch: ${missingAgents.length} agent(s) not found in library: ${names}` } });
+    renderTeamStep();
+    return;
+  }
 
   configStore.setState({ saving: true });
   const config = JSON.parse(configStore.toJSON());
