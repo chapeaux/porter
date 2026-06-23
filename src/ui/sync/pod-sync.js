@@ -8,6 +8,11 @@
 
 import { classifyMcpContext, classifyModelContext } from '../constants.js';
 import { setMODELS } from '../stores/config-store.js';
+import {
+  ensureContainer, listContainer,
+  agentToTurtle, teamToTurtle,
+  parseTurtleAgent, parseTurtleTeam,
+} from './sync-helpers.js';
 
 /**
  * Callback registry — app.js injects these after import so the class
@@ -93,16 +98,25 @@ export class PorterPodSync {
       }
     } catch (e) { console.error('[porter-pod] Initial load failed:', e); }
 
-    // If no JSON config but Turtle exists, note it for future sync
-    if (!this._lastKnownState || Object.keys(this._lastKnownState).length <= 2) {
-      try {
-        const ttlUrl = this._resourceUrl.replace(/\.json$/, '.ttl');
-        const ttlResp = await this._fetch(ttlUrl);
-        if (ttlResp.ok) {
-          console.log('[porter-pod] Found Turtle config at', ttlUrl);
-        }
-      } catch { /* Turtle fallback is optional */ }
+    // Backwards compatibility: migrate saved_agents and teams from config.json to individual Turtle files
+    if (this._lastKnownState) {
+      await this._migrateConfigToTurtle(this._lastKnownState);
     }
+
+    // Load agents and teams from individual Turtle files
+    try {
+      const agents = await this._loadAgentsFromPod();
+      if (agents.length > 0) {
+        this._applyRemoteAgents(agents);
+      }
+    } catch (e) { console.error('[porter-pod] Agent Turtle load failed:', e); }
+
+    try {
+      const teams = await this._loadTeamsFromPod();
+      if (teams.length > 0) {
+        this._applyRemoteTeams(teams);
+      }
+    } catch (e) { console.error('[porter-pod] Team Turtle load failed:', e); }
 
     // Subscribe to notifications
     this._subscribeNotifications();
@@ -368,7 +382,176 @@ export class PorterPodSync {
 
       this._lastKnownState = data;
       this._applyRemoteState(data);
+
+      // Also reload agents and teams from individual Turtle files
+      this._loadAgentsFromPod().then(agents => {
+        if (agents.length > 0) this._applyRemoteAgents(agents);
+      }).catch(() => {});
+      this._loadTeamsFromPod().then(teams => {
+        if (teams.length > 0) this._applyRemoteTeams(teams);
+      }).catch(() => {});
     } catch (e) { console.error('[porter-pod] Notification fetch failed:', e); }
+  }
+
+  async _loadAgentsFromPod() {
+    const agentsUrl = `${this._podRoot}porter/agents/`;
+    const files = await listContainer(this._fetch, agentsUrl);
+    const agents = [];
+    for (const file of files) {
+      if (!file.endsWith('.ttl')) continue;
+      try {
+        const resp = await this._fetch(`${agentsUrl}${file}`);
+        if (resp.ok) {
+          const turtle = await resp.text();
+          const agent = parseTurtleAgent(turtle);
+          if (agent) agents.push(agent);
+        }
+      } catch { /* skip unreadable files */ }
+    }
+    return agents;
+  }
+
+  async _loadTeamsFromPod() {
+    const teamsUrl = `${this._podRoot}porter/teams/`;
+    const files = await listContainer(this._fetch, teamsUrl);
+    const teams = [];
+    for (const file of files) {
+      if (!file.endsWith('.ttl')) continue;
+      try {
+        const resp = await this._fetch(`${teamsUrl}${file}`);
+        if (resp.ok) {
+          const turtle = await resp.text();
+          const team = parseTurtleTeam(turtle);
+          if (team) teams.push(team);
+        }
+      } catch { /* skip unreadable files */ }
+    }
+    return teams;
+  }
+
+  async _migrateConfigToTurtle(data) {
+    // Migrate saved_agents from config.json to individual Turtle files
+    if (data.saved_agents && Array.isArray(data.saved_agents) && data.saved_agents.length > 0) {
+      console.log('[porter-pod] Migrating', data.saved_agents.length, 'agents from config.json to individual Turtle files');
+      try {
+        await ensureContainer(this._fetch, `${this._podRoot}porter/agents/`);
+        for (const agent of data.saved_agents) {
+          if (!agent.name) continue;
+          const url = `${this._podRoot}porter/agents/${encodeURIComponent(agent.name)}.ttl`;
+          const turtle = agentToTurtle(agent, url);
+          await this._fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'text/turtle' },
+            body: turtle,
+          });
+        }
+        // Remove saved_agents from config.json
+        delete data.saved_agents;
+        this._pendingWrites.delete('saved_agents');
+        this._lastKnownState = data;
+        this._scheduleFlush();
+        console.log('[porter-pod] Agent migration complete');
+      } catch (e) {
+        console.error('[porter-pod] Agent migration failed:', e);
+      }
+    }
+
+    // Migrate teams from config.json to individual Turtle files
+    if (data.teams && Array.isArray(data.teams) && data.teams.length > 0) {
+      console.log('[porter-pod] Migrating', data.teams.length, 'teams from config.json to individual Turtle files');
+      try {
+        await ensureContainer(this._fetch, `${this._podRoot}porter/teams/`);
+        for (const team of data.teams) {
+          if (!team.name) continue;
+          const url = `${this._podRoot}porter/teams/${encodeURIComponent(team.name)}.ttl`;
+          const turtle = teamToTurtle(team, url);
+          await this._fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'text/turtle' },
+            body: turtle,
+          });
+        }
+        // Remove teams from config.json
+        delete data.teams;
+        this._pendingWrites.delete('teams');
+        this._lastKnownState = data;
+        this._scheduleFlush();
+        console.log('[porter-pod] Team migration complete');
+      } catch (e) {
+        console.error('[porter-pod] Team migration failed:', e);
+      }
+    }
+  }
+
+  _applyRemoteAgents(agents) {
+    localStorage.setItem('porter-pod-agents', JSON.stringify(agents));
+    const podAgentNames = new Set(agents.map(a => a.name).filter(Boolean));
+    for (const a of agents) {
+      if (a.name) {
+        fetch('/api/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
+          body: JSON.stringify({
+            name: a.name,
+            role: a.role,
+            systemPrompt: a.systemPrompt,
+            system_prompt: a.systemPrompt,
+            tools: a.tools,
+            channels: a.channels,
+            mcpTools: a.mcpTools,
+            mcp_tools: a.mcpTools,
+            maxTokens: a.maxTokens,
+            max_tokens: a.maxTokens,
+            reasoning: a.reasoning,
+            model: a.model,
+            visibility: a.visibility,
+            promptSections: a.promptSections,
+          }),
+        }).catch(() => {});
+      }
+    }
+    // Delete server-side agents not present in Pod data
+    fetch('/api/agents', { headers: _getIdentityHeaders() })
+      .then(r => r.ok ? r.json() : { agents: [] })
+      .then(({ agents: serverAgents }) => {
+        for (const a of serverAgents || []) {
+          if (!podAgentNames.has(a.name)) {
+            fetch(`/api/agents/${encodeURIComponent(a.name)}`, {
+              method: 'DELETE',
+              headers: _getIdentityHeaders(),
+            }).catch(() => {});
+          }
+        }
+      }).catch(() => {});
+    _updateSetupBar();
+  }
+
+  _applyRemoteTeams(teams) {
+    localStorage.setItem('porter-pod-teams', JSON.stringify(teams));
+    const podTeamNames = new Set(teams.map(t => t.name).filter(Boolean));
+    for (const t of teams) {
+      if (t.name && t.config) {
+        fetch('/api/teams', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
+          body: JSON.stringify({ name: t.name, config: t.config }),
+        }).catch(() => {});
+      }
+    }
+    // Delete server-side teams not present in Pod data
+    fetch('/api/teams', { headers: _getIdentityHeaders() })
+      .then(r => r.ok ? r.json() : { teams: [] })
+      .then(({ teams: serverTeams }) => {
+        for (const t of serverTeams || []) {
+          if (!podTeamNames.has(t.name)) {
+            fetch(`/api/teams/${encodeURIComponent(t.name)}`, {
+              method: 'DELETE',
+              headers: _getIdentityHeaders(),
+            }).catch(() => {});
+          }
+        }
+      }).catch(() => {});
+    _updateSetupBar();
   }
 
   _applyRemoteState(data) {
@@ -398,33 +581,14 @@ export class PorterPodSync {
       }).catch(() => {});
     }
 
-    // Apply teams — sync to server, delete teams not in Pod data
-    if (data.teams && Array.isArray(data.teams)) {
-      localStorage.setItem('porter-pod-teams', JSON.stringify(data.teams));
-      const podTeamNames = new Set(data.teams.map(t => t.name).filter(Boolean));
-      for (const t of data.teams) {
-        if (t.name && t.config) {
-          fetch('/api/teams', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
-            body: JSON.stringify({ name: t.name, config: t.config }),
-          }).catch(() => {});
-        }
-      }
-      // Delete server-side teams not present in Pod data
-      fetch('/api/teams', { headers: _getIdentityHeaders() })
-        .then(r => r.ok ? r.json() : { teams: [] })
-        .then(({ teams }) => {
-          for (const t of teams || []) {
-            if (!podTeamNames.has(t.name)) {
-              fetch(`/api/teams/${encodeURIComponent(t.name)}`, {
-                method: 'DELETE',
-                headers: _getIdentityHeaders(),
-              }).catch(() => {});
-            }
-          }
-        }).catch(() => {});
-      _updateSetupBar();
+    // Teams are now loaded from individual Turtle files.
+    // Legacy config.json teams are migrated in _migrateConfigToTurtle().
+    // If config.json still has teams (pre-migration notification), load from Turtle instead.
+    if (data.teams && Array.isArray(data.teams) && data.teams.length > 0) {
+      // Load from Turtle files on next tick (migration may not have completed yet)
+      this._loadTeamsFromPod().then(teams => {
+        if (teams.length > 0) this._applyRemoteTeams(teams);
+      }).catch(() => {});
     }
 
     // Apply MCP servers if present (merge: keep local env/secrets, update structure from Pod)
@@ -451,33 +615,12 @@ export class PorterPodSync {
       }
     }
 
-    // Apply agents — sync to server, delete agents not in Pod data
-    if (data.saved_agents && Array.isArray(data.saved_agents)) {
-      localStorage.setItem('porter-pod-agents', JSON.stringify(data.saved_agents));
-      const podAgentNames = new Set(data.saved_agents.map(a => a.name).filter(Boolean));
-      for (const a of data.saved_agents) {
-        if (a.name) {
-          fetch('/api/agents', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
-            body: JSON.stringify(a),
-          }).catch(() => {});
-        }
-      }
-      // Delete server-side agents not present in Pod data
-      fetch('/api/agents', { headers: _getIdentityHeaders() })
-        .then(r => r.ok ? r.json() : { agents: [] })
-        .then(({ agents }) => {
-          for (const a of agents || []) {
-            if (!podAgentNames.has(a.name)) {
-              fetch(`/api/agents/${encodeURIComponent(a.name)}`, {
-                method: 'DELETE',
-                headers: _getIdentityHeaders(),
-              }).catch(() => {});
-            }
-          }
-        }).catch(() => {});
-      _updateSetupBar();
+    // Agents are now loaded from individual Turtle files.
+    // Legacy config.json agents are migrated in _migrateConfigToTurtle().
+    if (data.saved_agents && Array.isArray(data.saved_agents) && data.saved_agents.length > 0) {
+      this._loadAgentsFromPod().then(agents => {
+        if (agents.length > 0) this._applyRemoteAgents(agents);
+      }).catch(() => {});
     }
   }
 }

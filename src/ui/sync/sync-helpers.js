@@ -29,45 +29,78 @@ export function syncToPod(key, value) {
   window._podSync.save(key, value);
 }
 
-export function syncAgentsToPod(agents) {
+export async function syncAgentsToPod(agents) {
   if (!window._podSync) return;
-  const configStore = document.getElementById('config');
-  const mcpServers = configStore?.state?.mcpServers ?? {};
-  const safe = agents.map(a => {
-    let ctx = 'any';
-    if (a.mcpTools?.length) {
-      for (const t of a.mcpTools) {
-        const serverName = t.split('.')[0];
-        if (mcpServers[serverName] && classifyMcpContext(mcpServers[serverName]) === 'local') { ctx = 'local'; break; }
-      }
+  const podRoot = window._podSync._podRoot;
+  const authFetch = window._podSync._fetch;
+
+  // Ensure agents/ container exists
+  await ensureContainer(authFetch, `${podRoot}porter/agents/`);
+
+  // Get existing agent files on Pod
+  const existingFiles = await listContainer(authFetch, `${podRoot}porter/agents/`);
+  const agentNames = new Set(agents.map(a => a.name).filter(Boolean));
+
+  // Write each agent as a Turtle file
+  for (const agent of agents) {
+    const name = agent.name;
+    if (!name) continue;
+    const url = `${podRoot}porter/agents/${encodeURIComponent(name)}.ttl`;
+    const turtle = agentToTurtle(agent, url);
+    await authFetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: turtle,
+    });
+  }
+
+  // Delete agent files no longer in the library
+  for (const file of existingFiles) {
+    if (!file.endsWith('.ttl')) continue;
+    const name = decodeURIComponent(file.replace(/\.ttl$/, ''));
+    if (!agentNames.has(name)) {
+      await authFetch(`${podRoot}porter/agents/${file}`, { method: 'DELETE' }).catch(() => {});
     }
-    return {
-      name: a.name, role: a.role, systemPrompt: a.systemPrompt,
-      promptSections: a.promptSections, tools: a.tools,
-      channels: a.channels, mcpTools: a.mcpTools,
-      maxTokens: a.maxTokens, reasoning: a.reasoning,
-      _context: ctx,
-    };
-  });
-  syncToPod('saved_agents', safe);
+  }
 }
 
 export async function syncTeamsToPod() {
   if (!window._podSync) return;
+  const podRoot = window._podSync._podRoot;
+  const authFetch = window._podSync._fetch;
+
   try {
     const resp = await fetch('/api/teams');
-    if (resp.ok) {
-      const data = await resp.json();
-      const configStore = document.getElementById('config');
-      const mcpServers = configStore?.state?.mcpServers ?? {};
-      const teams = (data.teams || []).map(t => {
-        let ctx = 'any';
-        for (const cfg of Object.values(t.config?.mcp_servers || {})) {
-          if (classifyMcpContext(cfg) === 'local') { ctx = 'local'; break; }
-        }
-        return { name: t.name, config: t.config, _context: ctx };
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const teams = data.teams || [];
+
+    // Ensure teams/ container exists
+    await ensureContainer(authFetch, `${podRoot}porter/teams/`);
+
+    // Get existing team files on Pod
+    const existingFiles = await listContainer(authFetch, `${podRoot}porter/teams/`);
+    const teamNames = new Set(teams.map(t => t.name).filter(Boolean));
+
+    // Write each team as a Turtle file
+    for (const team of teams) {
+      if (!team.name) continue;
+      const url = `${podRoot}porter/teams/${encodeURIComponent(team.name)}.ttl`;
+      const turtle = teamToTurtle(team, url);
+      await authFetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/turtle' },
+        body: turtle,
       });
-      syncToPod('teams', teams);
+    }
+
+    // Delete team files no longer in the library
+    for (const file of existingFiles) {
+      if (!file.endsWith('.ttl')) continue;
+      const name = decodeURIComponent(file.replace(/\.ttl$/, ''));
+      if (!teamNames.has(name)) {
+        await authFetch(`${podRoot}porter/teams/${file}`, { method: 'DELETE' }).catch(() => {});
+      }
     }
   } catch { /* best-effort */ }
 }
@@ -239,4 +272,275 @@ export async function restoreMemoryFromPod(sessionName) {
       console.log('[porter-pod] Memory restored from pod for session:', sessionName);
     }
   } catch (e) { console.error('[porter-pod] Memory restore from pod failed:', e); }
+}
+
+// --- Solid Pod container helpers ---
+
+export async function ensureContainer(authFetch, url) {
+  const containerTypes = [
+    '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
+    '<https://www.w3.org/ns/lws#Container>; rel="type"',
+  ];
+  for (const linkType of containerTypes) {
+    try {
+      const resp = await authFetch(url, {
+        method: 'PUT',
+        headers: { 'Link': linkType, 'Content-Type': 'text/turtle' },
+        body: '',
+      });
+      if (resp.ok || resp.status === 201 || resp.status === 409) return;
+    } catch { /* try next type */ }
+  }
+}
+
+export async function listContainer(authFetch, url) {
+  try {
+    const resp = await authFetch(url, { headers: { 'Accept': 'text/turtle' } });
+    if (!resp.ok) return [];
+    const text = await resp.text();
+    // Extract ldp:contains references — simple regex for resource URIs
+    const matches = [...text.matchAll(/ldp:contains\s+<([^>]+)>/g)];
+    return matches.map(m => {
+      const fullUrl = m[1];
+      return fullUrl.split('/').pop(); // filename
+    }).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// --- Turtle serializers (client-side, matching porter: vocabulary) ---
+
+function escapeTtl(s) {
+  return (s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+export function agentToTurtle(agent, uri) {
+  // Normalize field names (accept both camelCase and snake_case)
+  const name = agent.name || '';
+  const expertise = agent.systemPrompt || agent.system_prompt || '';
+  const tools = agent.tools || [];
+  const mcpTools = agent.mcpTools || agent.mcp_tools || [];
+  const model = agent.model || '';
+  const maxTokens = agent.maxTokens || agent.max_tokens || 0;
+  const reasoning = agent.reasoning || false;
+  const role = agent.role || 'worker';
+  const visibility = agent.visibility || 'private';
+  const channels = agent.channels || agent.subscribe || [];
+  const promptSections = agent.promptSections || agent.prompt_sections || [];
+
+  const lines = [
+    '@prefix porter: <https://porter.chapeaux.io/vocab#> .',
+    '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .',
+    '',
+    `<${uri}> a porter:Agent ;`,
+    `  porter:name "${escapeTtl(name)}" ;`,
+    `  porter:assignedRole "${escapeTtl(role)}" ;`,
+  ];
+
+  if (expertise) {
+    lines.push(`  porter:agentExpertise """${escapeTtl(expertise)}""" ;`);
+  }
+
+  for (const t of tools) {
+    lines.push(`  porter:hasTool "${escapeTtl(t)}" ;`);
+  }
+  for (const t of mcpTools) {
+    lines.push(`  porter:hasMcpTool "${escapeTtl(t)}" ;`);
+  }
+  for (const ch of channels) {
+    lines.push(`  porter:subscribesTo "${escapeTtl(ch)}" ;`);
+  }
+
+  if (model) lines.push(`  porter:usesModel "${escapeTtl(model)}" ;`);
+  if (maxTokens) lines.push(`  porter:maxTokens "${maxTokens}"^^xsd:integer ;`);
+  if (reasoning) lines.push(`  porter:reasoning "true"^^xsd:boolean ;`);
+  if (visibility !== 'private') lines.push(`  porter:visibility "${escapeTtl(visibility)}" ;`);
+
+  if (promptSections.length > 0) {
+    const sectionsJson = JSON.stringify(promptSections);
+    lines.push(`  porter:promptSections """${escapeTtl(sectionsJson)}""" ;`);
+  }
+
+  // Replace last ; with .
+  const lastLine = lines[lines.length - 1];
+  lines[lines.length - 1] = lastLine.replace(/\s;$/, ' .');
+
+  return lines.join('\n') + '\n';
+}
+
+export function teamToTurtle(team, uri) {
+  const name = team.name || '';
+  const config = team.config || {};
+  const pattern = config.pattern || '';
+  const agents = config.agents || [];
+  const mcpServers = config.mcp_servers || {};
+
+  const lines = [
+    '@prefix porter: <https://porter.chapeaux.io/vocab#> .',
+    '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .',
+    '',
+    `<${uri}> a porter:Team ;`,
+    `  porter:name "${escapeTtl(name)}" ;`,
+  ];
+
+  if (pattern) {
+    lines.push(`  porter:teamPattern "${escapeTtl(pattern)}" ;`);
+  }
+
+  for (const a of agents) {
+    const ref = a.ref || a.name || '';
+    const role = a.role || 'worker';
+    const model = a.model || '';
+    let bnode = `[ porter:agentRef "${escapeTtl(ref)}" ; porter:assignedRole "${escapeTtl(role)}"`;
+    if (model) bnode += ` ; porter:usesModel "${escapeTtl(model)}"`;
+    bnode += ' ]';
+    lines.push(`  porter:hasAgentRef ${bnode} ;`);
+  }
+
+  // Embed MCP server config as JSON for round-tripping
+  if (Object.keys(mcpServers).length > 0) {
+    const mcpJson = JSON.stringify(mcpServers);
+    lines.push(`  porter:mcpServersJson """${escapeTtl(mcpJson)}""" ;`);
+  }
+
+  // Include full config JSON for lossless round-trip
+  const configJson = JSON.stringify(config);
+  lines.push(`  porter:configJson """${escapeTtl(configJson)}""" ;`);
+
+  // Replace trailing ; with .
+  const lastLine = lines[lines.length - 1];
+  lines[lines.length - 1] = lastLine.replace(/\s;$/, ' .');
+
+  return lines.join('\n') + '\n';
+}
+
+// --- Turtle parsers (simple regex-based, no full RDF parser) ---
+
+export function parseTurtleAgent(turtle) {
+  if (!turtle || !turtle.includes('porter:Agent')) return null;
+
+  const extractLiteral = (predicate) => {
+    // Handle triple-quoted strings
+    const longMatch = turtle.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
+    if (longMatch) return longMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    // Handle single-quoted strings
+    const shortMatch = turtle.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
+    if (shortMatch) return shortMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    return '';
+  };
+
+  const extractAll = (predicate) => {
+    const results = [];
+    const re = new RegExp(`${predicate}\\s+"([^"]*?)"`, 'g');
+    let m;
+    while ((m = re.exec(turtle)) !== null) {
+      results.push(m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
+    }
+    return results;
+  };
+
+  const name = extractLiteral('porter:name');
+  if (!name) return null;
+
+  const agent = {
+    name,
+    role: extractLiteral('porter:assignedRole') || 'worker',
+    systemPrompt: extractLiteral('porter:agentExpertise'),
+    tools: extractAll('porter:hasTool'),
+    mcpTools: extractAll('porter:hasMcpTool'),
+    channels: extractAll('porter:subscribesTo'),
+    model: extractLiteral('porter:usesModel'),
+    maxTokens: parseInt(extractLiteral('porter:maxTokens'), 10) || 8192,
+    reasoning: extractLiteral('porter:reasoning') === 'true',
+    visibility: extractLiteral('porter:visibility') || 'private',
+  };
+
+  const promptSectionsJson = extractLiteral('porter:promptSections');
+  if (promptSectionsJson) {
+    try { agent.promptSections = JSON.parse(promptSectionsJson); } catch { /* ignore */ }
+  }
+
+  return agent;
+}
+
+export function parseTurtleTeam(turtle) {
+  if (!turtle || !turtle.includes('porter:Team')) return null;
+
+  const extractLiteral = (predicate) => {
+    const longMatch = turtle.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
+    if (longMatch) return longMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    const shortMatch = turtle.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
+    if (shortMatch) return shortMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    return '';
+  };
+
+  const name = extractLiteral('porter:name');
+  if (!name) return null;
+
+  // Try to restore full config from configJson if present
+  const configJson = extractLiteral('porter:configJson');
+  if (configJson) {
+    try {
+      const config = JSON.parse(configJson);
+      return { name, config };
+    } catch { /* fall through to field-by-field parsing */ }
+  }
+
+  // Field-by-field parsing fallback
+  const pattern = extractLiteral('porter:teamPattern');
+  const agents = [];
+  const agentRefRe = /porter:hasAgentRef\s+\[\s*porter:agentRef\s+"([^"]*?)"\s*;\s*porter:assignedRole\s+"([^"]*?)"(?:\s*;\s*porter:usesModel\s+"([^"]*?)")?\s*\]/g;
+  let m;
+  while ((m = agentRefRe.exec(turtle)) !== null) {
+    const entry = { name: m[1], ref: m[1], role: m[2] };
+    if (m[3]) entry.model = m[3];
+    agents.push(entry);
+  }
+
+  let mcpServers = {};
+  const mcpJson = extractLiteral('porter:mcpServersJson');
+  if (mcpJson) {
+    try { mcpServers = JSON.parse(mcpJson); } catch { /* ignore */ }
+  }
+
+  return {
+    name,
+    config: { pattern, agents, mcp_servers: mcpServers },
+  };
+}
+
+// --- ACL helpers for sharing individual resources ---
+
+export async function setResourcePublic(authFetch, resourceUrl) {
+  const aclUrl = resourceUrl + '.acl';
+  // Determine owner WebID from Pod sync context
+  const ownerWebId = window._podSyncWebId || '';
+  const acl = [
+    '@prefix acl: <http://www.w3.org/ns/auth/acl#> .',
+    '@prefix foaf: <http://xmlns.com/foaf/0.1/> .',
+    '',
+    '<#public>',
+    '  a acl:Authorization ;',
+    '  acl:agentClass foaf:Agent ;',
+    `  acl:accessTo <${resourceUrl}> ;`,
+    '  acl:mode acl:Read .',
+    '',
+    '<#owner>',
+    '  a acl:Authorization ;',
+    ...(ownerWebId ? [`  acl:agent <${ownerWebId}> ;`] : ['  acl:agentClass foaf:Agent ;']),
+    `  acl:accessTo <${resourceUrl}> ;`,
+    '  acl:mode acl:Read, acl:Write, acl:Control .',
+  ].join('\n') + '\n';
+
+  await authFetch(aclUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'text/turtle' },
+    body: acl,
+  });
+}
+
+export async function setResourcePrivate(authFetch, resourceUrl) {
+  const aclUrl = resourceUrl + '.acl';
+  await authFetch(aclUrl, { method: 'DELETE' }).catch(() => {});
 }

@@ -9,7 +9,7 @@ import { parsePromptSections, ROLE_CHANNEL_DEFAULTS } from '../stores/config-sto
 import { openAgentEditor } from './agent-editor.js';
 import { openTeamBuilder } from './team-builder.js';
 import { updateSetupBar } from '../features/flipboard-setup.js';
-import { syncAgentsToPod } from '../sync/sync-helpers.js';
+import { syncAgentsToPod, setResourcePublic } from '../sync/sync-helpers.js';
 
 function convertSavedAgent(raw) {
   return {
@@ -169,16 +169,34 @@ export function showAgentLibrary() {
         });
       });
 
-      // Share URI
+      // Share URI — prefer Pod Turtle URI if Pod sync is active
       body.querySelectorAll('.lib-share-agent').forEach(btn => {
         btn.addEventListener('click', async () => {
           const name = btn.dataset.name;
-          const agentUri = `${location.origin}/api/agents/${encodeURIComponent(name)}`;
-          try {
-            await navigator.clipboard.writeText(agentUri);
-            btn.textContent = 'Copied';
-          } catch {
-            btn.textContent = 'URI copied';
+          if (window._podSync) {
+            const podRoot = window._podSync._podRoot;
+            const authFetch = window._podSync._fetch;
+            const podUri = `${podRoot}porter/agents/${encodeURIComponent(name)}.ttl`;
+            try {
+              btn.textContent = 'Sharing...';
+              await setResourcePublic(authFetch, podUri);
+              await navigator.clipboard.writeText(podUri);
+              btn.textContent = 'Shared';
+            } catch (e) {
+              console.error('[porter] Share failed:', e);
+              // Fall back to server URI
+              const serverUri = `${location.origin}/api/agents/${encodeURIComponent(name)}`;
+              try { await navigator.clipboard.writeText(serverUri); } catch { /* ignore */ }
+              btn.textContent = 'Copied (server)';
+            }
+          } else {
+            const agentUri = `${location.origin}/api/agents/${encodeURIComponent(name)}`;
+            try {
+              await navigator.clipboard.writeText(agentUri);
+              btn.textContent = 'Copied';
+            } catch {
+              btn.textContent = 'URI copied';
+            }
           }
           setTimeout(() => { btn.textContent = 'Share'; }, 2000);
         });
