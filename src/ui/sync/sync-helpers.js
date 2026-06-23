@@ -331,7 +331,9 @@ export async function listContainer(authFetch, url) {
     if (!resp.ok) return [];
     const text = await resp.text();
     // Extract all URIs from ldp:contains — handles both single and comma-separated lists
-    const containsMatch = text.match(/ldp:contains\s+([^.]+)\./s);
+    // Match everything from ldp:contains until " ." (space-dot) which ends the Turtle statement
+    // Can't use [^.]+ because URLs contain dots
+    const containsMatch = text.match(/ldp:contains\s+([\s\S]+?)\s+\./m);
     if (!containsMatch) {
       console.warn(`[porter-pod] listContainer: no ldp:contains found in response (${text.length} bytes):`);
       console.warn(text.substring(0, 500));
