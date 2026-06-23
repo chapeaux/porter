@@ -441,14 +441,18 @@ export function teamToTurtle(team, uri) {
 // --- Turtle parsers (simple regex-based, no full RDF parser) ---
 
 export function parseTurtleAgent(turtle) {
-  if (!turtle || !turtle.includes('porter:Agent')) return null;
+  if (!turtle) return null;
+  // Normalize full IRIs to prefixed form for simpler regex matching
+  const NS = 'https://porter.chapeaux.io/vocab#';
+  const norm = turtle.replace(new RegExp(`<${NS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^>]+)>`, 'g'), 'porter:$1');
+  if (!norm.includes('porter:Agent')) return null;
 
   const extractLiteral = (predicate) => {
     // Handle triple-quoted strings
-    const longMatch = turtle.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
+    const longMatch = norm.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
     if (longMatch) return longMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     // Handle single-quoted strings
-    const shortMatch = turtle.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
+    const shortMatch = norm.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
     if (shortMatch) return shortMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     return '';
   };
@@ -457,7 +461,7 @@ export function parseTurtleAgent(turtle) {
     const results = [];
     const re = new RegExp(`${predicate}\\s+"([^"]*?)"`, 'g');
     let m;
-    while ((m = re.exec(turtle)) !== null) {
+    while ((m = re.exec(norm)) !== null) {
       results.push(m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
     }
     return results;
@@ -488,12 +492,15 @@ export function parseTurtleAgent(turtle) {
 }
 
 export function parseTurtleTeam(turtle) {
-  if (!turtle || !turtle.includes('porter:Team')) return null;
+  if (!turtle) return null;
+  const NS = 'https://porter.chapeaux.io/vocab#';
+  const norm = turtle.replace(new RegExp(`<${NS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^>]+)>`, 'g'), 'porter:$1');
+  if (!norm.includes('porter:Team')) return null;
 
   const extractLiteral = (predicate) => {
-    const longMatch = turtle.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
+    const longMatch = norm.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
     if (longMatch) return longMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    const shortMatch = turtle.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
+    const shortMatch = norm.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
     if (shortMatch) return shortMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     return '';
   };
