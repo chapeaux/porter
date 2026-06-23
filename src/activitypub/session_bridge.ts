@@ -12,6 +12,7 @@ import type { ConversationMap, FederationStore } from "./store.ts";
 import type { ActivityPubBackend, SessionHandle } from "./backend.ts";
 import { buildWelcomeMessage } from "./actor.ts";
 import type { SavedTeam } from "../auth/user_store.ts";
+import { getPattern } from "../orchestration/pattern_registry.ts";
 
 // ---------------------------------------------------------------------------
 // Parsed message types
@@ -618,9 +619,18 @@ async function handleInfo(
         if (agents.length === 0) {
           return { replyText: "No agents configured.", handled: true };
         }
-        const lines = agents.map((a) => `  ${a.name} (${a.role})`);
+        const patternId = ctx.team.config.pattern;
+        const pattern = patternId ? getPattern(patternId) : null;
+        const header = pattern
+          ? `Team: ${ctx.team.name} (${pattern.name} pattern)`
+          : `Team: ${ctx.team.name}`;
+        const lines = agents.map((a) => {
+          const patternRole = pattern?.roles.find((r) => r.id === a.role);
+          const roleName = patternRole ? patternRole.name : a.role;
+          return `  ${a.name} — ${roleName}`;
+        });
         return {
-          replyText: `Team roster:\n${lines.join("\n")}`,
+          replyText: `${header}\nAgents:\n${lines.join("\n")}`,
           handled: true,
         };
       }
@@ -630,17 +640,35 @@ async function handleInfo(
       const status = await ctx.backend.getSessionStatus(handle);
 
       if (!status) {
-        const lines = agents.map((a) => `  ${a.name} (${a.role})`);
+        const patternId = ctx.team.config.pattern;
+        const pattern = patternId ? getPattern(patternId) : null;
+        const header = pattern
+          ? `Team: ${ctx.team.name} (${pattern.name} pattern)`
+          : `Team: ${ctx.team.name}`;
+        const lines = agents.map((a) => {
+          const patternRole = pattern?.roles.find((r) => r.id === a.role);
+          const roleName = patternRole ? patternRole.name : a.role;
+          return `  ${a.name} — ${roleName}`;
+        });
         return {
-          replyText: `Team roster:\n${lines.join("\n")}\nSession status: unknown`,
+          replyText: `${header}\nAgents:\n${lines.join("\n")}\nSession status: unknown`,
           handled: true,
         };
       }
 
+      const patternId = ctx.team.config.pattern;
+      const pattern = patternId ? getPattern(patternId) : null;
       const runningLabel = status.running ? "running" : "stopped";
-      const lines = agents.map((a) => `  ${a.name} (${a.role})`);
+      const header = pattern
+        ? `Team: ${ctx.team.name} (${pattern.name} pattern, ${runningLabel})`
+        : `Team: ${ctx.team.name} (${runningLabel}, ${status.agentCount} agents)`;
+      const lines = agents.map((a) => {
+        const patternRole = pattern?.roles.find((r) => r.id === a.role);
+        const roleName = patternRole ? patternRole.name : a.role;
+        return `  ${a.name} — ${roleName}`;
+      });
       return {
-        replyText: `Team roster (${runningLabel}, ${status.agentCount} agents):\n${lines.join("\n")}`,
+        replyText: `${header}\nAgents:\n${lines.join("\n")}`,
         handled: true,
       };
     }

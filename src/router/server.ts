@@ -120,7 +120,6 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
   const apExplicit = options.activityPubConfig;
   const apEnvEnabled = Deno.env.get("PORTER_AP_ENABLED");
   const apWanted = apExplicit?.enabled || apEnvEnabled === "true";
-  console.error(`[router] AP check: explicit=${apExplicit?.enabled}, env=${apEnvEnabled}, wanted=${apWanted}`);
   if (apWanted) {
     try {
       const { handleActivityPubRoutes } = await import("../activitypub/routes.ts");
@@ -596,23 +595,13 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
             const storageMatch = turtle.match(/(?:pim:storage|space:storage|<http:\/\/www\.w3\.org\/ns\/pim\/space#storage>)\s+<([^>]+)>/);
             if (storageMatch) {
               podUrl = storageMatch[1];
-            } else {
-              console.error(`[auth/me] Solid user ${sub}: no pim:storage in profile`);
             }
-          } else {
-            console.error(`[auth/me] Solid user ${sub}: profile fetch failed ${resp.status}`);
           }
-        } catch (err) {
-          console.error(`[auth/me] Solid user ${sub}: discovery error: ${(err as Error).message}`);
-        }
-        // Solid users get their access token via /auth/lws-token if we have it
+        } catch { /* discovery failed */ }
         const tokens = userTokens.get(sub);
         if (tokens?.lws_token || tokens?.id_token) {
           tokenEndpoint = "/auth/lws-token";
-        } else {
-          console.error(`[auth/me] Solid user ${sub}: no lws_token or id_token available`);
         }
-        console.error(`[auth/me] Solid user: pod_url=${podUrl}, tokenEndpoint=${tokenEndpoint}`);
       } else {
         // SSO user: Pod on LWS/Tudor
         const lwsBase = Deno.env.get("PORTER_LWS_BASE_URL")?.replace(/\/+$/, "");

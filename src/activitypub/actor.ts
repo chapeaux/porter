@@ -11,6 +11,7 @@ import type { ActivityPubConfig } from "./config.ts";
 import { apBaseUrl } from "./config.ts";
 import { getOrCreateKeyPair } from "./keys.ts";
 import type { SavedTeam } from "../auth/user_store.ts";
+import { getPattern } from "../orchestration/pattern_registry.ts";
 
 /**
  * Build a summary string from the team's agent roster.
@@ -22,10 +23,13 @@ function buildSummary(team: SavedTeam): string {
   const agents = team.config.agents ?? [];
   if (agents.length === 0) return "Porter AI agent team";
 
+  const patternId = team.config.pattern;
+  const pattern = patternId ? getPattern(patternId) : null;
   const roster = agents
     .map((a) => `${a.name} (${a.role})`)
     .join(", ");
-  return `AI agent team: ${roster}`;
+  const patternNote = pattern ? ` [${pattern.name}]` : "";
+  return `AI agent team${patternNote}: ${roster}`;
 }
 
 /**
@@ -47,13 +51,23 @@ export function buildRosterHtml(team: SavedTeam): string {
  */
 export function buildWelcomeMessage(team: SavedTeam): string {
   const agents = team.config.agents ?? [];
+  const patternId = team.config.pattern;
+  const pattern = patternId ? getPattern(patternId) : null;
+
   const agentLines = agents
-    .map((a) => `  #${a.name} (${a.role})`)
+    .map((a) => {
+      const patternRole = pattern?.roles.find((r) => r.id === a.role);
+      const roleName = patternRole ? patternRole.name : a.role;
+      return `  #${a.name} — ${roleName}`;
+    })
     .join("\n");
+
+  const patternLine = pattern ? `Pattern: ${pattern.name}` : null;
 
   return [
     `${team.name} — AI agent team on Porter`,
     "",
+    ...(patternLine ? [patternLine, ""] : []),
     "Agents:",
     agentLines,
     "",

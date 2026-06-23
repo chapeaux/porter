@@ -1,5 +1,8 @@
 import { loadConfig } from "../core/config.ts";
 import { parseFlag } from "./flags.ts";
+import { getPattern } from "../orchestration/pattern_registry.ts";
+import type { PatternDefinition } from "../orchestration/pattern_registry.ts";
+import type { CollaborationPattern } from "../core/config.ts";
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
@@ -166,15 +169,35 @@ interface AgentDraft {
   subscribe: string[];
 }
 
-async function createAgent(num: number, defaultModel: string): Promise<AgentDraft> {
+async function createAgent(num: number, defaultModel: string, pattern?: PatternDefinition): Promise<AgentDraft> {
   console.log(`--- Agent #${num} ---`);
 
-  const defaultName = num === 1 ? "planner" : `worker-${num - 1}`;
+  let defaultName: string;
+  if (pattern) {
+    const suggestedRole = pattern.roles[Math.min(num - 1, pattern.roles.length - 1)];
+    defaultName = suggestedRole ? `${suggestedRole.id}-${num}` : `agent-${num}`;
+  } else {
+    defaultName = num === 1 ? "planner" : `worker-${num - 1}`;
+  }
   const name = await prompt("Agent name", defaultName);
 
-  const roles = ["admin", "worker", "reviewer"];
-  const defaultRoleIdx = num === 1 ? 0 : 1;
-  const roleIdx = await choose("Role:", roles, defaultRoleIdx);
+  // Determine roles from pattern or use legacy defaults
+  const roles = pattern
+    ? pattern.roles.map((r) => r.id)
+    : ["admin", "worker", "reviewer"];
+  const roleLabels = pattern
+    ? pattern.roles.map((r) => `${r.id} — ${r.name}: ${r.description}`)
+    : roles;
+
+  let defaultRoleIdx: number;
+  if (pattern) {
+    // For each agent, suggest the role that still needs filling based on min requirements
+    // First agent gets the first role, subsequent agents get worker/specialist types
+    defaultRoleIdx = num === 1 ? 0 : Math.min(num - 1, roles.length - 1);
+  } else {
+    defaultRoleIdx = num === 1 ? 0 : 1;
+  }
+  const roleIdx = await choose("Role:", roleLabels, defaultRoleIdx);
   const role = roles[roleIdx];
 
   let agentModel: string | undefined;
@@ -184,7 +207,12 @@ async function createAgent(num: number, defaultModel: string): Promise<AgentDraf
     if (agentModel === defaultModel) agentModel = undefined;
   }
 
-  const toolDefaults = ROLE_TOOL_DEFAULTS[role] ?? ALL_TOOLS.map(() => true);
+  // Get pattern role definition if available
+  const patternRole = pattern?.roles.find((r) => r.id === role);
+
+  const toolDefaults = patternRole
+    ? ALL_TOOLS.map((t) => [...patternRole.default_tools, ...patternRole.auto_tools].includes(t))
+    : (ROLE_TOOL_DEFAULTS[role] ?? ALL_TOOLS.map(() => true));
   const toolLabels = ALL_TOOLS.map(
     (t) => `${t} -- ${TOOL_DESCRIPTIONS[t]}`,
   );
@@ -197,7 +225,9 @@ async function createAgent(num: number, defaultModel: string): Promise<AgentDraf
   );
   const tools = ALL_TOOLS.filter((_, i) => toolSelections[i]);
 
-  const defaultChannels = ROLE_SUBSCRIBE_DEFAULTS[role] ?? [];
+  const defaultChannels = patternRole
+    ? patternRole.subscribe
+    : (ROLE_SUBSCRIBE_DEFAULTS[role] ?? []);
   const channelInput = await prompt(
     "Subscribe to channels (comma-separated)",
     defaultChannels.join(", "),
@@ -207,7 +237,9 @@ async function createAgent(num: number, defaultModel: string): Promise<AgentDraf
     .map((s) => s.trim())
     .filter(Boolean);
 
-  const defaultPrompt = ROLE_PROMPT_DEFAULTS[role] ?? `You are the ${name} agent.`;
+  const defaultPrompt = patternRole
+    ? patternRole.system_prompt_suffix
+    : (ROLE_PROMPT_DEFAULTS[role] ?? `You are the ${name} agent.`);
   console.log("");
   console.log("System prompt (press Enter to accept default, or type a custom one):");
   console.log(`  Default: "${defaultPrompt}"`);
@@ -254,16 +286,40 @@ export async function cmdInit(args: string[]): Promise<void> {
   const modelIdx = await choose("Default model:", MODELS, 0);
   const model = MODELS[modelIdx];
 
+  // --- Pattern selection ---
+  const PATTERN_IDS: CollaborationPattern[] = ["sequential", "mixture", "deliberation", "distillation"];
+  const patternOptions = PATTERN_IDS.map((id) => {
+    const p = getPattern(id);
+    return p ? `${p.name} — ${p.description}` : id;
+  });
+  const patternIdx = await choose("Collaboration pattern:", patternOptions, 0);
+  const patternId = PATTERN_IDS[patternIdx];
+  const pattern = getPattern(patternId);
+
+  let maxDeliberationRounds: number | undefined;
+  if (patternId === "deliberation") {
+    const roundsStr = await prompt("Max deliberation rounds", "3");
+    maxDeliberationRounds = parseInt(roundsStr) || 3;
+  }
+
   console.log("");
   console.log("--- Agent setup ---");
-  console.log("You'll define agents one at a time. Each gets a name, role, tools, and system prompt.");
+  if (pattern) {
+    const roleGuide = pattern.roles
+      .map((r) => `  ${r.name} (${r.id}): ${r.description} [${r.min === r.max ? String(r.min) : `${r.min}-${r.max}`}]`)
+      .join("\n");
+    console.log(`Pattern "${pattern.name}" suggests these roles:`);
+    console.log(roleGuide);
+  } else {
+    console.log("You'll define agents one at a time. Each gets a name, role, tools, and system prompt.");
+  }
   console.log("");
 
   const agents: AgentDraft[] = [];
   let addMore = true;
 
   while (addMore) {
-    const agent = await createAgent(agents.length + 1, model);
+    const agent = await createAgent(agents.length + 1, model, pattern ?? undefined);
     agents.push(agent);
 
     console.log("");
@@ -274,6 +330,8 @@ export async function cmdInit(args: string[]): Promise<void> {
     session,
     api_key_env: "ANTHROPIC_API_KEY",
     model,
+    pattern: patternId,
+    ...(maxDeliberationRounds !== undefined ? { max_deliberation_rounds: maxDeliberationRounds } : {}),
     working_dir: workingDir,
     agents: agents.map((a) => {
       const entry: Record<string, unknown> = {
@@ -297,6 +355,10 @@ export async function cmdInit(args: string[]): Promise<void> {
   console.log("");
   console.log(`  Session:     ${session}`);
   console.log(`  Model:       ${model}`);
+  console.log(`  Pattern:     ${pattern?.name ?? patternId}`);
+  if (maxDeliberationRounds !== undefined) {
+    console.log(`  Max rounds:  ${maxDeliberationRounds}`);
+  }
   console.log(`  Working dir: ${workingDir}`);
   console.log(`  Agents:`);
   for (const a of agents) {

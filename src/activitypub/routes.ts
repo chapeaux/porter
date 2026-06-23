@@ -150,10 +150,8 @@ export async function handleActivityPubRoutes(
     // Resolve the team owner from the federation registry
     const ownerId = await resolveOwner(teamSlug);
     if (!ownerId) {
-      console.error(`[ap] resolveOwner("${teamSlug}") returned null — team not in registry`);
       return json({ error: "Team not found" }, 404);
     }
-    console.error(`[ap] resolveOwner("${teamSlug}") = ${ownerId}`);
 
     // 2. GET /ap/actors/{name} — actor document
     if (subpath === "" && method === "GET") {

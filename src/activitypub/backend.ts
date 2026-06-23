@@ -241,23 +241,16 @@ export class RouterBackend implements ActivityPubBackend {
     try {
       const pod = await this.ensurePod(ownerId);
       const url = `${pod.podUrl}/api/teams/${encodeURIComponent(teamSlug)}`;
-      console.error(`[ap-router] getTeam: proxying to pod ${url} (owner=${ownerId})`);
       const resp = await fetch(url, {
         headers: {
           "X-Porter-Email": ownerId,
           "X-Porter-Sub": ownerId,
         },
       });
-      console.error(`[ap-router] getTeam: pod responded ${resp.status}`);
       if (resp.ok) {
-        const data = await resp.json();
-        return data as SavedTeam;
+        return await resp.json() as SavedTeam;
       }
-      const body = await resp.text().catch(() => "");
-      console.error(`[ap-router] getTeam: pod returned ${resp.status}: ${body}`);
-    } catch (err) {
-      console.error(`[ap-router] getTeam: pod error: ${(err as Error).message}`);
-    }
+    } catch { /* pod unavailable */ }
     return null;
   }
 

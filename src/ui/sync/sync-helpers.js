@@ -31,16 +31,14 @@ export function syncToPod(key, value) {
 
 export async function syncAgentsToPod(agents) {
   if (!window._podSync) {
-    console.warn('[porter-pod] syncAgentsToPod: no _podSync — agents not synced to Pod');
+    // Pod sync not initialized — skip silently
     return;
   }
-  console.log(`[porter-pod] syncAgentsToPod: syncing ${agents.length} agents`);
   const podRoot = window._podSync._podRoot;
   const authFetch = window._podSync._fetch;
 
   // Ensure agents/ container exists
   const containerUrl = `${podRoot}porter/agents/`;
-  console.log(`[porter-pod] ensureContainer: ${containerUrl}`);
   await ensureContainer(authFetch, containerUrl);
 
   // Write each agent as a Turtle file
@@ -49,14 +47,12 @@ export async function syncAgentsToPod(agents) {
     if (!name) continue;
     const url = `${podRoot}porter/agents/${encodeURIComponent(name)}.ttl`;
     const turtle = agentToTurtle(agent, url);
-    console.log(`[porter-pod] PUT agent: ${url} (${turtle.length} bytes)`);
     try {
       const resp = await authFetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'text/turtle' },
         body: turtle,
       });
-      console.log(`[porter-pod] PUT response: ${resp.status} ${resp.statusText}`);
       if (!resp.ok) {
         const body = await resp.text().catch(() => '');
         console.error(`[porter-pod] PUT failed: ${resp.status} ${body}`);
@@ -315,7 +311,6 @@ export async function ensureContainer(authFetch, url) {
         headers: { 'Link': linkType, 'Content-Type': 'text/turtle' },
         body: '',
       });
-      console.log(`[porter-pod] ensureContainer ${url}: ${resp.status} (${linkType.includes('lws') ? 'LWS' : 'LDP'})`);
       if (resp.ok || resp.status === 201 || resp.status === 409) return;
     } catch (err) {
       console.error(`[porter-pod] ensureContainer error:`, err);
@@ -327,7 +322,6 @@ export async function ensureContainer(authFetch, url) {
 export async function listContainer(authFetch, url) {
   try {
     const resp = await authFetch(url, { headers: { 'Accept': 'text/turtle' } });
-    console.log(`[porter-pod] listContainer ${url}: HTTP ${resp.status}`);
     if (!resp.ok) return [];
     const text = await resp.text();
     // Extract all URIs from ldp:contains — handles both single and comma-separated lists
@@ -335,16 +329,11 @@ export async function listContainer(authFetch, url) {
     // Can't use [^.]+ because URLs contain dots
     const containsMatch = text.match(/ldp:contains\s+([\s\S]+?)\s+\./m);
     if (!containsMatch) {
-      console.warn(`[porter-pod] listContainer: no ldp:contains found in response (${text.length} bytes):`);
-      console.warn(text.substring(0, 500));
+      console.warn(`[porter-pod] listContainer: no ldp:contains in ${url}`);
       return [];
     }
     const uriMatches = [...containsMatch[1].matchAll(/<([^>]+)>/g)];
     const files = uriMatches.map(m => decodeURIComponent(m[1].split('/').pop())).filter(Boolean);
-    console.log(`[porter-pod] listContainer ${url}: found ${files.length} files: ${files.join(', ')}`);
-    if (files.length === 0) {
-      console.warn(`[porter-pod] listContainer: containsMatch but 0 URIs. Match: ${containsMatch[1].substring(0, 200)}`);
-    }
     return files;
   } catch (err) {
     console.error(`[porter-pod] listContainer error:`, err);
