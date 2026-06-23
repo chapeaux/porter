@@ -201,6 +201,8 @@ export async function initPodSync(webId) {
     await sync.connect();
     await document.getElementById('models')?.refresh();
     _updateSetupBar();
+    // Full sync of agents and teams to Pod on connect
+    _syncAllToPod();
   } catch (e) { console.error('[porter-pod] Sync init failed:', e); }
 }
 
@@ -234,7 +236,24 @@ export async function initSsoPodSync(podUrl, tokenEndpoint) {
     await document.getElementById('models')?.refresh();
     _updateSetupBar();
     console.log('[porter-pod] SSO Pod sync initialized via token exchange:', podUrl);
+    // Full sync of agents and teams to Pod on connect
+    _syncAllToPod();
   } catch (e) { console.error('[porter-pod] SSO Pod sync init failed:', e); }
+}
+
+async function _syncAllToPod() {
+  try {
+    const agentsResp = await fetch('/api/agents');
+    if (agentsResp.ok) {
+      const data = await agentsResp.json();
+      if (data.agents?.length) {
+        await syncAgentsToPod(data.agents);
+      }
+    }
+    await syncTeamsToPod();
+  } catch (e) {
+    console.error('[porter-pod] Full sync on connect failed:', e);
+  }
 }
 
 async function exchangeLwsToken(tokenEndpoint) {
