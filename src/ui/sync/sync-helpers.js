@@ -58,14 +58,17 @@ export async function syncAgentsToPod(agents) {
     });
   }
 
-  // Delete agent files no longer in the library
-  for (const file of existingFiles) {
-    if (!file.endsWith('.ttl')) continue;
-    const name = decodeURIComponent(file.replace(/\.ttl$/, ''));
-    if (!agentNames.has(name)) {
-      await authFetch(`${podRoot}porter/agents/${file}`, { method: 'DELETE' }).catch(() => {});
-    }
-  }
+  // Don't delete orphans here — the server may not have all agents yet
+  // (e.g., fresh pod hasn't loaded from Pod yet). Deletion only happens
+  // via explicit deleteAgentFromPod().
+}
+
+export async function deleteAgentFromPod(agentName) {
+  if (!window._podSync) return;
+  const podRoot = window._podSync._podRoot;
+  const authFetch = window._podSync._fetch;
+  const url = `${podRoot}porter/agents/${encodeURIComponent(agentName)}.ttl`;
+  await authFetch(url, { method: 'DELETE' }).catch(() => {});
 }
 
 export async function syncTeamsToPod() {
@@ -98,14 +101,7 @@ export async function syncTeamsToPod() {
       });
     }
 
-    // Delete team files no longer in the library
-    for (const file of existingFiles) {
-      if (!file.endsWith('.ttl')) continue;
-      const name = decodeURIComponent(file.replace(/\.ttl$/, ''));
-      if (!teamNames.has(name)) {
-        await authFetch(`${podRoot}porter/teams/${file}`, { method: 'DELETE' }).catch(() => {});
-      }
-    }
+    // Don't delete orphans — same reason as agents
   } catch { /* best-effort */ }
 }
 

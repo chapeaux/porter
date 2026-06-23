@@ -9,7 +9,7 @@ import { parsePromptSections, ROLE_CHANNEL_DEFAULTS } from '../stores/config-sto
 import { openAgentEditor } from './agent-editor.js';
 import { openTeamBuilder } from './team-builder.js';
 import { updateSetupBar } from '../features/flipboard-setup.js';
-import { syncAgentsToPod, setResourcePublic } from '../sync/sync-helpers.js';
+import { syncAgentsToPod, deleteAgentFromPod, setResourcePublic } from '../sync/sync-helpers.js';
 
 function convertSavedAgent(raw) {
   return {
@@ -136,11 +136,8 @@ export function showAgentLibrary() {
         btn.addEventListener('click', async () => {
           const name = btn.dataset.name;
           await fetch(`/api/agents/${encodeURIComponent(name)}`, { method: 'DELETE' });
-          // Sync updated library to Pod
-          fetch('/api/agents')
-            .then(r => r.ok ? r.json() : { agents: [] })
-            .then(data => syncAgentsToPod(data.agents || []))
-            .catch(() => {});
+          // Delete from Pod explicitly
+          await deleteAgentFromPod(name);
           showAgentLibrary();
           updateSetupBar();
         });

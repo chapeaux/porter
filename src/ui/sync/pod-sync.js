@@ -510,19 +510,7 @@ export class PorterPodSync {
         }).catch(() => {});
       }
     }
-    // Delete server-side agents not present in Pod data
-    fetch('/api/agents', { headers: _getIdentityHeaders() })
-      .then(r => r.ok ? r.json() : { agents: [] })
-      .then(({ agents: serverAgents }) => {
-        for (const a of serverAgents || []) {
-          if (!podAgentNames.has(a.name)) {
-            fetch(`/api/agents/${encodeURIComponent(a.name)}`, {
-              method: 'DELETE',
-              headers: _getIdentityHeaders(),
-            }).catch(() => {});
-          }
-        }
-      }).catch(() => {});
+    // Don't delete server-side agents — they may not be on the Pod yet
     _updateSetupBar();
   }
 
@@ -538,19 +526,7 @@ export class PorterPodSync {
         }).catch(() => {});
       }
     }
-    // Delete server-side teams not present in Pod data
-    fetch('/api/teams', { headers: _getIdentityHeaders() })
-      .then(r => r.ok ? r.json() : { teams: [] })
-      .then(({ teams: serverTeams }) => {
-        for (const t of serverTeams || []) {
-          if (!podTeamNames.has(t.name)) {
-            fetch(`/api/teams/${encodeURIComponent(t.name)}`, {
-              method: 'DELETE',
-              headers: _getIdentityHeaders(),
-            }).catch(() => {});
-          }
-        }
-      }).catch(() => {});
+    // Don't delete server-side teams — they may not be on the Pod yet
     _updateSetupBar();
   }
 
