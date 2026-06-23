@@ -196,7 +196,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // --- Authenticated — initialize UI components that make API calls ---
+  // --- Authenticated — wait for pod readiness before making API calls ---
+  const loadingEl = document.getElementById('loading-indicator');
+  const loadingText = loadingEl?.querySelector('.loading-text');
+  if (ssoMe?.authenticated) {
+    // In router mode, the user pod may still be starting
+    let podReady = false;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      try {
+        const statusResp = await fetch('/api/pod-status');
+        if (statusResp.ok) {
+          const status = await statusResp.json();
+          if (status.ready) { podReady = true; break; }
+        } else if (statusResp.status !== 503 && statusResp.status !== 401) {
+          // Not in router mode (no pod-status endpoint) — proceed immediately
+          podReady = true;
+          break;
+        }
+      } catch {
+        podReady = true; // fetch failed — likely standalone mode
+        break;
+      }
+      if (loadingText) loadingText.textContent = 'Starting workspace...';
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    if (loadingText) loadingText.textContent = 'Loading...';
+  }
+
+  // --- Initialize UI components that make API calls ---
   setupProjectSwitcher();
   setupFlipboard();
 
