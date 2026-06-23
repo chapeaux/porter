@@ -214,6 +214,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       await initSsoPodSync(ssoMe.pod_url, ssoMe.lws_token_endpoint);
     } catch { /* best effort */ }
   }
+  // Retry Pod sync if pod_url is known but token wasn't ready yet (race on Solid callback)
+  if (!window._podSync && ssoMe?.pod_url && !ssoMe?.lws_token_endpoint && ssoMe?.solid_user) {
+    setTimeout(async () => {
+      if (window._podSync) return;
+      try {
+        const retryResp = await fetch('/auth/me');
+        if (retryResp.ok) {
+          const retryMe = await retryResp.json();
+          if (retryMe.pod_url && retryMe.lws_token_endpoint) {
+            await initSsoPodSync(retryMe.pod_url, retryMe.lws_token_endpoint);
+          }
+        }
+      } catch { /* best effort */ }
+    }, 2000);
+  }
 
   checkAuthState();
 
