@@ -30,7 +30,11 @@ export function syncToPod(key, value) {
 }
 
 export async function syncAgentsToPod(agents) {
-  if (!window._podSync) return;
+  if (!window._podSync) {
+    console.warn('[porter-pod] syncAgentsToPod: no _podSync — agents not synced to Pod');
+    return;
+  }
+  console.log(`[porter-pod] syncAgentsToPod: syncing ${agents.length} agents`);
   const podRoot = window._podSync._podRoot;
   const authFetch = window._podSync._fetch;
 
