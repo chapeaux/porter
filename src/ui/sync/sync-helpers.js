@@ -235,7 +235,6 @@ export async function initSsoPodSync(podUrl, tokenEndpoint) {
     await sync.connect();
     await document.getElementById('models')?.refresh();
     _updateSetupBar();
-    console.log('[porter-pod] SSO Pod sync initialized via token exchange:', podUrl);
     // Full sync of agents and teams to Pod on connect
     _syncAllToPod();
   } catch (e) { console.error('[porter-pod] SSO Pod sync init failed:', e); }
@@ -292,7 +291,6 @@ export async function restoreMemoryFromPod(sessionName) {
         headers: { 'Content-Type': 'text/turtle' },
         body: turtle,
       });
-      console.log('[porter-pod] Memory restored from pod for session:', sessionName);
     }
   } catch (e) { console.error('[porter-pod] Memory restore from pod failed:', e); }
 }
@@ -316,7 +314,6 @@ export async function ensureContainer(authFetch, url) {
       console.error(`[porter-pod] ensureContainer error:`, err);
     }
   }
-  console.warn(`[porter-pod] ensureContainer: all attempts failed for ${url}`);
 }
 
 export async function listContainer(authFetch, url) {
@@ -329,7 +326,6 @@ export async function listContainer(authFetch, url) {
     // Can't use [^.]+ because URLs contain dots
     const containsMatch = text.match(/ldp:contains\s+([\s\S]+?)\s+\./m);
     if (!containsMatch) {
-      console.warn(`[porter-pod] listContainer: no ldp:contains in ${url}`);
       return [];
     }
     const uriMatches = [...containsMatch[1].matchAll(/<([^>]+)>/g)];

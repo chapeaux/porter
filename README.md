@@ -4,7 +4,7 @@
   <img src="src/ui/porter.svg" alt="Porter" width="120">
 </p>
 
-A pure-Deno multi-agent orchestration platform. Porter runs agents as V8-isolated workers with crash containment, coordinates them through an in-process message bus, and exposes a browser-based dashboard for real-time monitoring and team management.
+A pure-Deno multi-agent orchestration platform. Porter runs agents as V8-isolated workers with crash containment, coordinates them through an in-process message bus, and exposes a browser-based dashboard for real-time monitoring and team management. Agents collaborate via pluggable collaboration patterns (Sequential, Mixture, Deliberation, Distillation), share state through an RDF knowledge graph, and are addressable as linked data resources. Porter supports ActivityPub federation for fediverse interaction, Solid Pod integration for portable configuration, and JSON-LD/Turtle content negotiation for interoperability.
 
 Named in honor of the historic United States railroad Pullman Porters, who coordinated the seamless operation of passenger rail cars.
 
@@ -35,7 +35,18 @@ porter start --config examples/solo-dev.json
 porter start --ui                             # with web dashboard
 ```
 
-See [`examples/`](examples/) for ready-to-use configs: `solo-dev.json`, `full-team.json`, `multi-model.json`, plus collaboration pattern configs (`mixture-review.json`, `deliberation-coder.json`, `distillation-guided.json`).
+See [`examples/`](examples/) for ready-to-use configs covering all four patterns:
+
+| File | Pattern | Description |
+|------|---------|-------------|
+| `solo-dev.json` | sequential | Single developer agent |
+| `full-team.json` | sequential | Admin, worker, and reviewer team |
+| `multi-model.json` | sequential | Mixed model team (different providers) |
+| `mixture-review.json` | mixture | Code review with correctness, security, and performance specialists |
+| `mixture-research.json` | mixture | Codebase research with code, doc, and test analysts |
+| `deliberation-coder.json` | deliberation | Coding with iterative review (3 rounds) |
+| `deliberation-security.json` | deliberation | Security audit with iterative verification (5 rounds) |
+| `distillation-guided.json` | distillation | Large model architect guides small model developer |
 
 ### Three Deployment Modes
 
@@ -170,7 +181,7 @@ Logout (`GET /auth/logout`) revokes the Keycloak refresh token via the OIDC revo
 
 ### Solid Pod
 
-Client-side Solid OIDC with DPoP-bound tokens. Uses the WebID as identity and syncs configuration to the user's Pod. See [Solid Pod Sync](#solid-pod-sync) for details.
+Client-side Solid OIDC with DPoP-bound tokens. Uses the WebID as identity and syncs configuration to the user's Pod. See [Solid Pod Sync](#linked-web-storage-lws--solid-pod-sync) for details.
 
 ---
 
@@ -503,9 +514,21 @@ When logged in via a Solid identity provider directly, Porter discovers the Pod 
 
 ### What's Synced
 
-- `{pod}/porter/config.json` -- models, teams, MCP servers, agents as JSON
-- `{pod}/porter/config.ttl` -- same config as Turtle/RDF for Linked Data interop
-- Real-time sync via Solid Notifications (SSE) -- changes on the Pod are reflected in Porter automatically
+Each resource type is stored as individual Turtle files on the Pod, replacing the earlier monolithic `config.json` approach:
+
+| Resource | Pod Path | Format |
+|----------|----------|--------|
+| Agents | `{pod}/porter/agents/{name}.ttl` | Turtle (porter: vocabulary) |
+| Teams | `{pod}/porter/teams/{name}.ttl` | Turtle (porter: vocabulary with embedded config JSON) |
+| Models | `{pod}/porter/config.json` | JSON (models array) |
+| MCP servers | `{pod}/porter/config.json` | JSON (mcp_servers map) |
+| Memory | `{pod}/porter/memory/{session}.ttl` | Turtle (session knowledge graph) |
+| Published teams | `{pod}/porter/config.json` | JSON (federation slugs) |
+
+- **Bidirectional sync** -- changes on the Pod are reflected in Porter via Solid Notifications (SSE), and changes in Porter are written back to the Pod.
+- **ACL-based sharing** -- individual agent or team Turtle files can be made public via `setResourcePublic`, which writes a WAC ACL granting `foaf:Agent` read access. Private resources get their ACL removed.
+- **Automatic full sync on connect** -- when Pod sync initializes (Solid login or SSO token exchange), all agents and teams are synced to the Pod immediately.
+- **Survives pod restarts** -- because data lives on the user's Pod, deprovisioning an orchestrator pod does not lose configuration.
 
 This makes configuration portable across Porter instances: log in with the same identity on a different deployment and your models, teams, and credentials follow.
 
@@ -543,7 +566,21 @@ Tool results exceeding 20,000 characters are automatically truncated to prevent 
 
 ---
 
-## Shared Memory Persistence
+## Graph Store
+
+The shared knowledge graph is backed by **Sparq WASM** -- a lightweight SPARQL engine compiled to WebAssembly. It replaces the earlier Oxigraph-based implementation with the same public API. The store supports SPARQL SELECT, ASK, CONSTRUCT, and UPDATE queries, Turtle and N-Triples loading, named graphs, and SHACL validation.
+
+The graph uses named graphs for separation of concerns:
+
+| Graph | Purpose |
+|-------|---------|
+| Memory | Agent observations from `memory_write` and pattern tools |
+| Shapes | SHACL validation shapes for config and pattern validation |
+| Config | Configuration data loaded from `porter.json` |
+
+The Porter vocabulary (`https://porter.chapeaux.io/vocab#`) covers agents, teams, patterns, roles, findings, critiques, plans, and steps. Pattern-specific tools (`finding_write`, `critique_write`, `plan_write`, etc.) write structured triples to the graph, enabling SPARQL queries across agent outputs.
+
+### Shared Memory Persistence
 
 Agent observations written via `memory_write` are persisted across session restarts. When a session stops, the memory graph is serialized as Turtle into the session snapshot. On restart, it is restored automatically.
 
@@ -636,6 +673,8 @@ Add an `activitypub` block to `porter.json`:
 
 AP can also be enabled via environment variables: set `PORTER_AP_ENABLED=true` and `PORTER_AP_DOMAIN=porter.example.com`.
 
+Federation is also configurable from the web dashboard via the **FEDERATION** flipboard cell, which opens a dialog for enabling/disabling federation, configuring the domain and approval mode, managing the allowlist, and publishing or unpublishing individual teams. The Team Builder's Get Started wizard includes federation setup as part of the team creation flow.
+
 ### DM Interface
 
 Fediverse users interact with Porter teams by sending direct messages to the team's actor account.
@@ -718,6 +757,8 @@ In **router** mode (`porter router`), the router handles AP at the edge and prov
    → Porter replies with welcome message:
 
      devteam — AI agent team on Porter
+
+     Pattern: Sequential
 
      Agents:
        #planner (admin)
@@ -804,7 +845,9 @@ Patterns are defined as JSON files conforming to the `PatternDefinition` schema 
 }
 ```
 
-Built-in pattern definitions live in `src/orchestration/patterns/` (`sequential.json`, `mixture.json`, `deliberation.json`, `distillation.json`). See [`docs/collaboration-patterns.md`](docs/collaboration-patterns.md) for the full schema reference.
+Built-in pattern definitions live in `src/orchestration/patterns/` as JSON-LD files (`sequential.jsonld`, `mixture.jsonld`, `deliberation.jsonld`, `distillation.jsonld`) with a Porter vocabulary `@context` and SHACL validation shapes (`pattern-shapes.ttl`). See [`docs/collaboration-patterns.md`](docs/collaboration-patterns.md) for the full schema reference.
+
+Patterns are managed in the dashboard via the **PATTERNS** flipboard cell, which opens the Pattern Manager dialog. The `porter init` CLI wizard also includes pattern selection as a step.
 
 ### Sequential
 
@@ -812,7 +855,7 @@ Traditional admin/worker/reviewer pipeline. The default pattern.
 
 **Roles:** Admin (0-1), Worker (1-8), Reviewer (0-2)
 
-**Definition:** [`src/orchestration/patterns/sequential.json`](src/orchestration/patterns/sequential.json)
+**Definition:** [`src/orchestration/patterns/sequential.jsonld`](src/orchestration/patterns/sequential.jsonld)
 
 ### Mixture
 
@@ -822,7 +865,7 @@ Specialists work the problem **in parallel**, each from their domain. Each write
 
 **Roles:** Specialist (2-8), Synthesizer (1)
 
-**Definition:** [`src/orchestration/patterns/mixture.json`](src/orchestration/patterns/mixture.json)
+**Definition:** [`src/orchestration/patterns/mixture.jsonld`](src/orchestration/patterns/mixture.jsonld)
 
 See [`examples/mixture-review.json`](examples/mixture-review.json) and [`examples/mixture-research.json`](examples/mixture-research.json).
 
@@ -834,7 +877,7 @@ A worker produces output, then a reflector critiques it. The graph tracks critiq
 
 **Roles:** Worker (1), Reflector (1)
 
-**Definition:** [`src/orchestration/patterns/deliberation.json`](src/orchestration/patterns/deliberation.json)
+**Definition:** [`src/orchestration/patterns/deliberation.jsonld`](src/orchestration/patterns/deliberation.jsonld)
 
 See [`examples/deliberation-coder.json`](examples/deliberation-coder.json) and [`examples/deliberation-security.json`](examples/deliberation-security.json).
 
@@ -846,7 +889,7 @@ An expert creates a detailed plan with ordered steps written to the graph. A lea
 
 **Roles:** Expert (1), Learner (1)
 
-**Definition:** [`src/orchestration/patterns/distillation.json`](src/orchestration/patterns/distillation.json)
+**Definition:** [`src/orchestration/patterns/distillation.jsonld`](src/orchestration/patterns/distillation.jsonld)
 
 See [`examples/distillation-guided.json`](examples/distillation-guided.json).
 
@@ -859,6 +902,34 @@ Custom patterns let you define your own coordination structures without modifyin
 - **Download/share:** Click the download button on any pattern card to export its JSON definition. Upload `.json` files to import patterns from others.
 
 Custom patterns are stored per-user and sync to LWS/Solid Pods for SSO users. They appear alongside built-in patterns in the Team Builder's pattern selector.
+
+### Visual Pattern Editor
+
+The Pattern Editor provides an SVG canvas for designing collaboration patterns visually. You can add role and channel nodes, connect them with directed edges, drag to reposition, and auto-layout the topology. The right panel shows editable properties for the selected node (name, description, min/max agents, system prompt suffix, auto-tools, subscribe channels, default tools). Pattern-level properties (name, description, max rounds) are edited in the header. Saved patterns are immediately available in the Team Builder.
+
+### bus_flow Syntax
+
+Each pattern includes a `bus_flow` string that describes the message flow topology. The dashboard renders this as a visual flow diagram using the `flow-parser` and `flow-diagram` modules.
+
+| Element | Syntax | Example |
+|---------|--------|---------|
+| Plain node | `name` | `task` |
+| Role node | `role:name` | `specialist:analyst` |
+| Multi-agent | `name*` | `specialists*` |
+| Arrow | `->` or `→` | `task -> worker` |
+| Parallel | `[a, b, c]` | `[security, performance, correctness]` |
+| Conditional branch | `(a -> b \| c -> d)` | `(approved -> done \| rejected -> revise)` |
+| Store | `graph` or `graph(label)` | `graph(findings)` |
+| Multiple flows | `;` | `task -> worker ; control -> admin` |
+
+Built-in pattern bus_flow strings:
+
+```
+sequential:   task -> admin -> [workers] -> reviewer -> response
+mixture:      task -> [specialists in parallel] -> graph -> synthesizer -> response
+deliberation: task -> worker -> reflector -> (approve -> response | critique -> worker)
+distillation: task -> expert -> graph(plan) -> learner -> response
+```
 
 ### Pattern-Specific Tools
 
@@ -931,6 +1002,58 @@ The [`examples/`](examples/) directory includes ready-to-use configurations:
 
 ---
 
+## Linked Data
+
+Porter models agents, teams, and patterns as linked data resources with stable URIs, enabling interoperability across deployments and tools.
+
+### Content Negotiation
+
+The `/api/agents/{name}` and `/api/teams/{name}` endpoints support content negotiation via the `Accept` header:
+
+| Accept Header | Format | Use Case |
+|---------------|--------|----------|
+| `application/ld+json` | JSON-LD | Linked data clients, import/export |
+| `text/turtle` | Turtle/RDF | Solid Pods, SPARQL tooling |
+| `application/json` | JSON | Default API consumers |
+
+### JSON-LD Contexts
+
+Porter defines JSON-LD contexts for agents and teams under the `https://porter.chapeaux.io/vocab#` namespace:
+
+- **Agent context** (`src/agents/context.jsonld`) -- maps fields like `name`, `expertise`, `tools`, `model`, `reasoning`, `maxTokens`, `visibility`, `derivedFrom`, and `linkedFrom` to the Porter vocabulary.
+- **Team context** (`src/teams/context.jsonld`) -- maps `name`, `pattern`, `agents` (as `AgentRef` entries with `ref`, `role`, `model`) to the Porter vocabulary.
+- **Pattern context** (inline in `src/orchestration/pattern_registry.ts`) -- maps pattern definitions and roles to `porter:Pattern` and `porter:PatternRole` types.
+
+### Reference-Based Teams
+
+Teams reference agents by name or URI instead of embedding full configurations. An `AgentRef` specifies a `ref` (agent name or URI), a `role` (assigned by the pattern), and an optional `model` override. Refs are resolved at session launch from the agent library or fetched from remote URLs.
+
+```json
+{
+  "pattern": "mixture",
+  "agents": [
+    { "ref": "security-analyst", "name": "security-analyst", "role": "specialist" },
+    { "ref": "https://pod.example.com/porter/agents/perf-analyst.ttl", "name": "perf-analyst", "role": "specialist" },
+    { "ref": "reporter", "name": "reporter", "role": "synthesizer" }
+  ]
+}
+```
+
+### Import and Share
+
+The Agent Library supports importing agents from URLs or files:
+
+- **From URL** -- accepts `.jsonld`, `.ttl`, or `.json` from any static host (GitHub raw URLs, Gists, Solid Pods). Two modes: **Link** (keeps a live remote reference -- updates at the source propagate) or **Copy** (creates an independent local copy).
+- **From File** -- upload a `.jsonld`, `.ttl`, or `.json` file. Always creates a local copy.
+- **Share** -- copies the agent's Solid Pod URI to the clipboard after setting the resource's ACL to public read. Falls back to the server API URL when no Pod is connected.
+- **Download** -- exports the agent definition as a `.jsonld` file.
+
+### URI-Addressable Resources
+
+Agents are stored as individual Turtle files on the user's Solid Pod at `{podRoot}/porter/agents/{name}.ttl`. Teams are stored at `{podRoot}/porter/teams/{name}.ttl`. These URIs are stable and can be shared, linked, or imported by other Porter instances.
+
+---
+
 ## Configuration Reference
 
 ### `porter.json` Format
@@ -942,9 +1065,11 @@ The [`examples/`](examples/) directory includes ready-to-use configurations:
   "api_key_env": "ANTHROPIC_API_KEY",
   "working_dir": ".",
   "isolates": true,
+  "pattern": "sequential",
   "repo": "https://github.com/org/repo.git",
   "models": [],
   "mcp_servers": {},
+  "activitypub": {},
   "env": {},
   "agents": []
 }
@@ -972,8 +1097,9 @@ The [`examples/`](examples/) directory includes ready-to-use configurations:
 | `sandbox` | no | | Container sandbox (`true` or `{enabled, image?, runtime?}`) |
 | `runtime_tools` | no | | Runtime tools to inject into pods (`["python3", "curl"]`) |
 | `env` | no | | Environment variables for the session |
+| `activitypub` | no | | ActivityPub federation config (`{enabled, domain, approval_mode, allowlist, ...}`) |
 | `remote` | no | | OpenShift remote worker config |
-| `agents` | yes | | Array of agent definitions |
+| `agents` | yes | | Array of `AgentConfig` objects or `AgentRef` references |
 
 #### Model Entry Fields
 
@@ -1008,6 +1134,30 @@ The [`examples/`](examples/) directory includes ready-to-use configurations:
 | `mcp_tools` | no | `[]` | MCP tools this agent can access |
 | `small_model` | no | auto-detect | Enable simplified tool schemas and tool inference engine |
 
+### AgentRef (Reference-Based Teams)
+
+Instead of embedding a full `AgentConfig`, teams can reference agents by name or URI using `AgentRef`:
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `ref` | yes | | Agent name (local library) or URI (remote/Solid Pod) |
+| `name` | yes | | Display name (defaults to ref) |
+| `role` | yes | | Role assigned by the team's pattern |
+| `model` | no | | Optional model override for this team context |
+
+At session launch, refs are resolved from the local agent library or fetched from remote URLs. If a ref cannot be resolved, the agent is marked `_missing` and an error is reported.
+
+### ActivityPub Config Block
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Enable ActivityPub federation |
+| `domain` | `string` | | Public domain for actor URLs |
+| `approval_mode` | `"open" \| "allowlist" \| "manual"` | `"allowlist"` | How follow requests are handled |
+| `allowlist` | `string[]` | `[]` | Domains or `@user@domain` handles to auto-approve |
+| `public_summaries` | `boolean` | `false` | Post session summaries publicly |
+| `max_sessions_per_follower` | `number` | `1` | Max concurrent AP-initiated sessions per follower |
+
 ### Environment Variables
 
 | Variable | Description |
@@ -1022,6 +1172,8 @@ The [`examples/`](examples/) directory includes ready-to-use configurations:
 | `PORTER_OIDC_REDIRECT_URI` | OIDC callback URL |
 | `PORTER_SESSION_KEY` | Session cookie encryption key |
 | `PORTER_LWS_BASE_URL` | LWS Pod storage base URL for SSO users |
+| `PORTER_AP_ENABLED` | Enable ActivityPub federation (`true`) |
+| `PORTER_AP_DOMAIN` | Public domain for AP actor URLs |
 
 ---
 
@@ -1059,7 +1211,7 @@ porter teardown                       # remove pods
 
 ```bash
 deno task check                       # type-check all files
-deno task test                        # run tests (231 tests)
+deno task test                        # run tests (318 tests)
 deno task compile                     # build standalone binary (./porter)
 deno run --allow-all cli.ts serve     # run without installing
 deno run --allow-all src/ui/server.ts # standalone dashboard
@@ -1074,7 +1226,7 @@ porter/
   cli.ts                CLI entry point (thin dispatcher)
   src/cli/
     flags.ts            Shared CLI flag parser
-    init.ts             porter init, add-agent (interactive wizard)
+    init.ts             porter init, add-agent (interactive wizard, pattern selection)
     session.ts          porter start, stop, status, snapshot, sessions
     serve.ts            porter serve, ui, router
     cluster.ts          porter login, deploy, teardown
@@ -1084,9 +1236,10 @@ porter/
   worker.ts             Standalone remote worker (OpenShift pods)
   isolate.ts            V8 Worker entry point (BusProxy, CoordinatorProxy, RPC)
   Dockerfile            Container image for deployment
+  CONTRIBUTING.md       Contributor guidelines
   src/
     core/
-      config.ts         Config types (PorterConfig, AgentConfig)
+      config.ts         Config types (PorterConfig, AgentConfig, AgentRef, CollaborationPattern)
       client.ts         API client factory (Anthropic / Vertex)
       catalog.ts        Model catalog and provider inference
     runtime/
@@ -1099,36 +1252,51 @@ porter/
       orchestrator.ts   Session startup (provisionRepo, start())
       session_manager.ts Multi-session manager (create/stop/delete)
       registry.ts       Session file registry (~/.porter/sessions.json)
-      pattern_registry.ts Pattern definition loading, validation, custom registration
-      patterns/         Built-in pattern definitions (JSON)
-        sequential.json   Admin/worker/reviewer pipeline
-        mixture.json      Parallel specialists + synthesizer
-        deliberation.json Reflector/worker critique loop
-        distillation.json Expert plans, learner executes
+      pattern_registry.ts Pattern definition loading, validation, JSON-LD converters
+      patterns.ts       wirePattern, getPatternTools, getPatternSystemPrompt, isSmallModel
+      patterns/         Built-in pattern definitions (JSON-LD)
+        context.jsonld    JSON-LD context for pattern vocabulary
+        sequential.jsonld Admin/worker/reviewer pipeline
+        mixture.jsonld    Parallel specialists + synthesizer
+        deliberation.jsonld Reflector/worker critique loop
+        distillation.jsonld Expert plans, learner executes
+        pattern-shapes.ttl SHACL validation shapes for pattern definitions
       transport.ts      Display transport (LocalTransport, NullTransport)
       display.ts        Agent event -> tmux pane streaming
       metrics.ts        Session metrics collection
       message_store.ts  Persistent JSONL message store
     graph/
-      store.ts          Oxigraph WASM graph store wrapper
+      store.ts          Sparq WASM graph store wrapper
       vocabulary.ts     RDF vocabulary (AS2 + PROV-O + Porter ontology)
       shapes.ttl        SHACL validation shapes
       converters.ts     JSON <-> RDF bidirectional converters
       validate.ts       SHACL config validation
     activitypub/
+      mod.ts            AP module exports
       config.ts         AP federation config types and resolution
       actor.ts          Actor document generation and welcome messages
       session_bridge.ts DM parsing, command handling, hashtag routing
+      backend.ts        AP backend interface (session lifecycle)
       approval.ts       Follow request approval (open/allowlist/manual)
       inbox.ts          Inbox handler (Follow, Create, Undo)
+      outbox.ts         Outbox collection
       delivery.ts       Signed HTTP delivery to remote inboxes
+      http_signatures.ts HTTP signature creation and verification
       webfinger.ts      WebFinger endpoint for actor discovery
       keys.ts           RSA key pair management for HTTP signatures
       store.ts          Follower and conversation persistence
+      registry.ts       Federation registry (publish/unpublish teams)
+      context.ts        AP session context (post/reply options)
       routes.ts         AP HTTP route registration
+      types.ts          AP type definitions (Actor, Activity, etc.)
+    agents/
+      context.jsonld    JSON-LD context for agent vocabulary
+    teams/
+      context.jsonld    JSON-LD context for team vocabulary
     tools/
       mod.ts            Tool registry and lazy loader
       shapes.ts         Tool call validation and repair
+      inference_engine.ts Tool inference engine (classifyIntent, simplifySchemas, buildRecoveryNudge)
       bash.ts           Shell command execution (sandbox-aware)
       read_file.ts      File reading (path-validated in sandbox)
       write_file.ts     File creation/overwrite (path-validated)
@@ -1141,6 +1309,14 @@ porter/
       read_messages.ts  Drain messages from subscribed channels
       memory_write.ts   Write to shared knowledge graph
       memory_query.ts   SPARQL query against knowledge graph
+      finding_write.ts  Write structured finding to graph (Mixture pattern)
+      findings_query.ts Query findings from graph (Mixture pattern)
+      critique_write.ts Write critique to graph (Deliberation pattern)
+      critiques_query.ts Query critiques from graph (Deliberation pattern)
+      approve.ts        Approve work output (Deliberation pattern)
+      plan_write.ts     Write plan steps to graph (Distillation pattern)
+      plan_query.ts     Query plan steps from graph (Distillation pattern)
+      step_update.ts    Update step status (Distillation pattern)
       ap_post.ts        Post to AP followers (AP sessions)
       ap_reply.ts       Reply to fediverse user (AP sessions)
     sandbox/
@@ -1187,10 +1363,16 @@ porter/
       dom.js            Safe DOM construction helpers (replaces innerHTML)
       sw.js             Service worker (PWA caching + background polling)
       manifest.json     Web app manifest (PWA metadata)
+      render/
+        flow-parser.js    bus_flow syntax parser (tokenizer + AST)
+        flow-diagram.js   Visual HTML flow diagram renderer
       dialogs/
         team-builder.js   Team Builder wizard (3-step)
         agent-editor.js   Agent create/edit dialog
-        agent-library.js  Agent library with multi-select and Build Team
+        agent-library.js  Agent library (import URL/file, share, download)
+        pattern-manager.js Pattern management (view, upload, download, duplicate, delete)
+        pattern-editor.js Visual SVG pattern editor (drag nodes, connect edges)
+        federation-editor.js Federation settings (enable, domain, approval, followers)
         session-launcher.js  Session launch dialog
         model-setup.js    Model configuration dialog
         mcp-editor.js     MCP server configuration dialog
@@ -1202,8 +1384,8 @@ porter/
         runtime-stores.js Runtime state stores
       sync/
         pod-sync.js       LWS/Solid Pod sync (ETag-based writes)
-        sync-helpers.js   Sync utility functions
-  test/                 231 tests (deno task test)
+        sync-helpers.js   Sync utilities (agentToTurtle, parseTurtleAgent, setResourcePublic)
+  test/                 318 tests (deno task test)
   deploy/
     orchestrator.yaml   Single-instance orchestrator deployment
     deployment.yaml     Worker pod template
@@ -1217,6 +1399,7 @@ porter/
     architecture.md        System architecture and diagrams
     deployment-guide.md    OpenShift deployment guide
     tools.md               Runtime tool injection guide
+    collaboration-patterns.md  Pattern design and schema reference
 ```
 
 ---

@@ -159,10 +159,7 @@ export async function verifySignature(
 
   const fetcher = fetchPublicKey ?? fetchRemotePublicKey;
   const pem = await fetcher(parsed.keyId);
-  if (!pem) {
-    console.error(`[http-sig] Could not fetch public key for ${parsed.keyId}`);
-    return null;
-  }
+  if (!pem) return null;
 
   const url = new URL(request.url);
   const target = `${request.method.toLowerCase()} ${url.pathname}`;
@@ -185,10 +182,8 @@ export async function verifySignature(
       encoder.encode(signingString),
     );
 
-    if (!valid) console.error(`[http-sig] Signature mismatch for ${parsed.keyId}\n[http-sig] Signing string: ${signingString}`);
     return valid ? parsed.keyId : null;
-  } catch (err) {
-    console.error(`[http-sig] Verify error for ${parsed.keyId}: ${(err as Error).message}`);
+  } catch {
     return null;
   }
 }

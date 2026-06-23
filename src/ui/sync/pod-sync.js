@@ -165,7 +165,6 @@ export class PorterPodSync {
           body: turtle,
         });
       }
-      if (resp.ok) console.log('[porter-pod] Memory saved for session:', sessionName);
     } catch (e) {
       console.error('[porter-pod] Memory save failed:', e);
     }
@@ -432,7 +431,6 @@ export class PorterPodSync {
   async _migrateConfigToTurtle(data) {
     // Migrate saved_agents from config.json to individual Turtle files
     if (data.saved_agents && Array.isArray(data.saved_agents) && data.saved_agents.length > 0) {
-      console.log('[porter-pod] Migrating', data.saved_agents.length, 'agents from config.json to individual Turtle files');
       try {
         await ensureContainer(this._fetch, `${this._podRoot}porter/agents/`);
         for (const agent of data.saved_agents) {
@@ -450,7 +448,6 @@ export class PorterPodSync {
         this._pendingWrites.delete('saved_agents');
         this._lastKnownState = data;
         this._scheduleFlush();
-        console.log('[porter-pod] Agent migration complete');
       } catch (e) {
         console.error('[porter-pod] Agent migration failed:', e);
       }
@@ -458,7 +455,6 @@ export class PorterPodSync {
 
     // Migrate teams from config.json to individual Turtle files
     if (data.teams && Array.isArray(data.teams) && data.teams.length > 0) {
-      console.log('[porter-pod] Migrating', data.teams.length, 'teams from config.json to individual Turtle files');
       try {
         await ensureContainer(this._fetch, `${this._podRoot}porter/teams/`);
         for (const team of data.teams) {
@@ -476,7 +472,6 @@ export class PorterPodSync {
         this._pendingWrites.delete('teams');
         this._lastKnownState = data;
         this._scheduleFlush();
-        console.log('[porter-pod] Team migration complete');
       } catch (e) {
         console.error('[porter-pod] Team migration failed:', e);
       }
