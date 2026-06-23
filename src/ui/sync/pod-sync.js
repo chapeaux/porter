@@ -398,9 +398,10 @@ export class PorterPodSync {
       }).catch(() => {});
     }
 
-    // Apply teams if present — sync each to server so /api/teams serves them
+    // Apply teams — sync to server, delete teams not in Pod data
     if (data.teams && Array.isArray(data.teams)) {
       localStorage.setItem('porter-pod-teams', JSON.stringify(data.teams));
+      const podTeamNames = new Set(data.teams.map(t => t.name).filter(Boolean));
       for (const t of data.teams) {
         if (t.name && t.config) {
           fetch('/api/teams', {
@@ -410,6 +411,19 @@ export class PorterPodSync {
           }).catch(() => {});
         }
       }
+      // Delete server-side teams not present in Pod data
+      fetch('/api/teams', { headers: _getIdentityHeaders() })
+        .then(r => r.ok ? r.json() : { teams: [] })
+        .then(({ teams }) => {
+          for (const t of teams || []) {
+            if (!podTeamNames.has(t.name)) {
+              fetch(`/api/teams/${encodeURIComponent(t.name)}`, {
+                method: 'DELETE',
+                headers: _getIdentityHeaders(),
+              }).catch(() => {});
+            }
+          }
+        }).catch(() => {});
       _updateSetupBar();
     }
 
@@ -437,8 +451,10 @@ export class PorterPodSync {
       }
     }
 
+    // Apply agents — sync to server, delete agents not in Pod data
     if (data.saved_agents && Array.isArray(data.saved_agents)) {
       localStorage.setItem('porter-pod-agents', JSON.stringify(data.saved_agents));
+      const podAgentNames = new Set(data.saved_agents.map(a => a.name).filter(Boolean));
       for (const a of data.saved_agents) {
         if (a.name) {
           fetch('/api/agents', {
@@ -448,6 +464,19 @@ export class PorterPodSync {
           }).catch(() => {});
         }
       }
+      // Delete server-side agents not present in Pod data
+      fetch('/api/agents', { headers: _getIdentityHeaders() })
+        .then(r => r.ok ? r.json() : { agents: [] })
+        .then(({ agents }) => {
+          for (const a of agents || []) {
+            if (!podAgentNames.has(a.name)) {
+              fetch(`/api/agents/${encodeURIComponent(a.name)}`, {
+                method: 'DELETE',
+                headers: _getIdentityHeaders(),
+              }).catch(() => {});
+            }
+          }
+        }).catch(() => {});
       _updateSetupBar();
     }
   }
