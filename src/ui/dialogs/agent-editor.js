@@ -380,6 +380,8 @@ export function handleAgentSave() {
         channels: agent.channels,
         mcp_tools: agent.mcpTools,
         max_tokens: agent.maxTokens,
+        max_turns: agent.maxTurns || undefined,
+        max_context_tokens: agent.maxContextTokens || undefined,
         reasoning: agent.reasoning,
       }),
     }).catch(() => {});

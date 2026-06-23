@@ -20,6 +20,8 @@ function convertSavedAgent(raw) {
     tools: raw.tools || [],
     channels: raw.channels || raw.subscribe || ROLE_CHANNEL_DEFAULTS[raw.role] || [],
     maxTokens: raw.max_tokens || raw.maxTokens || 8192,
+    maxTurns: raw.max_turns || raw.maxTurns || undefined,
+    maxContextTokens: raw.max_context_tokens || raw.maxContextTokens || undefined,
     reasoning: raw.reasoning || false,
     mcpTools: raw.mcp_tools || raw.mcpTools || [],
   };

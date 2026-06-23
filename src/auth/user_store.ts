@@ -26,6 +26,8 @@ export interface SavedAgent {
   channels: string[];
   mcp_tools: string[];
   max_tokens: number;
+  max_turns?: number;
+  max_context_tokens?: number;
   reasoning: boolean;
   _context?: string;
   visibility?: "private" | "shared" | "linked";
