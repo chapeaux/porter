@@ -329,12 +329,14 @@ export async function listContainer(authFetch, url) {
     const resp = await authFetch(url, { headers: { 'Accept': 'text/turtle' } });
     if (!resp.ok) return [];
     const text = await resp.text();
-    // Extract ldp:contains references — simple regex for resource URIs
-    const matches = [...text.matchAll(/ldp:contains\s+<([^>]+)>/g)];
-    return matches.map(m => {
-      const fullUrl = m[1];
-      return fullUrl.split('/').pop(); // filename
-    }).filter(Boolean);
+    // Extract all URIs from ldp:contains — handles both single and comma-separated lists
+    // Match: ldp:contains <url1>, <url2>, <url3> .
+    const containsMatch = text.match(/ldp:contains\s+([^.]+)\./s);
+    if (!containsMatch) return [];
+    const uriMatches = [...containsMatch[1].matchAll(/<([^>]+)>/g)];
+    const files = uriMatches.map(m => decodeURIComponent(m[1].split('/').pop())).filter(Boolean);
+    console.log(`[porter-pod] listContainer ${url}: found ${files.length} files`);
+    return files;
   } catch {
     return [];
   }
