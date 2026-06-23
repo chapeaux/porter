@@ -323,13 +323,28 @@ export function openAgentEditor(agent, editIdx = null, saveToLibrary = false) {
       dlg.dataset.saveToLibrary = String(saveToLibrary);
       renderAgentForm(agent);
       // Wire save/cancel buttons
-      dlg.footerEl.querySelector('#agent-save')?.addEventListener('click', handleAgentSave);
-      dlg.footerEl.querySelector('#agent-cancel')?.addEventListener('click', () => dlg.close());
+      const saveBtn = dlg.footerEl.querySelector('#agent-save');
+      const cancelBtn = dlg.footerEl.querySelector('#agent-cancel');
+      cancelBtn?.addEventListener('click', () => dlg.close());
+
+      if (editIdx !== null && !saveToLibrary) {
+        // Editing within a team — show dual save options
+        saveBtn.textContent = 'Save for Team';
+        saveBtn.title = 'Save changes for this team only';
+        saveBtn.addEventListener('click', () => handleAgentSave(false));
+
+        const saveLibBtn = h('button', { class: 'team-btn primary', style: 'margin-left:0.3rem' }, 'Save & Update Library');
+        saveLibBtn.title = 'Save changes and update the agent in your library';
+        saveLibBtn.addEventListener('click', () => handleAgentSave(true));
+        saveBtn.after(saveLibBtn);
+      } else {
+        saveBtn.addEventListener('click', () => handleAgentSave(saveToLibrary || editIdx === null));
+      }
     },
   });
 }
 
-export function handleAgentSave() {
+export function handleAgentSave(updateLibrary = false) {
   const dlg = getOverlayDlg();
   const body = dlg.bodyEl.querySelector('#agent-dialog-body');
   const configStore = document.getElementById('config');
@@ -364,9 +379,8 @@ export function handleAgentSave() {
     configStore.addAgent(agent);
   }
 
-  // Save to agent library
-  const saveLib = dlg.dataset.saveToLibrary === 'true';
-  if (saveLib || editIdx === '') {
+  // Save to agent library if requested or creating a new agent
+  if (updateLibrary || editIdx === '') {
     fetch('/api/agents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -388,10 +402,8 @@ export function handleAgentSave() {
   }
 
   dlg.close();
-  if (!saveLib) {
-    const teamBody = getDlg().bodyEl?.querySelector('#team-dialog-body');
-    if (teamBody) renderTeamStep();
-  }
+  const teamBody = getDlg().bodyEl?.querySelector('#team-dialog-body');
+  if (teamBody) renderTeamStep();
   // Sync full agent library to Pod (not just team builder state)
   fetch('/api/agents')
     .then(r => r.ok ? r.json() : { agents: [] })

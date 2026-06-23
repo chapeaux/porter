@@ -413,7 +413,7 @@ function showImportDialog(onSuccess) {
   });
 }
 
-export async function showSavedAgentPicker() {
+export async function showSavedAgentPicker(forRole) {
   let saved = [];
   try {
     const resp = await fetch('/api/agents');
@@ -471,6 +471,7 @@ export async function showSavedAgentPicker() {
         const configStore = document.getElementById('config');
         for (const i of selected) {
           const agentForTeam = convertSavedAgent(saved[i]);
+          if (forRole) agentForTeam.role = forRole;
           agentForTeam._isRef = true;
           agentForTeam._fromLibrary = true;
           agentForTeam.ref = saved[i].name;

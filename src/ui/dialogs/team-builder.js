@@ -756,12 +756,17 @@ async function renderPatternLayout(body, bodyChildren, s, patternId) {
       reqText = `${role.min}-${role.max} required`;
     }
 
-    const addBtn = h('button', { class: 'add-agent-btn', style: 'margin-top:0.5rem' }, `+ Add ${role.name}`);
+    const addBtn = h('button', { class: 'add-agent-btn', style: 'margin-top:0.5rem' }, `+ New ${role.name}`);
     addBtn.addEventListener('click', () => {
       openAgentEditor(configStore.createDefaultAgent(false, role.id));
     });
 
-    // Show add button only if we haven't hit max
+    const fromSavedBtn = h('button', { class: 'add-agent-btn add-agent-from', style: 'margin-top:0.5rem' }, 'From Saved...');
+    fromSavedBtn.addEventListener('click', () => {
+      showSavedAgentPicker(role.id);
+    });
+
+    // Show add buttons only if we haven't hit max
     const canAdd = roleAgents.length < role.max;
 
     const section = h('div', { class: 'pattern-role-section', 'data-role-id': role.id },
@@ -771,7 +776,7 @@ async function renderPatternLayout(body, bodyChildren, s, patternId) {
       ),
       h('div', { style: 'font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem' }, role.description),
       ...agentCards,
-      canAdd ? addBtn : null,
+      canAdd ? h('div', { class: 'add-agent-actions' }, addBtn, fromSavedBtn) : null,
     );
 
     roleSections.push(section);
