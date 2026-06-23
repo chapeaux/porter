@@ -178,24 +178,27 @@ export function showAgentLibrary() {
               btn.textContent = 'Sharing...';
               await setResourcePublic(authFetch, podUri);
               await navigator.clipboard.writeText(podUri);
-              btn.textContent = 'Shared';
+              btn.textContent = 'Shared ✓';
+              btn.title = podUri;
+              btn.disabled = true;
             } catch (e) {
               console.error('[porter] Share failed:', e);
-              // Fall back to server URI
               const serverUri = `${location.origin}/api/agents/${encodeURIComponent(name)}`;
               try { await navigator.clipboard.writeText(serverUri); } catch { /* ignore */ }
               btn.textContent = 'Copied (server)';
+              setTimeout(() => { btn.textContent = 'Share'; }, 2000);
             }
           } else {
             const agentUri = `${location.origin}/api/agents/${encodeURIComponent(name)}`;
             try {
               await navigator.clipboard.writeText(agentUri);
-              btn.textContent = 'Copied';
+              btn.textContent = 'Copied ✓';
+              btn.title = agentUri;
             } catch {
               btn.textContent = 'URI copied';
             }
+            setTimeout(() => { btn.textContent = 'Share'; }, 3000);
           }
-          setTimeout(() => { btn.textContent = 'Share'; }, 2000);
         });
       });
 
