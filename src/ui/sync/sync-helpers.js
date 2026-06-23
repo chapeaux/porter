@@ -333,12 +333,16 @@ export async function listContainer(authFetch, url) {
     // Extract all URIs from ldp:contains — handles both single and comma-separated lists
     const containsMatch = text.match(/ldp:contains\s+([^.]+)\./s);
     if (!containsMatch) {
-      console.warn(`[porter-pod] listContainer: no ldp:contains found in response (${text.length} bytes)`);
+      console.warn(`[porter-pod] listContainer: no ldp:contains found in response (${text.length} bytes):`);
+      console.warn(text.substring(0, 500));
       return [];
     }
     const uriMatches = [...containsMatch[1].matchAll(/<([^>]+)>/g)];
     const files = uriMatches.map(m => decodeURIComponent(m[1].split('/').pop())).filter(Boolean);
     console.log(`[porter-pod] listContainer ${url}: found ${files.length} files: ${files.join(', ')}`);
+    if (files.length === 0) {
+      console.warn(`[porter-pod] listContainer: containsMatch but 0 URIs. Match: ${containsMatch[1].substring(0, 200)}`);
+    }
     return files;
   } catch (err) {
     console.error(`[porter-pod] listContainer error:`, err);
