@@ -327,17 +327,21 @@ export async function ensureContainer(authFetch, url) {
 export async function listContainer(authFetch, url) {
   try {
     const resp = await authFetch(url, { headers: { 'Accept': 'text/turtle' } });
+    console.log(`[porter-pod] listContainer ${url}: HTTP ${resp.status}`);
     if (!resp.ok) return [];
     const text = await resp.text();
     // Extract all URIs from ldp:contains — handles both single and comma-separated lists
-    // Match: ldp:contains <url1>, <url2>, <url3> .
     const containsMatch = text.match(/ldp:contains\s+([^.]+)\./s);
-    if (!containsMatch) return [];
+    if (!containsMatch) {
+      console.warn(`[porter-pod] listContainer: no ldp:contains found in response (${text.length} bytes)`);
+      return [];
+    }
     const uriMatches = [...containsMatch[1].matchAll(/<([^>]+)>/g)];
     const files = uriMatches.map(m => decodeURIComponent(m[1].split('/').pop())).filter(Boolean);
-    console.log(`[porter-pod] listContainer ${url}: found ${files.length} files`);
+    console.log(`[porter-pod] listContainer ${url}: found ${files.length} files: ${files.join(', ')}`);
     return files;
-  } catch {
+  } catch (err) {
+    console.error(`[porter-pod] listContainer error:`, err);
     return [];
   }
 }
