@@ -392,7 +392,11 @@ export function handleAgentSave() {
     const teamBody = getDlg().bodyEl?.querySelector('#team-dialog-body');
     if (teamBody) renderTeamStep();
   }
-  syncAgentsToPod(configStore.state.agents);
+  // Sync full agent library to Pod (not just team builder state)
+  fetch('/api/agents')
+    .then(r => r.ok ? r.json() : { agents: [] })
+    .then(data => syncAgentsToPod(data.agents || []))
+    .catch(() => {});
   updateSetupBar();
   if (document.querySelector('.empty-state-prompt')) renderEmptyState();
 }
