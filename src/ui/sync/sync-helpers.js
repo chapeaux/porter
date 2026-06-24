@@ -355,7 +355,6 @@ export function agentToTurtle(agent, uri) {
   const role = agent.role || 'worker';
   const visibility = agent.visibility || 'private';
   const channels = agent.channels || agent.subscribe || [];
-  const promptSections = agent.promptSections || agent.prompt_sections || [];
 
   const lines = [
     '@prefix porter: <https://porter.chapeaux.io/vocab#> .',
@@ -384,11 +383,6 @@ export function agentToTurtle(agent, uri) {
   if (maxTokens) lines.push(`  porter:maxTokens "${maxTokens}"^^xsd:integer ;`);
   if (reasoning) lines.push(`  porter:reasoning "true"^^xsd:boolean ;`);
   if (visibility !== 'private') lines.push(`  porter:visibility "${escapeTtl(visibility)}" ;`);
-
-  if (promptSections.length > 0) {
-    const sectionsJson = JSON.stringify(promptSections);
-    lines.push(`  porter:promptSections """${escapeTtl(sectionsJson)}""" ;`);
-  }
 
   // Replace last ; with .
   const lastLine = lines[lines.length - 1];
@@ -487,11 +481,6 @@ export function parseTurtleAgent(turtle) {
     reasoning: extractLiteral('porter:reasoning') === 'true',
     visibility: extractLiteral('porter:visibility') || 'private',
   };
-
-  const promptSectionsJson = extractLiteral('porter:promptSections');
-  if (promptSectionsJson) {
-    try { agent.promptSections = JSON.parse(promptSectionsJson); } catch { /* ignore */ }
-  }
 
   return agent;
 }
