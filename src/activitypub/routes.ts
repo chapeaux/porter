@@ -205,6 +205,7 @@ export async function handleActivityPubRoutes(
           }
         },
         async onDirectMessage(slug, note, fromActorId) {
+          console.error(`[inbox] onDirectMessage: team=${slug} from=${fromActorId} content=${((note.content ?? '') as string).substring(0, 80)}`);
           const bridgeCtx: BridgeContext = {
             teamSlug: slug,
             config,
@@ -213,6 +214,7 @@ export async function handleActivityPubRoutes(
             team,
           };
           const result = await handleDirectMessage(note, fromActorId, bridgeCtx);
+          console.error(`[inbox] bridge result: replyText=${result.replyText?.substring(0, 80) ?? 'null'} handled=${result.handled}`);
           if (result.replyText) {
             const { createDirectReply, appendToOutbox } = await import("./outbox.ts");
             const replyActivity = createDirectReply(slug, config, {
