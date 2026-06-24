@@ -708,7 +708,20 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
             if (pathname.endsWith("/publish")) {
               const session = await readSession(req);
               const ownerId = session?.sub ?? "unknown";
-              await publishTeam(slug, ownerId);
+              // Discover Pod URL for Solid users
+              let podUrl: string | undefined;
+              if (ownerId.startsWith("http")) {
+                try {
+                  const profileUrl = ownerId.replace(/#.*$/, "");
+                  const resp = await fetch(profileUrl, { headers: { Accept: "text/turtle" } });
+                  if (resp.ok) {
+                    const turtle = await resp.text();
+                    const match = turtle.match(/(?:pim:storage|space:storage|<http:\/\/www\.w3\.org\/ns\/pim\/space#storage>)\s+<([^>]+)>/);
+                    if (match) podUrl = match[1];
+                  }
+                } catch { /* Pod URL discovery failed */ }
+              }
+              await publishTeam(slug, ownerId, podUrl);
               // Cache the team config on the router so AP bridge can find it
               // without depending on the user pod having it
               try {

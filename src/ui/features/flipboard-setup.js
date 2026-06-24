@@ -54,6 +54,12 @@ export function setupFlipboard() {
 
   // Metrics detail button
   document.getElementById('m-detail-btn')?.addEventListener('click', showMetricsDetail);
+
+  // Export config button
+  document.getElementById('fb-export')?.addEventListener('click', async () => {
+    const { downloadConfig } = await import('./empty-state.js');
+    downloadConfig();
+  });
 }
 
 export function updateSetupBar() {

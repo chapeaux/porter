@@ -329,13 +329,29 @@ async function _syncAllToPod() {
     // Sync MCP servers to individual Turtle files
     await syncMcpToPod();
 
-    // Sync federation config
+    // Sync federation config and grant Porter container access
     try {
       const fedResp = await fetch('/api/activitypub/config');
       if (fedResp.ok) {
         const fedConfig = await fedResp.json();
         if (fedConfig.enabled) {
           await syncFederationToPod(fedConfig);
+
+          // Grant Porter's server identity read access to the porter/ container
+          // so the AP bridge can fetch teams directly from the user's Pod.
+          if (window._podSync) {
+            const podRoot = window._podSync._podRoot;
+            const ownerWebId = localStorage.getItem('porter-last-webid') || '';
+            const porterDomain = fedConfig.domain || window.location.host;
+            const porterWebId = `https://${porterDomain}/ap/porter#id`;
+            const porterContainerUrl = `${podRoot}porter/`;
+            await grantPorterContainerAccess(
+              window._podSync._fetch,
+              porterContainerUrl,
+              porterWebId,
+              ownerWebId,
+            );
+          }
         }
       }
     } catch { /* federation sync is best-effort */ }
@@ -780,6 +796,52 @@ export function parseTurtleFederation(turtle) {
     public_summaries: extractLiteral('porter:publicSummaries') === 'true',
     allowlist: extractAll('porter:allowlistEntry'),
   };
+}
+
+// --- ACL helpers for Porter container access ---
+
+/**
+ * Grant Porter's server-side identity read access to the user's
+ * {podRoot}/porter/ container so the AP bridge can fetch teams
+ * directly from the Pod without routing through the orchestrator pod.
+ *
+ * Sets a container-level ACL with:
+ *   - Porter WebID: Read (+ default for child resources)
+ *   - Owner WebID: Read, Write, Control
+ *
+ * @param {Function} authFetch  Authenticated fetch for the user's Pod.
+ * @param {string} porterContainerUrl  The container URL, e.g. "https://pod.example/porter/".
+ * @param {string} porterWebId  Porter's WebID (server identity).
+ * @param {string} ownerWebId  The Pod owner's WebID.
+ */
+export async function grantPorterContainerAccess(authFetch, porterContainerUrl, porterWebId, ownerWebId) {
+  const aclUrl = porterContainerUrl + '.acl';
+  const acl = `@prefix acl: <http://www.w3.org/ns/auth/acl#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+<#porter-read>
+  a acl:Authorization ;
+  acl:agent <${porterWebId}> ;
+  acl:default <./> ;
+  acl:accessTo <./> ;
+  acl:mode acl:Read .
+
+<#owner>
+  a acl:Authorization ;
+  acl:agent <${ownerWebId}> ;
+  acl:default <./> ;
+  acl:accessTo <./> ;
+  acl:mode acl:Read, acl:Write, acl:Control .
+`;
+  try {
+    await authFetch(aclUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: acl,
+    });
+  } catch (err) {
+    console.error('[porter-pod] grantPorterContainerAccess error:', err);
+  }
 }
 
 // --- ACL helpers for sharing individual resources ---

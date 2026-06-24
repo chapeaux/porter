@@ -24,6 +24,7 @@ import { ConnectionStore, AgentStore, MessageStore } from './stores/runtime-stor
 import { setPodSyncCallbacks } from './sync/pod-sync.js';
 import {
   showReloginPrompt, initPodSync, initSsoPodSync, setSyncHelpersCallbacks,
+  syncAgentsToPod,
 } from './sync/sync-helpers.js';
 
 // ── Connection ──────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ import { populateTargetDropdown, setupCompose } from './render/compose.js';
 
 // ── Dialogs ─────────────────────────────────────────────────────────────
 import { getDlg, setupDialog, showDialog } from './dialogs/dialog-helpers.js';
+import { renderModelSetup } from './dialogs/model-setup.js';
 import { setupTeamBuilder, setTeamBuilderCallbacks } from './dialogs/team-builder.js';
 import { switchToSession, setSessionLauncherCallbacks } from './dialogs/session-launcher.js';
 
@@ -258,6 +260,52 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   checkAuthState();
+
+  // --- Check for ?config= querystring auto-import ---
+  {
+    const configUrl = new URLSearchParams(window.location.search).get('config');
+    if (configUrl) {
+      sessionStorage.setItem('porter-config-import', configUrl);
+      history.replaceState(null, '', window.location.pathname);
+    }
+    const pendingConfig = sessionStorage.getItem('porter-config-import');
+    if (pendingConfig) {
+      sessionStorage.removeItem('porter-config-import');
+      try {
+        const resp = await fetch(pendingConfig);
+        if (resp.ok) {
+          const text = await resp.text();
+          const ct = resp.headers.get('content-type') || '';
+          const importResp = await fetch('/api/config/import', {
+            method: 'POST',
+            headers: { 'Content-Type': ct.includes('turtle') ? 'text/turtle' : 'application/ld+json' },
+            body: text,
+          });
+          if (importResp.ok) {
+            const result = await importResp.json();
+            console.log('[porter] Config auto-import:', result.imported);
+            // Refresh models store
+            await document.getElementById('models')?.refresh();
+            updateSetupBar();
+            // Sync imported agents to Pod
+            try {
+              const agentsResp = await fetch('/api/agents');
+              if (agentsResp.ok) {
+                const data = await agentsResp.json();
+                if (data.agents?.length) syncAgentsToPod(data.agents);
+              }
+            } catch { /* best effort */ }
+            // If models need keys, open model setup
+            if (result.models_needing_keys?.length > 0) {
+              renderModelSetup();
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[porter] Config import from URL failed:', e);
+      }
+    }
+  }
 
   window.addEventListener('porter-auth-expired', () => {
     if (window._podSync) { window._podSync.disconnect(); window._podSync = null; }

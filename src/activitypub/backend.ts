@@ -235,9 +235,43 @@ export class RouterBackend implements ActivityPubBackend {
   }
 
   async getTeam(ownerId: string, teamSlug: string): Promise<SavedTeam | null> {
+    // 1. Try local cache
     const local = await this.userStore.getTeam(ownerId, teamSlug);
     if (local) return local;
 
+    // 2. Try fetching directly from the user's Solid Pod
+    const federated = await listFederated();
+    const entry = federated.find((e) => e.teamSlug === teamSlug);
+    if (entry?.podUrl) {
+      const domain = Deno.env.get("PORTER_AP_DOMAIN") || "";
+      try {
+        const { getPorterAccessToken } = await import("../auth/solid_tokens.ts");
+        const token = await getPorterAccessToken(entry.podUrl, domain);
+
+        // Fetch team Turtle from the user's Pod
+        const { turtleToTeam } = await import("../rdf/turtle.ts");
+        const teamUrl = `${entry.podUrl.replace(/\/+$/, "")}/porter/teams/${encodeURIComponent(teamSlug)}.ttl`;
+        const resp = await fetch(teamUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "text/turtle",
+          },
+        });
+        if (resp.ok) {
+          const turtle = await resp.text();
+          return turtleToTeam(turtle);
+        }
+      } catch {
+        // Pod access failed -- fall through to pod proxy
+      }
+    }
+
+    // 3. Fall back to pod proxy
+    return this.getTeamFromPod(ownerId, teamSlug);
+  }
+
+  /** Fetch team config via the orchestrator pod HTTP proxy (legacy path). */
+  private async getTeamFromPod(ownerId: string, teamSlug: string): Promise<SavedTeam | null> {
     try {
       const pod = await this.ensurePod(ownerId);
       const url = `${pod.podUrl}/api/teams/${encodeURIComponent(teamSlug)}`;

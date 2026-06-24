@@ -2558,6 +2558,94 @@ export async function startUiServer(
       }
     }
 
+    // --- Consolidated config export/import ---
+
+    if (pathname === "/api/config/export" && req.method === "GET") {
+      const userId = await resolveUserId(req);
+      const agents = await userStore.listAgents(userId);
+      const teams = await userStore.listTeams(userId);
+      const { ModelStore: MS } = await import("../auth/model_store.ts");
+      const modelStore = new MS();
+      const models = await modelStore.list(userId);
+
+      const configStoreEl = undefined; // server-side — no DOM
+      // MCP servers are client-side only (localStorage); export as empty
+      const { exportAllAsJsonLd } = await import("../rdf/turtle.ts");
+
+      const resources = {
+        agents,
+        teams,
+        models: models.map(m => ({
+          id: m.id,
+          display_name: m.display_name,
+          provider_type: m.provider_type,
+          base_url: m.base_url,
+          auth: m.auth,
+          context_window: m.context_window,
+          max_tokens: m.max_tokens,
+          capabilities: m.capabilities,
+        })),
+        mcp: [] as import("../rdf/turtle.ts").McpConfig[],
+      };
+
+      const jsonld = exportAllAsJsonLd(resources);
+      return new Response(JSON.stringify(jsonld, null, 2), {
+        headers: {
+          "Content-Type": "application/ld+json",
+          "Content-Disposition": 'attachment; filename="porter-config.jsonld"',
+        },
+      });
+    }
+
+    if (pathname === "/api/config/import" && req.method === "POST") {
+      const userId = await resolveUserId(req);
+      const contentType = req.headers.get("content-type") || "";
+      const text = await req.text();
+
+      const { importConsolidatedJsonLd, importConsolidatedTurtle } = await import("../rdf/turtle.ts");
+
+      let resources;
+      if (contentType.includes("turtle")) {
+        resources = importConsolidatedTurtle(text);
+      } else {
+        resources = importConsolidatedJsonLd(JSON.parse(text));
+      }
+
+      // Save agents
+      for (const agent of resources.agents) {
+        await userStore.saveAgent(userId, agent);
+      }
+      // Save teams
+      for (const team of resources.teams) {
+        await userStore.saveTeam(userId, team);
+      }
+      // Save models
+      if (resources.models.length > 0) {
+        const { ModelStore: MS } = await import("../auth/model_store.ts");
+        const ms = new MS();
+        const existing = await ms.list(userId);
+        const existingIds = new Set(existing.map(m => m.id));
+        for (const model of resources.models) {
+          if (!existingIds.has(model.id)) {
+            await ms.add(userId, model as import("../auth/model_store.ts").ModelConfig);
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({
+        ok: true,
+        imported: {
+          agents: resources.agents.length,
+          teams: resources.teams.length,
+          models: resources.models.length,
+          mcp: resources.mcp.length,
+        },
+        models_needing_keys: resources.models
+          .filter(m => m.auth === "bearer")
+          .map(m => ({ id: m.id, display_name: m.display_name, base_url: m.base_url })),
+      }), { headers: { "Content-Type": "application/json" } });
+    }
+
     // --- RDF parse endpoint (server-side N3.js parsing for browser clients) ---
     if (pathname === "/api/rdf/parse" && req.method === "POST") {
       const type = url.searchParams.get("type") || "agent";

@@ -90,8 +90,11 @@ export class SparqApStore implements FederationStore {
   // Registry
   // ---------------------------------------------------------------------------
 
-  async publishTeam(slug: string, ownerId: string): Promise<void> {
+  async publishTeam(slug: string, ownerId: string, podUrl?: string): Promise<void> {
     const uri = teamUri(slug);
+    const podTriple = podUrl
+      ? `<${uri}> <${P}podUrl> "${esc(podUrl)}" .`
+      : "";
     this.store.update(`
       DELETE { <${uri}> ?p ?o }
       WHERE  { <${uri}> ?p ?o };
@@ -100,6 +103,7 @@ export class SparqApStore implements FederationStore {
         <${uri}> <${P}ownerId> "${esc(ownerId)}" .
         <${uri}> <${P}enabled> "true"^^<${XSD}boolean> .
         <${uri}> <${P}publishedAt> "${new Date().toISOString()}" .
+        ${podTriple}
       }
     `);
     await this.flush();
@@ -140,19 +144,21 @@ export class SparqApStore implements FederationStore {
     return rows[0]?.get("owner")?.value ?? null;
   }
 
-  listFederated(): Array<{ teamSlug: string; ownerId: string; publishedAt: string }> {
+  listFederated(): Array<{ teamSlug: string; ownerId: string; publishedAt: string; podUrl?: string }> {
     const rows = this.store.queryBindings(`
-      SELECT ?team ?owner ?pub WHERE {
+      SELECT ?team ?owner ?pub ?pod WHERE {
         ?team a <${P}FederatedTeam> ;
               <${P}ownerId> ?owner ;
               <${P}enabled> "true"^^<${XSD}boolean> ;
               <${P}publishedAt> ?pub .
+        OPTIONAL { ?team <${P}podUrl> ?pod }
       }
     `);
     return rows.map((r) => ({
       teamSlug: decodeURIComponent(r.get("team")!.value.replace("urn:porter:ap:team/", "")),
       ownerId: r.get("owner")!.value,
       publishedAt: r.get("pub")!.value,
+      ...(r.get("pod")?.value ? { podUrl: r.get("pod")!.value } : {}),
     }));
   }
 

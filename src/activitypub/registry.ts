@@ -23,6 +23,7 @@ export interface FederationEntry {
   ownerId: string;
   publishedAt: string;
   enabled: boolean;
+  podUrl?: string;
 }
 
 export interface FederationRegistry {
@@ -53,13 +54,15 @@ async function saveRegistry(reg: FederationRegistry): Promise<void> {
 export async function publishTeam(
   teamSlug: string,
   ownerId: string,
+  podUrl?: string,
 ): Promise<void> {
-  if (_sparqStore) { await _sparqStore.publishTeam(teamSlug, ownerId); return; }
+  if (_sparqStore) { await _sparqStore.publishTeam(teamSlug, ownerId, podUrl); return; }
   const reg = await loadRegistry();
   reg.teams[teamSlug] = {
     ownerId,
     publishedAt: new Date().toISOString(),
     enabled: true,
+    ...(podUrl ? { podUrl } : {}),
   };
   await saveRegistry(reg);
 }
@@ -105,7 +108,7 @@ export async function resolveOwner(
 
 /** List all published and enabled teams. */
 export async function listFederated(): Promise<
-  Array<{ teamSlug: string; ownerId: string; publishedAt: string }>
+  Array<{ teamSlug: string; ownerId: string; publishedAt: string; podUrl?: string }>
 > {
   if (_sparqStore) return _sparqStore.listFederated();
   const reg = await loadRegistry();
@@ -115,6 +118,7 @@ export async function listFederated(): Promise<
       teamSlug: slug,
       ownerId: e.ownerId,
       publishedAt: e.publishedAt,
+      ...(e.podUrl ? { podUrl: e.podUrl } : {}),
     }));
 }
 

@@ -12,6 +12,7 @@ import { showSessionLauncher } from '../dialogs/session-launcher.js';
 import { showFederationDialog } from '../dialogs/federation-editor.js';
 import { showPatternsDialog } from '../dialogs/pattern-manager.js';
 import { checkAuthState, _authChecked, oidcAvailable } from './auth-state.js';
+import { updateSetupBar } from './flipboard-setup.js';
 
 // TODO: setupFilters, setupCompose, renderAgentDeck, renderTimeline are in
 // app.js — passed via setEmptyStateCallbacks to avoid circular dependency
@@ -90,6 +91,7 @@ let _stepRefs = null;
 
 const STEP_DEFS = [
   { id: 'login', optional: false },
+  { id: 'import-config', optional: true },
   { id: 'models', optional: false },
   { id: 'mcp', optional: true },
   { id: 'agents', optional: false },
@@ -143,6 +145,7 @@ function _handleStepAction(action) {
       }
       break;
     }
+    case 'import-config': showConfigImportDialog(); break;
     case 'models': renderModelSetup(); break;
     case 'mcp': {
       const cs = document.getElementById('config');
@@ -206,6 +209,7 @@ export async function renderEmptyState() {
 
   // Update synchronous steps immediately (no jumping)
   _updateStep('login', !!hasIdentity, hasIdentity ? 'Signed in' : 'Sign in', hasIdentity ? 'Sign Out' : 'Sign In');
+  _updateStep('import-config', false, 'Import configuration (optional)', 'Import');
   _updateStep('models', hasModels, hasModels ? `${modelCount} model${modelCount > 1 ? 's' : ''} configured` : 'Configure models', hasModels ? 'Manage' : 'Set Up');
   _updateStep('mcp', mcpCount > 0, mcpCount > 0 ? `${mcpCount} MCP server${mcpCount > 1 ? 's' : ''}` : 'MCP servers (optional)', mcpCount > 0 ? 'Manage' : 'Add');
 
@@ -333,4 +337,147 @@ export function _renderOnboardingContent(dlg, body) {
   emailInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') emailSaveBtn.click();
   });
+}
+
+// ---------------------------------------------------------------------------
+// Config import dialog
+// ---------------------------------------------------------------------------
+
+export function showConfigImportDialog() {
+  const dlg = getDlg();
+  dlg.openTemplate('tpl-detail', {
+    title: 'Import Configuration',
+    onOpen: () => {
+      const body = dlg.bodyEl.querySelector('#dialog-body');
+      _renderConfigImportContent(dlg, body);
+    },
+  });
+}
+
+function _renderConfigImportContent(dlg, body) {
+  let activeTab = 'url';
+
+  const tabUrl = h('button', { class: 'team-btn primary', 'data-tab': 'url' }, 'From URL');
+  const tabFile = h('button', { class: 'team-btn secondary', 'data-tab': 'file' }, 'From File');
+  const tabBar = h('div', { class: 'onboarding-options', style: 'display:flex;gap:0.5rem;margin-bottom:1rem' }, tabUrl, tabFile);
+
+  const urlInput = h('input', { type: 'url', class: 'auth-input', placeholder: 'https://example.com/porter-config.jsonld', style: 'width:100%' });
+  const urlPanel = h('div', { 'data-panel': 'url' }, urlInput);
+
+  const fileInput = h('input', { type: 'file', accept: '.jsonld,.ttl,.json' });
+  const filePanel = h('div', { 'data-panel': 'file', style: 'display:none' }, fileInput);
+
+  const importBtn = h('button', { class: 'team-btn primary', style: 'margin-top:1rem' }, 'Import');
+  const statusEl = h('div', { class: 'field-hint', style: 'margin-top:0.5rem' });
+
+  const content = h('div', null,
+    h('div', { class: 'team-explanation' },
+      h('p', null, 'Import a Porter configuration file (.jsonld or .ttl) containing agents, teams, and model definitions.')
+    ),
+    tabBar,
+    urlPanel,
+    filePanel,
+    importBtn,
+    statusEl
+  );
+
+  body.replaceChildren(content);
+
+  // Tab switching
+  const switchTab = (tab) => {
+    activeTab = tab;
+    tabUrl.className = `team-btn ${tab === 'url' ? 'primary' : 'secondary'}`;
+    tabFile.className = `team-btn ${tab === 'file' ? 'primary' : 'secondary'}`;
+    urlPanel.style.display = tab === 'url' ? '' : 'none';
+    filePanel.style.display = tab === 'file' ? '' : 'none';
+  };
+  tabUrl.addEventListener('click', () => switchTab('url'));
+  tabFile.addEventListener('click', () => switchTab('file'));
+
+  importBtn.addEventListener('click', async () => {
+    statusEl.textContent = 'Importing...';
+    importBtn.disabled = true;
+
+    try {
+      let configText = '';
+      let contentType = 'application/ld+json';
+
+      if (activeTab === 'url') {
+        const configUrl = urlInput.value.trim();
+        if (!configUrl) { statusEl.textContent = 'Please enter a URL.'; importBtn.disabled = false; return; }
+        const resp = await fetch(configUrl);
+        if (!resp.ok) { statusEl.textContent = `Fetch failed: ${resp.status}`; importBtn.disabled = false; return; }
+        configText = await resp.text();
+        const ct = resp.headers.get('content-type') || '';
+        if (ct.includes('turtle') || configUrl.endsWith('.ttl')) contentType = 'text/turtle';
+      } else {
+        const file = fileInput.files?.[0];
+        if (!file) { statusEl.textContent = 'Please select a file.'; importBtn.disabled = false; return; }
+        configText = await file.text();
+        if (file.name.endsWith('.ttl')) contentType = 'text/turtle';
+      }
+
+      const importResp = await fetch('/api/config/import', {
+        method: 'POST',
+        headers: { 'Content-Type': contentType },
+        body: configText,
+      });
+
+      if (!importResp.ok) {
+        const err = await importResp.json().catch(() => ({ error: 'Import failed' }));
+        statusEl.textContent = err.error || 'Import failed';
+        importBtn.disabled = false;
+        return;
+      }
+
+      const result = await importResp.json();
+      const parts = [];
+      if (result.imported.agents > 0) parts.push(`${result.imported.agents} agent${result.imported.agents > 1 ? 's' : ''}`);
+      if (result.imported.teams > 0) parts.push(`${result.imported.teams} team${result.imported.teams > 1 ? 's' : ''}`);
+      if (result.imported.models > 0) parts.push(`${result.imported.models} model${result.imported.models > 1 ? 's' : ''}`);
+      if (result.imported.mcp > 0) parts.push(`${result.imported.mcp} MCP server${result.imported.mcp > 1 ? 's' : ''}`);
+
+      let msg = parts.length > 0 ? `Imported: ${parts.join(', ')}.` : 'Nothing to import.';
+      if (result.models_needing_keys?.length > 0) {
+        msg += ` ${result.models_needing_keys.length} model${result.models_needing_keys.length > 1 ? 's' : ''} need API keys.`;
+      }
+      statusEl.textContent = msg;
+
+      // Refresh UI state
+      await document.getElementById('models')?.refresh();
+      updateSetupBar();
+      if (document.querySelector('.empty-state-prompt')) renderEmptyState();
+
+      // If models need keys, offer to open model setup
+      if (result.models_needing_keys?.length > 0) {
+        const setupBtn = h('button', { class: 'team-btn primary', style: 'margin-top:0.5rem' }, 'Set Up Credentials');
+        setupBtn.addEventListener('click', () => {
+          dlg.close();
+          renderModelSetup();
+        });
+        statusEl.appendChild(h('br'));
+        statusEl.appendChild(setupBtn);
+      } else {
+        setTimeout(() => dlg.close(), 1500);
+      }
+    } catch (e) {
+      statusEl.textContent = `Error: ${e.message}`;
+      importBtn.disabled = false;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Config export
+// ---------------------------------------------------------------------------
+
+export async function downloadConfig() {
+  const resp = await fetch('/api/config/export');
+  if (!resp.ok) return;
+  const blob = await resp.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'porter-config.jsonld';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
