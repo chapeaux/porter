@@ -1616,9 +1616,9 @@ export async function startUiServer(
           });
         }
 
-        // Fetch the agent definition
+        // Fetch the agent definition — accept both JSON-LD and Turtle
         const resp = await fetch(importUrl, {
-          headers: { "Accept": "application/ld+json, application/json" },
+          headers: { "Accept": "application/ld+json, application/json, text/turtle" },
         });
         if (!resp.ok) {
           return new Response(JSON.stringify({ error: `Failed to fetch: ${resp.status}` }), {
@@ -1627,16 +1627,24 @@ export async function startUiServer(
         }
 
         const text = await resp.text();
-        let json: Record<string, unknown>;
-        try {
-          json = JSON.parse(text);
-        } catch {
-          return new Response(JSON.stringify({ error: "Could not parse response as JSON" }), {
-            status: 400, headers: { "Content-Type": "application/json" },
-          });
+        const contentType = resp.headers.get("content-type") || "";
+        const isTurtle = contentType.includes("turtle") || importUrl.endsWith(".ttl");
+        let agent: import("../auth/user_store.ts").SavedAgent | null = null;
+
+        if (isTurtle) {
+          const { turtleToAgent } = await import("../rdf/turtle.ts");
+          agent = turtleToAgent(text);
+        } else {
+          try {
+            const json = JSON.parse(text);
+            agent = jsonLdToSavedAgent(json);
+          } catch {
+            // Maybe it's Turtle despite Content-Type
+            const { turtleToAgent } = await import("../rdf/turtle.ts");
+            agent = turtleToAgent(text);
+          }
         }
 
-        const agent = jsonLdToSavedAgent(json);
         if (!agent) {
           return new Response(JSON.stringify({ error: "Invalid agent format" }), {
             status: 400, headers: { "Content-Type": "application/json" },
