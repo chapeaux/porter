@@ -707,7 +707,22 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
             const { publishTeam, unpublishTeam, enableTeam, disableTeam } = await import("../activitypub/registry.ts");
             if (pathname.endsWith("/publish")) {
               const session = await readSession(req);
-              await publishTeam(slug, session?.sub ?? "unknown");
+              const ownerId = session?.sub ?? "unknown";
+              await publishTeam(slug, ownerId);
+              // Cache the team config on the router so AP bridge can find it
+              // without depending on the user pod having it
+              try {
+                const entry = podRegistry.get(ownerId);
+                if (entry?.ready) {
+                  const teamResp = await fetch(`${entry.podUrl}/api/teams/${encodeURIComponent(slug)}`);
+                  if (teamResp.ok) {
+                    const team = await teamResp.json();
+                    const { UserStore } = await import("../auth/user_store.ts");
+                    const apUserStore = new UserStore();
+                    await apUserStore.saveTeam(ownerId, team);
+                  }
+                }
+              } catch { /* best effort cache */ }
             } else if (pathname.endsWith("/unpublish")) {
               await unpublishTeam(slug);
             } else if (pathname.endsWith("/toggle")) {
