@@ -4,10 +4,12 @@ import { CPXStore } from '../cpx-store.js';
 // ConfigStore — team creation wizard state
 // =========================================================================
 
+// Domain tools shown in the agent editor. Coordination tools (send_message,
+// read_messages, memory_write, memory_query) and pattern tools are auto-injected
+// by the orchestrator at session start.
 export const ALL_TOOLS = [
   'read_file', 'write_file', 'edit_file', 'bash',
-  'glob', 'grep', 'list_dir', 'send_message', 'read_messages', 'git',
-  'memory_write', 'memory_query'
+  'glob', 'grep', 'list_dir', 'git',
 ];
 
 // Dynamic model list — fetched from /api/models/available (user-configured models)
@@ -36,10 +38,11 @@ export async function fetchAvailableModels() {
   } catch { /* start with empty list; ModelStore.refresh() will populate later */ }
 }
 
+// Positional defaults matching ALL_TOOLS: read_file, write_file, edit_file, bash, glob, grep, list_dir, git
 export const ROLE_TOOL_DEFAULTS = {
-  admin:    [1,0,0,0,1,1,1,1,1,0,1,1],
-  worker:   [1,1,1,1,1,1,1,1,1,1,1,1],
-  reviewer: [1,0,0,1,1,1,1,1,1,0,1,1],
+  admin:    [1,0,0,0,1,1,1,0],
+  worker:   [1,1,1,1,1,1,1,1],
+  reviewer: [1,0,0,1,1,1,1,0],
 };
 
 export const ROLE_CHANNEL_DEFAULTS = {
