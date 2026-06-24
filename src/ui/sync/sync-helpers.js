@@ -458,10 +458,19 @@ export function parseTurtleAgent(turtle) {
 
   const extractAll = (predicate) => {
     const results = [];
-    const re = new RegExp(`${predicate}\\s+"([^"]*?)"`, 'g');
-    let m;
-    while ((m = re.exec(norm)) !== null) {
-      results.push(m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
+    // Find all blocks starting with the predicate and ending with ; or .
+    // Handles both repeated predicates and comma-separated values:
+    //   porter:hasTool "a" ;        (separate lines)
+    //   porter:hasTool "a", "b" ;   (comma-separated)
+    const blockRe = new RegExp(`${predicate}\\s+([^;.]+)[;.]`, 'gs');
+    let blockMatch;
+    while ((blockMatch = blockRe.exec(norm)) !== null) {
+      const valRe = /"([^"]*?)"/g;
+      let m;
+      while ((m = valRe.exec(blockMatch[1])) !== null) {
+        const val = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        if (!results.includes(val)) results.push(val);
+      }
     }
     return results;
   };
