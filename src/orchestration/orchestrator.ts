@@ -272,6 +272,28 @@ export async function start(
     mcpClients = await connectMcpServers(config.mcp_servers);
   }
 
+  // Detect available runtimes/tools in the container environment
+  const envRuntimes: string[] = [];
+  const probes = [
+    { cmd: "deno", args: ["--version"], name: "Deno" },
+    { cmd: "node", args: ["--version"], name: "Node.js" },
+    { cmd: "python3", args: ["--version"], name: "Python 3" },
+    { cmd: "python", args: ["--version"], name: "Python" },
+    { cmd: "git", args: ["--version"], name: "Git" },
+    { cmd: "curl", args: ["--version"], name: "curl" },
+    { cmd: "jq", args: ["--version"], name: "jq" },
+  ];
+  for (const probe of probes) {
+    try {
+      const p = new Deno.Command(probe.cmd, { args: probe.args, stdout: "piped", stderr: "piped" });
+      const { success, stdout } = await p.output();
+      if (success) {
+        const ver = new TextDecoder().decode(stdout).trim().split("\n")[0];
+        envRuntimes.push(`${probe.name}: ${ver}`);
+      }
+    } catch { /* not installed */ }
+  }
+
   // Wire pattern-specific channel subscriptions before agent subscription
   const { wirePattern, getPatternTools, getPatternSystemPrompt } = await import("./patterns.ts");
   wirePattern(config, bus);
@@ -304,6 +326,11 @@ export async function start(
     );
     if (patternPromptSuffix) {
       agentConfig.system_prompt = `${agentConfig.system_prompt}\n\n${patternPromptSuffix}`;
+    }
+
+    // Inject environment context
+    if (envRuntimes.length > 0) {
+      agentConfig.system_prompt = `${agentConfig.system_prompt}\n\n## Environment\nThe following runtimes and tools are available in your environment via the bash tool:\n${envRuntimes.map(r => `- ${r}`).join("\n")}`;
     }
   }
 
