@@ -314,6 +314,13 @@ export class PodRegistry {
                 { name: "PORTER_SINGLE_USER", value: "true" },
                 { name: "HOME", value: "/app" },
                 ...(Deno.env.get("PORTER_LWS_BASE_URL") ? [{ name: "PORTER_LWS_BASE_URL", value: Deno.env.get("PORTER_LWS_BASE_URL") }] : []),
+                // Credential persistence: session key + S3/MinIO config
+                ...(Deno.env.get("PORTER_SESSION_KEY") ? [{ name: "PORTER_SESSION_KEY", value: Deno.env.get("PORTER_SESSION_KEY") }] : []),
+                ...(Deno.env.get("S3_ENDPOINT") ? [{ name: "S3_ENDPOINT", value: Deno.env.get("S3_ENDPOINT") }] : []),
+                ...(Deno.env.get("S3_BUCKET") ? [{ name: "S3_BUCKET", value: Deno.env.get("S3_BUCKET") }] : []),
+                ...(Deno.env.get("S3_ACCESS_KEY") ? [{ name: "S3_ACCESS_KEY", value: Deno.env.get("S3_ACCESS_KEY") }] : []),
+                ...(Deno.env.get("S3_SECRET_KEY") ? [{ name: "S3_SECRET_KEY", value: Deno.env.get("S3_SECRET_KEY") }] : []),
+                ...(Deno.env.get("S3_REGION") ? [{ name: "S3_REGION", value: Deno.env.get("S3_REGION") }] : []),
               ],
               volumeMounts: [
                 { name: "porter-home", mountPath: "/app/.porter" },

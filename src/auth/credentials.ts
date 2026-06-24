@@ -8,6 +8,7 @@
 
 import { dirname } from "@std/path";
 import { getRawSessionKey, base64UrlEncode, base64UrlDecode } from "./session.ts";
+import { loadS3Config, ApS3Client } from "../activitypub/s3.ts";
 
 const NONCE_LENGTH = 12;
 
@@ -105,6 +106,30 @@ function credentialsPath(userId: string): string {
 interface EncryptedStore {
   version: 1;
   data: string; // encrypted JSON array of StoredCredential
+}
+
+// ---------------------------------------------------------------------------
+// MinIO-backed persistent storage (optional — falls back to local-only)
+// ---------------------------------------------------------------------------
+
+let _credS3: ApS3Client | null = null;
+let _credS3Checked = false;
+
+function getCredS3(): ApS3Client | null {
+  if (_credS3Checked) return _credS3;
+  _credS3Checked = true;
+  try {
+    const config = loadS3Config();
+    if (config) {
+      _credS3 = new ApS3Client(config, "porter-creds/");
+    }
+  } catch { /* S3 not configured — local-only mode */ }
+  return _credS3;
+}
+
+function s3CredKey(userId: string): string {
+  const safe = userId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
+  return `${safe}.json`;
 }
 
 export class CredentialStore {
@@ -208,7 +233,60 @@ export class CredentialStore {
 
   // -- Internal --
 
+  /**
+   * Load all credentials, trying MinIO first for persistence across
+   * pod restarts, then falling back to local filesystem.
+   */
   private async loadAll(userId: string): Promise<StoredCredential[]> {
+    // Try MinIO first — survives pod restarts / redeployments
+    const s3 = getCredS3();
+    if (s3) {
+      try {
+        const text = await s3.getObject(s3CredKey(userId));
+        if (text) {
+          const store = JSON.parse(text) as EncryptedStore;
+          const key = await deriveUserKey(userId);
+          const json = await decrypt(key, store.data);
+          const creds = JSON.parse(json) as StoredCredential[];
+          // Cache locally so subsequent reads within this pod are fast
+          await this.writeLocal(userId, text).catch(() => {});
+          return creds;
+        }
+      } catch { /* MinIO unavailable — fall through to local */ }
+    }
+
+    // Fall back to local filesystem
+    return this.loadLocal(userId);
+  }
+
+  /**
+   * Save credentials to BOTH local filesystem and MinIO.
+   */
+  private async saveAll(
+    userId: string,
+    creds: StoredCredential[],
+  ): Promise<void> {
+    const key = await deriveUserKey(userId);
+    const data = await encrypt(key, JSON.stringify(creds));
+    const store: EncryptedStore = { version: 1, data };
+    const text = JSON.stringify(store);
+
+    // Write to local filesystem
+    await this.writeLocal(userId, text);
+
+    // Write to MinIO for persistence across pod restarts
+    const s3 = getCredS3();
+    if (s3) {
+      try {
+        await s3.putObject(s3CredKey(userId), text);
+      } catch (err) {
+        console.error(`[credentials] MinIO write failed (local copy saved): ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /** Load credentials from local filesystem only. */
+  private async loadLocal(userId: string): Promise<StoredCredential[]> {
     const path = credentialsPath(userId);
     try {
       const text = await Deno.readTextFile(path);
@@ -221,19 +299,12 @@ export class CredentialStore {
     }
   }
 
-  private async saveAll(
-    userId: string,
-    creds: StoredCredential[],
-  ): Promise<void> {
+  /** Write the raw encrypted JSON blob to the local filesystem. */
+  private async writeLocal(userId: string, text: string): Promise<void> {
     const path = credentialsPath(userId);
     const dir = dirname(path);
     await Deno.mkdir(dir, { recursive: true });
-
-    const key = await deriveUserKey(userId);
-    const data = await encrypt(key, JSON.stringify(creds));
-    const store: EncryptedStore = { version: 1, data };
-
-    await Deno.writeTextFile(path, JSON.stringify(store));
+    await Deno.writeTextFile(path, text);
   }
 
   private redact(cred: StoredCredential): RedactedCredential {
