@@ -119,7 +119,9 @@ export async function syncModelsToPod(models) {
   for (const model of (models || [])) {
     const id = model.id || model.model_id;
     if (!id) continue;
-    const url = `${containerUrl}${encodeURIComponent(id)}.ttl`;
+    // Replace / with -- for safe filenames (ibm-granite/granite-3b → ibm-granite--granite-3b)
+    const safeId = id.replace(/\//g, '--');
+    const url = `${containerUrl}${encodeURIComponent(safeId)}.ttl`;
     const turtle = modelToTurtle(model, url);
     try {
       const resp = await authFetch(url, {
