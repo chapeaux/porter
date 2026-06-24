@@ -283,12 +283,14 @@ export class RouterBackend implements ActivityPubBackend {
     const pod = await this.ensurePod(ownerId);
     // Use the team's session name (from config) — matches what the pod creates
     const sessionName = team.config.session || teamSlug;
+    // Ensure config has session field
+    const launchConfig = { ...team.config, session: sessionName };
 
     const resp = await fetch(`${pod.podUrl}/api/sessions/launch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        config: team.config,
+        config: launchConfig,
         sessionName,
       }),
     });
