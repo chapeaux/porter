@@ -2256,6 +2256,37 @@ export async function startUiServer(
       }
     }
 
+    // POST /api/sessions/:name/send — publish a message to the session's bus
+    const sendMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/send$/);
+    if (sendMatch && req.method === "POST") {
+      const sessionName = decodeURIComponent(sendMatch[1]);
+      if (options?.sessionManager) {
+        const session = options.sessionManager.getSession(sessionName);
+        if (!session) {
+          return new Response(JSON.stringify({ error: "Session not found" }), {
+            status: 404, headers: { "Content-Type": "application/json" },
+          });
+        }
+        try {
+          const body = await req.json();
+          const channel = body.channel || "task";
+          const content = body.content || "";
+          const from = body.from || "api";
+          await session.bus.publish(channel, content, from);
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ error: (err as Error).message }), {
+            status: 400, headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+      return new Response(JSON.stringify({ error: "No session manager" }), {
+        status: 503, headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // POST /api/sessions/:name/stop
     const stopMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/stop$/);
     if (stopMatch && req.method === "POST") {

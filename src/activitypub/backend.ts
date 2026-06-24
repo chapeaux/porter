@@ -281,7 +281,8 @@ export class RouterBackend implements ActivityPubBackend {
     if (!team) throw new Error(`Team '${teamSlug}' not found for user '${ownerId}'`);
 
     const pod = await this.ensurePod(ownerId);
-    const sessionName = `ap-${teamSlug}-${Date.now()}`;
+    // Use the team's session name (from config) — matches what the pod creates
+    const sessionName = team.config.session || teamSlug;
 
     const resp = await fetch(`${pod.podUrl}/api/sessions/launch`, {
       method: "POST",
