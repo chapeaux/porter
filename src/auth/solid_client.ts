@@ -139,7 +139,7 @@ export function buildClientIdDocument(domain: string): Record<string, unknown> {
     "redirect_uris": [`https://${domain}/auth/solid-callback`],
     "grant_types": ["authorization_code", "client_credentials", "refresh_token"],
     "scope": "openid webid offline_access",
-    "token_endpoint_auth_method": "private_key_jwt",
+    "token_endpoint_auth_method": "none",
     "client_uri": `https://${domain}`,
     "logo_uri": `https://${domain}/porter.svg`,
   };

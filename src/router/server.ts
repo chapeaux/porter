@@ -400,32 +400,11 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
           const t0 = Date.now();
           const solidDiscovery = await discoverOAuthAS(issuer);
           console.log(`[solid-login] Discovery: ${Date.now() - t0}ms`);
-          const regEndpoint = (solidDiscovery as unknown as Record<string, string>).registration_endpoint;
-          let clientId: string;
-          if (regEndpoint) {
-            const t1 = Date.now();
-            const regResp = await fetch(regEndpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                client_name: "Porter",
-                redirect_uris: [callbackUri],
-                grant_types: ["authorization_code", "refresh_token"],
-                response_types: ["code"],
-                token_endpoint_auth_method: "none",
-                application_type: "web",
-              }),
-            });
-            if (!regResp.ok) {
-              const text = await regResp.text().catch(() => "");
-              return new Response(`Solid client registration failed: ${regResp.status} ${text}`, { status: 502 });
-            }
-            const regData = await regResp.json();
-            console.log(`[solid-login] Registration: ${Date.now() - t1}ms`);
-            clientId = regData.client_id;
-          } else {
-            clientId = callbackUri;
-          }
+          // Use Porter's Client Identifier Document URL as client_id
+          // The Solid auth server fetches this document to get the app name and details
+          const { getClientIdUrl } = await import("../auth/solid_client.ts");
+          const porterDomain = Deno.env.get("PORTER_AP_DOMAIN") || fwdHost;
+          const clientId = getClientIdUrl(porterDomain);
           cached = {
             discovery: solidDiscovery,
             clientId,
