@@ -174,6 +174,23 @@ export const PORTER = {
   subscribeDynamic: `${NS}subscribeDynamic`,
   defaultTool: `${NS}defaultTool`,
 
+  // MCP server properties
+  McpServer: `${NS}McpServer`,
+  mcpUrl: `${NS}mcpUrl`,
+  mcpCommand: `${NS}mcpCommand`,
+  transport: `${NS}transport`,
+  authType: `${NS}authType`,
+  tokenEnv: `${NS}tokenEnv`,
+
+  // Federation config
+  FederationConfig: `${NS}FederationConfig`,
+  approvalMode: `${NS}approvalMode`,
+  allowlistEntry: `${NS}allowlistEntry`,
+  publicSummaries: `${NS}publicSummaries`,
+
+  // Display / UI properties
+  displayName: `${NS}displayName`,
+
   // Metrics
   inputTokens: `${NS}inputTokens`,
   outputTokens: `${NS}outputTokens`,

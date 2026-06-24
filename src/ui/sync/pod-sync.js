@@ -6,12 +6,14 @@
  *   - getIdentityHeaders() — used when posting models/teams/agents to server
  */
 
-import { classifyMcpContext, classifyModelContext } from '../constants.js';
 import { setMODELS } from '../stores/config-store.js';
 import {
   ensureContainer, listContainer,
   agentToTurtle, teamToTurtle,
+  modelToTurtle, mcpToTurtle,
   parseTurtleAgent, parseTurtleTeam,
+  parseTurtleModel, parseTurtleMcp,
+  parseTurtleFederation,
 } from './sync-helpers.js';
 
 /**
@@ -103,7 +105,7 @@ export class PorterPodSync {
       await this._migrateConfigToTurtle(this._lastKnownState);
     }
 
-    // Load agents and teams from individual Turtle files
+    // Load agents, teams, models, MCP, and federation from individual Turtle files
     try {
       const agents = await this._loadAgentsFromPod();
       if (agents.length > 0) {
@@ -117,6 +119,32 @@ export class PorterPodSync {
         this._applyRemoteTeams(teams);
       }
     } catch (e) { console.error('[porter-pod] Team Turtle load failed:', e); }
+
+    try {
+      const models = await this._loadModelsFromPod();
+      if (models.length > 0) {
+        this._applyRemoteModels(models);
+      }
+    } catch (e) { console.error('[porter-pod] Model Turtle load failed:', e); }
+
+    try {
+      const mcpServers = await this._loadMcpFromPod();
+      if (mcpServers.length > 0) {
+        this._applyRemoteMcp(mcpServers);
+      }
+    } catch (e) { console.error('[porter-pod] MCP Turtle load failed:', e); }
+
+    try {
+      const federation = await this._loadFederationFromPod();
+      if (federation) {
+        // Apply federation config to the server
+        fetch('/api/activitypub/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
+          body: JSON.stringify(federation),
+        }).catch(() => {});
+      }
+    } catch (e) { console.error('[porter-pod] Federation load failed:', e); }
 
     // Subscribe to notifications
     this._subscribeNotifications();
@@ -382,12 +410,18 @@ export class PorterPodSync {
       this._lastKnownState = data;
       this._applyRemoteState(data);
 
-      // Also reload agents and teams from individual Turtle files
+      // Also reload all resources from individual Turtle files
       this._loadAgentsFromPod().then(agents => {
         if (agents.length > 0) this._applyRemoteAgents(agents);
       }).catch(() => {});
       this._loadTeamsFromPod().then(teams => {
         if (teams.length > 0) this._applyRemoteTeams(teams);
+      }).catch(() => {});
+      this._loadModelsFromPod().then(models => {
+        if (models.length > 0) this._applyRemoteModels(models);
+      }).catch(() => {});
+      this._loadMcpFromPod().then(servers => {
+        if (servers.length > 0) this._applyRemoteMcp(servers);
       }).catch(() => {});
     } catch (e) { console.error('[porter-pod] Notification fetch failed:', e); }
   }
@@ -426,6 +460,54 @@ export class PorterPodSync {
       } catch { /* skip unreadable files */ }
     }
     return teams;
+  }
+
+  async _loadModelsFromPod() {
+    const modelsUrl = `${this._podRoot}porter/models/`;
+    const files = await listContainer(this._fetch, modelsUrl);
+    const models = [];
+    for (const file of files) {
+      if (!file.endsWith('.ttl')) continue;
+      try {
+        const resp = await this._fetch(`${modelsUrl}${file}`);
+        if (resp.ok) {
+          const turtle = await resp.text();
+          const model = await parseTurtleModel(turtle);
+          if (model) models.push(model);
+        }
+      } catch { /* skip unreadable files */ }
+    }
+    return models;
+  }
+
+  async _loadMcpFromPod() {
+    const mcpUrl = `${this._podRoot}porter/mcp/`;
+    const files = await listContainer(this._fetch, mcpUrl);
+    const servers = [];
+    for (const file of files) {
+      if (!file.endsWith('.ttl')) continue;
+      try {
+        const resp = await this._fetch(`${mcpUrl}${file}`);
+        if (resp.ok) {
+          const turtle = await resp.text();
+          const mcp = await parseTurtleMcp(turtle);
+          if (mcp) servers.push(mcp);
+        }
+      } catch { /* skip unreadable files */ }
+    }
+    return servers;
+  }
+
+  async _loadFederationFromPod() {
+    const fedUrl = `${this._podRoot}porter/federation.ttl`;
+    try {
+      const resp = await this._fetch(fedUrl);
+      if (resp.ok) {
+        const turtle = await resp.text();
+        return parseTurtleFederation(turtle);
+      }
+    } catch { /* federation config is optional */ }
+    return null;
   }
 
   async _migrateConfigToTurtle(data) {
@@ -476,6 +558,55 @@ export class PorterPodSync {
         console.error('[porter-pod] Team migration failed:', e);
       }
     }
+
+    // Migrate models from config.json to individual Turtle files
+    if (data.models && Array.isArray(data.models) && data.models.length > 0) {
+      try {
+        await ensureContainer(this._fetch, `${this._podRoot}porter/models/`);
+        for (const model of data.models) {
+          const id = model.id || model.model_id;
+          if (!id) continue;
+          const url = `${this._podRoot}porter/models/${encodeURIComponent(id)}.ttl`;
+          const turtle = modelToTurtle(model, url);
+          await this._fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'text/turtle' },
+            body: turtle,
+          });
+        }
+        // Remove models from config.json
+        delete data.models;
+        this._pendingWrites.delete('models');
+        this._lastKnownState = data;
+        this._scheduleFlush();
+      } catch (e) {
+        console.error('[porter-pod] Model migration failed:', e);
+      }
+    }
+
+    // Migrate MCP servers from config.json to individual Turtle files
+    if (data.mcp_servers && typeof data.mcp_servers === 'object' && Object.keys(data.mcp_servers).length > 0) {
+      try {
+        await ensureContainer(this._fetch, `${this._podRoot}porter/mcp/`);
+        for (const [name, cfg] of Object.entries(data.mcp_servers)) {
+          if (!name) continue;
+          const url = `${this._podRoot}porter/mcp/${encodeURIComponent(name)}.ttl`;
+          const turtle = mcpToTurtle({ name, ...cfg }, url);
+          await this._fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'text/turtle' },
+            body: turtle,
+          });
+        }
+        // Remove mcp_servers from config.json
+        delete data.mcp_servers;
+        this._pendingWrites.delete('mcp_servers');
+        this._lastKnownState = data;
+        this._scheduleFlush();
+      } catch (e) {
+        console.error('[porter-pod] MCP migration failed:', e);
+      }
+    }
   }
 
   _applyRemoteAgents(agents) {
@@ -524,55 +655,75 @@ export class PorterPodSync {
     _updateSetupBar();
   }
 
-  _applyRemoteState(data) {
-    // Apply models to ModelStore
-    if (data.models && Array.isArray(data.models)) {
-      const modelStore = document.getElementById('models');
-      if (modelStore) {
-        const normalized = data.models.map(m => ({
-          model_id: m.model_id || m.id,
-          base_url: m.base_url || '',
-          status: 'valid',
-          display_name: m.display_name || m.model_id || m.id,
-          capabilities: m.capabilities || {},
-          context_window: m.context_window || 0,
-          max_tokens: m.max_tokens || 0,
-          provider_type: m.provider_type || 'openai_compat',
-        }));
-        modelStore.setState({ configuredModels: normalized });
-        setMODELS(normalized.map(m => m.model_id));
-        _updateSetupBar();
+  _applyRemoteModels(models) {
+    if (!models || models.length === 0) return;
+    const modelStore = document.getElementById('models');
+    if (modelStore) {
+      const normalized = models.map(m => ({
+        model_id: m.id || m.model_id,
+        base_url: m.base_url || '',
+        status: 'valid',
+        display_name: m.display_name || m.id || m.model_id || '',
+        capabilities: m.capabilities || {},
+        context_window: m.context_window || 0,
+        max_tokens: m.max_tokens || 0,
+        provider_type: m.provider_type || 'openai_compat',
+      }));
+      modelStore.setState({ configuredModels: normalized });
+      setMODELS(normalized.map(m => m.model_id));
+      _updateSetupBar();
+    }
+    // Also save to server (in ModelConfig format)
+    fetch('/api/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
+      body: JSON.stringify({ models }),
+    }).catch(() => {});
+  }
+
+  _applyRemoteMcp(servers) {
+    if (!servers || servers.length === 0) return;
+    const configStore = document.getElementById('config');
+    if (configStore) {
+      const local = configStore.state.mcpServers || {};
+      const merged = {};
+      for (const srv of servers) {
+        const name = srv.name;
+        if (!name) continue;
+        merged[name] = {
+          ...srv,
+          env: local[name]?.env || {},
+          auth: srv.auth || local[name]?.auth,
+        };
       }
-      // Also save to server (in ModelConfig format)
-      fetch('/api/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
-        body: JSON.stringify({ models: data.models }),
+      configStore.setState({ mcpServers: merged });
+      _updateSetupBar();
+    }
+  }
+
+  _applyRemoteState(data) {
+    // Models are now loaded from individual Turtle files.
+    // Legacy config.json models trigger a load from Turtle instead.
+    if (data.models && Array.isArray(data.models) && data.models.length > 0) {
+      this._loadModelsFromPod().then(models => {
+        if (models.length > 0) this._applyRemoteModels(models);
       }).catch(() => {});
     }
 
     // Teams are now loaded from individual Turtle files.
     // Legacy config.json teams are migrated in _migrateConfigToTurtle().
-    // If config.json still has teams (pre-migration notification), load from Turtle instead.
     if (data.teams && Array.isArray(data.teams) && data.teams.length > 0) {
-      // Load from Turtle files on next tick (migration may not have completed yet)
       this._loadTeamsFromPod().then(teams => {
         if (teams.length > 0) this._applyRemoteTeams(teams);
       }).catch(() => {});
     }
 
-    // Apply MCP servers if present (merge: keep local env/secrets, update structure from Pod)
-    if (data.mcp_servers && typeof data.mcp_servers === 'object') {
-      const configStore = document.getElementById('config');
-      if (configStore) {
-        const local = configStore.state.mcpServers || {};
-        const merged = {};
-        for (const [name, remote] of Object.entries(data.mcp_servers)) {
-          merged[name] = { ...remote, env: local[name]?.env || {}, auth: remote.auth || local[name]?.auth };
-        }
-        configStore.setState({ mcpServers: merged });
-        _updateSetupBar();
-      }
+    // MCP servers are now loaded from individual Turtle files.
+    // Legacy config.json mcp_servers trigger a load from Turtle instead.
+    if (data.mcp_servers && typeof data.mcp_servers === 'object' && Object.keys(data.mcp_servers).length > 0) {
+      this._loadMcpFromPod().then(servers => {
+        if (servers.length > 0) this._applyRemoteMcp(servers);
+      }).catch(() => {});
     }
 
     if (data.published_teams && Array.isArray(data.published_teams)) {

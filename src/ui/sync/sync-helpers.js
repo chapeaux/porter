@@ -8,7 +8,6 @@
  * Note: injectMcpTokens lives in ../stores/config-store.js (already extracted).
  */
 
-import { classifyMcpContext, classifyModelContext } from '../constants.js';
 import { h, replaceContent } from '../dom.js';
 import { PorterPodSync } from './pod-sync.js';
 
@@ -109,9 +108,33 @@ export async function syncTeamsToPod() {
   } catch { /* best-effort */ }
 }
 
-export function syncModelsToPod(models) {
-  const tagged = (models || []).map(m => ({ ...m, _context: classifyModelContext(m) }));
-  syncToPod('models', tagged);
+export async function syncModelsToPod(models) {
+  if (!window._podSync) return;
+  const podRoot = window._podSync._podRoot;
+  const authFetch = window._podSync._fetch;
+
+  const containerUrl = `${podRoot}porter/models/`;
+  await ensureContainer(authFetch, containerUrl);
+
+  for (const model of (models || [])) {
+    const id = model.id || model.model_id;
+    if (!id) continue;
+    const url = `${containerUrl}${encodeURIComponent(id)}.ttl`;
+    const turtle = modelToTurtle(model, url);
+    try {
+      const resp = await authFetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/turtle' },
+        body: turtle,
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => '');
+        console.error(`[porter-pod] PUT model failed: ${resp.status} ${body}`);
+      }
+    } catch (err) {
+      console.error(`[porter-pod] PUT model error:`, err);
+    }
+  }
 }
 
 export async function syncPublishedTeamsToPod() {
@@ -126,15 +149,58 @@ export async function syncPublishedTeamsToPod() {
   } catch { /* best-effort */ }
 }
 
-export function syncMcpToPod() {
+export async function syncMcpToPod() {
   if (!window._podSync) return;
+  const podRoot = window._podSync._podRoot;
+  const authFetch = window._podSync._fetch;
+
   const configStore = document.getElementById('config');
   const servers = configStore?.state?.mcpServers ?? {};
-  const safe = {};
+
+  const containerUrl = `${podRoot}porter/mcp/`;
+  await ensureContainer(authFetch, containerUrl);
+
   for (const [name, cfg] of Object.entries(servers)) {
-    safe[name] = { name: cfg.name, transport: cfg.transport, url: cfg.url, command: cfg.command, args: cfg.args, auth: cfg.auth, _context: classifyMcpContext(cfg) };
+    if (!name) continue;
+    const url = `${containerUrl}${encodeURIComponent(name)}.ttl`;
+    const turtle = mcpToTurtle({ name, ...cfg }, url);
+    try {
+      const resp = await authFetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/turtle' },
+        body: turtle,
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => '');
+        console.error(`[porter-pod] PUT mcp failed: ${resp.status} ${body}`);
+      }
+    } catch (err) {
+      console.error(`[porter-pod] PUT mcp error:`, err);
+    }
   }
-  syncToPod('mcp_servers', safe);
+}
+
+export async function syncFederationToPod(config) {
+  if (!window._podSync) return;
+  const podRoot = window._podSync._podRoot;
+  const authFetch = window._podSync._fetch;
+
+  if (!config) return;
+  const url = `${podRoot}porter/federation.ttl`;
+  const turtle = federationToTurtle(config, url);
+  try {
+    const resp = await authFetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: turtle,
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      console.error(`[porter-pod] PUT federation failed: ${resp.status} ${body}`);
+    }
+  } catch (err) {
+    console.error(`[porter-pod] PUT federation error:`, err);
+  }
 }
 
 export function showReloginPrompt() {
@@ -250,6 +316,29 @@ async function _syncAllToPod() {
       }
     }
     await syncTeamsToPod();
+
+    // Sync models to individual Turtle files
+    const modelsResp = await fetch('/api/models');
+    if (modelsResp.ok) {
+      const data = await modelsResp.json();
+      if (data.models?.length) {
+        await syncModelsToPod(data.models);
+      }
+    }
+
+    // Sync MCP servers to individual Turtle files
+    await syncMcpToPod();
+
+    // Sync federation config
+    try {
+      const fedResp = await fetch('/api/activitypub/config');
+      if (fedResp.ok) {
+        const fedConfig = await fedResp.json();
+        if (fedConfig.enabled) {
+          await syncFederationToPod(fedConfig);
+        }
+      }
+    } catch { /* federation sync is best-effort */ }
   } catch (e) {
     console.error('[porter-pod] Full sync on connect failed:', e);
   }
@@ -540,6 +629,156 @@ export function parseTurtleTeam(turtle) {
   return {
     name,
     config: { pattern, agents, mcp_servers: mcpServers },
+  };
+}
+
+// --- Model Turtle serializer (client-side, matching porter: vocabulary) ---
+
+export function modelToTurtle(model, uri) {
+  const id = model.id || model.model_id || '';
+  const displayName = model.display_name || id;
+  const providerType = model.provider_type || 'openai_compat';
+  const baseUrl = model.base_url || '';
+  const auth = model.auth || 'bearer';
+  const contextWindow = model.context_window || 0;
+  const maxTokens = model.max_tokens || 0;
+  const capabilities = model.capabilities || {};
+
+  const lines = [
+    '@prefix porter: <https://porter.chapeaux.io/vocab#> .',
+    '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .',
+    '',
+    `<${uri}> a porter:Model ;`,
+    `  porter:name "${escapeTtl(id)}" ;`,
+    `  porter:displayName "${escapeTtl(displayName)}" ;`,
+    `  porter:providerType "${escapeTtl(providerType)}" ;`,
+    `  porter:baseUrl "${escapeTtl(baseUrl)}" ;`,
+    `  porter:authMethod "${escapeTtl(auth)}" ;`,
+  ];
+
+  if (contextWindow) lines.push(`  porter:contextWindow "${contextWindow}"^^xsd:integer ;`);
+  if (maxTokens) lines.push(`  porter:maxTokens "${maxTokens}"^^xsd:integer ;`);
+  if (capabilities.tool_calling) lines.push(`  porter:toolCalling "true"^^xsd:boolean ;`);
+  if (capabilities.reasoning) lines.push(`  porter:reasoning "true"^^xsd:boolean ;`);
+  if (capabilities.vision) lines.push(`  porter:vision "true"^^xsd:boolean ;`);
+  if (capabilities.json_mode) lines.push(`  porter:jsonMode "true"^^xsd:boolean ;`);
+
+  // Replace last ; with .
+  const lastLine = lines[lines.length - 1];
+  lines[lines.length - 1] = lastLine.replace(/\s;$/, ' .');
+
+  return lines.join('\n') + '\n';
+}
+
+// --- MCP Turtle serializer (client-side) ---
+
+export function mcpToTurtle(mcp, uri) {
+  const name = mcp.name || '';
+  const transport = mcp.transport || 'stdio';
+
+  const lines = [
+    '@prefix porter: <https://porter.chapeaux.io/vocab#> .',
+    '',
+    `<${uri}> a porter:McpServer ;`,
+    `  porter:name "${escapeTtl(name)}" ;`,
+    `  porter:transport "${escapeTtl(transport)}" ;`,
+  ];
+
+  if (mcp.url) lines.push(`  porter:mcpUrl "${escapeTtl(mcp.url)}" ;`);
+  if (mcp.command) lines.push(`  porter:mcpCommand "${escapeTtl(mcp.command)}" ;`);
+  if (mcp.auth?.type) lines.push(`  porter:authType "${escapeTtl(mcp.auth.type)}" ;`);
+  if (mcp.auth?.token_env) lines.push(`  porter:tokenEnv "${escapeTtl(mcp.auth.token_env)}" ;`);
+
+  const lastLine = lines[lines.length - 1];
+  lines[lines.length - 1] = lastLine.replace(/\s;$/, ' .');
+
+  return lines.join('\n') + '\n';
+}
+
+// --- Federation Turtle serializer (client-side) ---
+
+export function federationToTurtle(config, uri) {
+  const lines = [
+    '@prefix porter: <https://porter.chapeaux.io/vocab#> .',
+    '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .',
+    '',
+    `<${uri}> a porter:FederationConfig ;`,
+  ];
+
+  if (config.domain) lines.push(`  porter:baseUrl "${escapeTtl(config.domain)}" ;`);
+  if (config.approval_mode) lines.push(`  porter:approvalMode "${escapeTtl(config.approval_mode)}" ;`);
+  if (config.public_summaries != null) {
+    lines.push(`  porter:publicSummaries "${!!config.public_summaries}"^^xsd:boolean ;`);
+  }
+  for (const entry of config.allowlist || []) {
+    lines.push(`  porter:allowlistEntry "${escapeTtl(entry)}" ;`);
+  }
+
+  const lastLine = lines[lines.length - 1];
+  lines[lines.length - 1] = lastLine.replace(/\s;$/, ' .');
+
+  return lines.join('\n') + '\n';
+}
+
+// --- Server-side RDF parsers (delegates to N3.js on the server) ---
+
+export async function parseTurtleModel(turtle) {
+  return _parseTurtleViaServer(turtle, 'model');
+}
+
+export async function parseTurtleMcp(turtle) {
+  return _parseTurtleViaServer(turtle, 'mcp');
+}
+
+async function _parseTurtleViaServer(turtle, type) {
+  if (!turtle) return null;
+  try {
+    const resp = await fetch(`/api/rdf/parse?type=${type}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: turtle,
+    });
+    if (resp.ok) return resp.json();
+  } catch (err) {
+    console.error(`[porter-pod] RDF parse (${type}) error:`, err);
+  }
+  return null;
+}
+
+export function parseTurtleFederation(turtle) {
+  if (!turtle) return null;
+  const NS = 'https://porter.chapeaux.io/vocab#';
+  const norm = turtle.replace(new RegExp(`<${NS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^>]+)>`, 'g'), 'porter:$1');
+  if (!norm.includes('porter:FederationConfig')) return null;
+
+  const extractLiteral = (predicate) => {
+    const longMatch = norm.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
+    if (longMatch) return longMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    const shortMatch = norm.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
+    if (shortMatch) return shortMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    return '';
+  };
+
+  const extractAll = (predicate) => {
+    const results = [];
+    const blockRe = new RegExp(`${predicate}\\s+([^;.]+)[;.]`, 'gs');
+    let blockMatch;
+    while ((blockMatch = blockRe.exec(norm)) !== null) {
+      const valRe = /"([^"]*?)"/g;
+      let m;
+      while ((m = valRe.exec(blockMatch[1])) !== null) {
+        const val = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        if (!results.includes(val)) results.push(val);
+      }
+    }
+    return results;
+  };
+
+  return {
+    domain: extractLiteral('porter:baseUrl'),
+    approval_mode: extractLiteral('porter:approvalMode') || 'allowlist',
+    public_summaries: extractLiteral('porter:publicSummaries') === 'true',
+    allowlist: extractAll('porter:allowlistEntry'),
   };
 }
 

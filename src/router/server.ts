@@ -747,6 +747,39 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
       }
     }
 
+    // --- Solid Client Identity (public, no auth) ---
+
+    // Solid Client Identifier Document
+    if (pathname === "/.well-known/solid/client-id" && req.method === "GET") {
+      const { buildClientIdDocument } = await import("../auth/solid_client.ts");
+      const domain = Deno.env.get("PORTER_AP_DOMAIN") || url.host;
+      return new Response(JSON.stringify(buildClientIdDocument(domain), null, 2), {
+        headers: { "Content-Type": "application/ld+json" },
+      });
+    }
+
+    // Porter's WebID profile
+    if ((pathname === "/ap/porter" || pathname === "/.well-known/solid/webid") && req.method === "GET") {
+      const { buildWebIdProfile } = await import("../auth/solid_client.ts");
+      const domain = Deno.env.get("PORTER_AP_DOMAIN") || url.host;
+      const accept = req.headers.get("accept") || "";
+      if (accept.includes("text/turtle") || accept.includes("application/n-triples")) {
+        return new Response(buildWebIdProfile(domain), {
+          headers: { "Content-Type": "text/turtle" },
+        });
+      }
+      // JSON-LD fallback
+      return new Response(JSON.stringify({
+        "@context": { foaf: "http://xmlns.com/foaf/0.1/", solid: "http://www.w3.org/ns/solid/terms#" },
+        "@id": `https://${domain}/ap/porter#id`,
+        "@type": "foaf:Agent",
+        "foaf:name": "Porter Agent Orchestrator",
+        "solid:oidcIssuer": `https://${domain}`,
+      }, null, 2), {
+        headers: { "Content-Type": "application/ld+json" },
+      });
+    }
+
     // --- Require authentication for everything below ---
 
     const user = await extractUser(req, oidcDiscovery?.jwks_uri, oidcDiscovery?.issuer);

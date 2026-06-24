@@ -2558,6 +2558,61 @@ export async function startUiServer(
       }
     }
 
+    // --- RDF parse endpoint (server-side N3.js parsing for browser clients) ---
+    if (pathname === "/api/rdf/parse" && req.method === "POST") {
+      const type = url.searchParams.get("type") || "agent";
+      const turtle = await req.text();
+      try {
+        const { turtleToAgent, turtleToTeam, turtleToModel, turtleToMcp } = await import("../rdf/turtle.ts");
+        let result: unknown = null;
+        switch (type) {
+          case "agent": result = turtleToAgent(turtle); break;
+          case "team": result = turtleToTeam(turtle); break;
+          case "model": result = turtleToModel(turtle); break;
+          case "mcp": result = turtleToMcp(turtle); break;
+          default:
+            return new Response(JSON.stringify({ error: `Unknown type: ${type}` }), {
+              status: 400, headers: { "Content-Type": "application/json" },
+            });
+        }
+        return new Response(JSON.stringify(result), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // --- RDF serialize endpoint (server-side N3.js serialization for browser clients) ---
+    if (pathname === "/api/rdf/serialize" && req.method === "POST") {
+      const type = url.searchParams.get("type") || "agent";
+      try {
+        const body = await req.json();
+        const { agentToTurtle: agentTtl, teamToTurtle: teamTtl, modelToTurtle, mcpToTurtle } = await import("../rdf/turtle.ts");
+        const uri = body._uri || "";
+        let turtle = "";
+        switch (type) {
+          case "agent": turtle = agentTtl(body, uri); break;
+          case "team": turtle = teamTtl(body, uri); break;
+          case "model": turtle = modelToTurtle(body, uri); break;
+          case "mcp": turtle = mcpToTurtle(body, uri); break;
+          default:
+            return new Response(JSON.stringify({ error: `Unknown type: ${type}` }), {
+              status: 400, headers: { "Content-Type": "application/json" },
+            });
+        }
+        return new Response(turtle, {
+          headers: { "Content-Type": "text/turtle" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // --- SPARQL query endpoint ---
     if (pathname === "/api/sparql" && req.method === "GET") {
       const query = url.searchParams.get("query");
