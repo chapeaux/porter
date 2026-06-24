@@ -28,6 +28,7 @@
     "@std/fs": "jsr:@std/fs@^1",
     "@std/testing": "jsr:@std/testing@^1",
     "@rdfjs/types": "npm:@rdfjs/types@^2",
+    "n3": "npm:n3@^1",
     "fzstd": "npm:fzstd@^0.1",
     "@bradenmacdonald/s3-lite-client": "jsr:@bradenmacdonald/s3-lite-client@^0.9"
   }
