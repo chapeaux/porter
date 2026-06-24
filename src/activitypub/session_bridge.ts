@@ -397,9 +397,9 @@ async function handleCommand(
       try {
         const handle = await ctx.backend.createSession(ownerId, ctx.teamSlug);
         sessionName = handle.sessionName;
-      } catch {
-        // Session already exists — use the team slug as session name
-        // (porter's launch API uses the config's session field as the name)
+        console.error(`[bridge] Session created: ${sessionName}`);
+      } catch (err) {
+        console.error(`[bridge] createSession failed: ${(err as Error).message} — assuming existing session`);
         sessionName = ctx.teamSlug;
       }
 
