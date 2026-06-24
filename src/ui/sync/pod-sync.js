@@ -500,7 +500,6 @@ export class PorterPodSync {
             reasoning: a.reasoning,
             model: a.model,
             visibility: a.visibility,
-            promptSections: a.promptSections,
           }),
         }).catch(() => {});
       }
