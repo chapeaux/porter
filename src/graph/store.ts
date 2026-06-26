@@ -137,7 +137,8 @@ export class GraphStore {
       const tmp = await SparqStore.fromString(turtle, "turtle");
       const quads = tmp.match();
       const graphNode = graph ? namedNode(graph) : defaultGraph();
-      const reGraphed = quads.map(q =>
+      // deno-lint-ignore no-explicit-any
+      const reGraphed = quads.map((q: any) =>
         quad(q.subject as any, q.predicate as any, q.object as any, graphNode as any)
       );
       this.store.addQuads(reGraphed as unknown as Quad[]);
@@ -237,7 +238,8 @@ export class GraphStore {
       const report = this.store.validate(dataNt, shapesNt, "ntriples");
       return {
         conforms: report.conforms,
-        violations: report.results.map(r => ({
+        // deno-lint-ignore no-explicit-any
+        violations: report.results.map((r: any) => ({
           path: r.path ?? "",
           message: r.message ?? "Validation failed",
           value: r.value ?? undefined,

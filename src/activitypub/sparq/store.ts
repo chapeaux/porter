@@ -27,6 +27,50 @@ import { init, WasmStore } from './wasm.ts';
 export type RdfFormat = 'turtle' | 'ntriples' | 'nquads' | 'trig' | 'jsonld';
 
 /**
+ * [OPUS-4.8] sq-u78ol (#1117 / #1129): the output syntax {@link SparqStore.serialize} /
+ * {@link SparqStore.dump} writes the store as. `'turtle'` is the default graph; `'trig'`
+ * the whole dataset (named graphs as `GRAPH <g> { … }` blocks); the JSON-LD forms emit the
+ * whole dataset (`'jsonld'` ≡ `'jsonld-expanded'`). Aliases (`'ttl'`, media types,
+ * `'json-ld'`) are accepted by the underlying engine writer too.
+ */
+export type SerializeFormat =
+  | 'turtle'
+  | 'trig'
+  | 'jsonld'
+  | 'jsonld-expanded'
+  | 'jsonld-flattened'
+  | 'jsonld-compacted';
+
+/**
+ * [OPUS-4.8] sq-u78ol (#1117 / #1129): options for {@link SparqStore.serialize} /
+ * {@link SparqStore.dump}. All optional with sensible defaults (pretty, two-space indent,
+ * abbreviated IRIs, engine default prefixes).
+ */
+export interface SerializeOptions {
+  /**
+   * Indent the output (default `true`): Turtle/TriG use the sorted, blank-line-separated
+   * pretty shape; JSON-LD is structurally re-indented. `false` selects the compact/minified
+   * writer.
+   */
+  pretty?: boolean;
+  /** The indent unit for the pretty writer (default `'  '`, two spaces). Ignored when `pretty` is `false`. */
+  indent?: string;
+  /**
+   * Turtle/TriG only (default `true`): emit a sorted `@prefix` header and compact IRIs to
+   * `prefix:local`. `false` keeps every IRI in full `<…>` form. Ignored for JSON-LD (form
+   * selects compaction).
+   */
+  abbreviate?: boolean;
+  /**
+   * An optional caller-supplied prefix map (`[[prefix, iri], …]`) driving Turtle/TriG
+   * `@prefix` compaction and the JSON-LD compacted `@context`. Omit for the engine's
+   * well-known defaults (`rdf`/`rdfs`/`xsd`/`owl`/`schema`/`foaf`/`dc`/`skos`/`sh`).
+   * `prefixes` from `#1129` — supply your own namespace policy to get byte-parity output.
+   */
+  prefixes?: ReadonlyArray<readonly [string, string]>;
+}
+
+/**
  * [OPUS-4.8] sq-pxls (#162): one SHACL validation result — the per-violation
  * shape PSS's ADR-0014 `ShaclValidator` seam consumes (a drop-in for
  * `rdf-validate-shacl`'s result records). `focusNode`/`value`/`sourceShape`
@@ -72,6 +116,18 @@ export interface SparqStoreOptions {
    * `compressed` (the engine has no compressed dataset loader yet).
    */
   dataset?: boolean;
+  /**
+   * [OPUS-4.8] sq-f66jz (#1115): a base IRI to resolve the document's RELATIVE
+   * IRIs against — for a document fetched from a URL (or a shapes graph / test
+   * manifest addressed by its location) that carries relative IRIs and no
+   * `@base` of its own. A document-level `@base` directive still overrides it;
+   * the line-based formats (`ntriples` / `nquads`) allow only absolute IRIs, so
+   * `baseIri` has no effect on them. An invalid base IRI throws. Not combinable
+   * with `dataset` / `compressed` (there is no dataset/compressed base loader yet);
+   * named graphs are folded into the default graph as with a plain (non-dataset)
+   * load.
+   */
+  baseIri?: string;
 }
 
 type MatchTerm = RDF.Term | null | undefined;
@@ -103,23 +159,84 @@ export class SparqStore {
   }
 
   /**
+   * Selects the right wasm `Store` factory for `options` and builds the inner store.
+   * Shared by {@link fromString} (async) and {@link fromStringSync} (sync); both validate
+   * the incompatible-option combinations identically here.
+   */
+  static #buildInner(data: string, format: RdfFormat, options: SparqStoreOptions): WasmStore {
+    if (options.dataset && options.compressed) {
+      throw new Error('options.dataset cannot be combined with options.compressed (no compressed dataset loader yet)');
+    }
+    // [OPUS-4.8] sq-f66jz (#1115): a base IRI threads through to the wasm `loadWithBase`
+    // binding; it has no dataset/compressed variant yet, so reject those combinations.
+    if (options.baseIri !== undefined) {
+      if (options.dataset || options.compressed) {
+        throw new Error('options.baseIri cannot be combined with options.dataset or options.compressed (no base-IRI dataset/compressed loader yet)');
+      }
+      return WasmStore.loadWithBase(data, format, options.baseIri);
+    }
+    if (options.dataset) return WasmStore.loadDataset(data, format);
+    if (options.compressed) return WasmStore.loadCompressed(data, format);
+    return WasmStore.load(data, format);
+  }
+
+  /**
+   * [OPUS-4.8] sq-ty78o (#1114): an empty, mutable store — the ergonomic counterpart to a
+   * `load`, for building a graph up from nothing with {@link update} / {@link addQuads} /
+   * {@link applyDelta}. Wraps the wasm `new Store()` constructor.
+   *
+   * Named graphs work out of the box: the delta overlay creates a named graph on the first
+   * insert targeting it, so `store.update('INSERT DATA { GRAPH <g> { … } }')` followed by a
+   * `GRAPH ?g { … }` query returns the rows — no `dataset` flag is needed for an *empty*
+   * store (dataset mode only matters when *loading* a document whose named graphs would
+   * otherwise fold into the default graph; see {@link fromString}'s `options.dataset`).
+   */
+  static async empty(): Promise<SparqStore> {
+    await init();
+    return new SparqStore(new WasmStore());
+  }
+
+  /**
+   * [OPUS-4.8] sq-ty78o (#1114): {@link empty} SYNCHRONOUSLY — the wasm engine must ALREADY
+   * be initialised (a prior `await init()` / `await SparqStore.from*()` resolved), as with
+   * {@link fromStringSync}; otherwise the wasm binding throws. Prefer async {@link empty} for
+   * first construction.
+   */
+  static emptySync(): SparqStore {
+    return new SparqStore(new WasmStore());
+  }
+
+  /**
    * Parses an RDF document into a store.
    * `format`: `"turtle"` (default) | `"ntriples"` | `"nquads"` | `"trig"` | `"jsonld"`.
    * Named graphs (N-Quads / TriG / a JSON-LD `@graph`) are folded into the default
    * graph unless `options.dataset` is set, in which case they are preserved as
-   * separate graphs.
+   * separate graphs. Pass `options.baseIri` to resolve the document's relative IRIs
+   * against a base (e.g. a document fetched from a URL).
    */
   static async fromString(data: string, format: RdfFormat = 'turtle', options: SparqStoreOptions = {}): Promise<SparqStore> {
     await init();
-    if (options.dataset && options.compressed) {
-      throw new Error('options.dataset cannot be combined with options.compressed (no compressed dataset loader yet)');
-    }
-    const inner = options.dataset
-      ? WasmStore.loadDataset(data, format)
-      : options.compressed
-        ? WasmStore.loadCompressed(data, format)
-        : WasmStore.load(data, format);
-    return new SparqStore(inner);
+    return new SparqStore(SparqStore.#buildInner(data, format, options));
+  }
+
+  /**
+   * [OPUS-4.8] sq-lii76: parses an RDF document into a store SYNCHRONOUSLY — the same as
+   * {@link fromString} but WITHOUT the `await init()`. The wasm engine must ALREADY be
+   * initialised (a prior `await init()` / `await SparqStore.fromString(...)` has resolved),
+   * otherwise the wasm binding throws. This is the building block for the synchronous RDF/JS
+   * `DatasetCore` members ({@link Dataset.match}), where the engine is guaranteed already up;
+   * prefer the async {@link fromString} for first construction.
+   */
+  static fromStringSync(data: string, format: RdfFormat = 'turtle', options: SparqStoreOptions = {}): SparqStore {
+    return new SparqStore(SparqStore.#buildInner(data, format, options));
+  }
+
+  /**
+   * [OPUS-4.8] sq-lii76: builds a store from RDF/JS quads SYNCHRONOUSLY (see
+   * {@link fromStringSync} — the wasm engine must already be initialised).
+   */
+  static fromQuadsSync(quads: Iterable<RDF.Quad>, options: SparqStoreOptions = {}): SparqStore {
+    return SparqStore.fromStringSync(quadsToNQuads(quads), 'nquads', options);
   }
 
   /** Builds a store from RDF/JS quads (serialised internally to N-Quads). */
@@ -174,6 +291,31 @@ export class SparqStore {
     const json = JSON.parse(this.#inner.query(sparql)) as SparqlJsonResults;
     const rows = json.results?.bindings ?? [];
     return rows.map(bindingsFromRow);
+  }
+
+  /**
+   * [OPUS-4.8] #1123 — runs a SELECT query and returns the solutions in the OXIGRAPH JS shape:
+   * an array of plain `Map<string, Term>`, each keyed on the variable NAME (no `?`) with RDF/JS
+   * `Term` values — exactly what Oxigraph's `Store.query` yields for a SELECT, so Oxigraph code
+   * (`for (const binding of store.querySolutions(q)) binding.get("s").value`) ports unchanged.
+   *
+   * It is a thin O(n) re-view of {@link queryBindings}'s RDF/JS `Bindings` (one `Map` allocation
+   * per solution, no extra wasm round-trip), so the engine's SPARQL-JSON path — not a second
+   * code path — stays the single source of truth. Prefer {@link queryBindings} for an RDF/JS
+   * pipeline (richer immutable `Bindings`); use this for drop-in Oxigraph migration.
+   */
+  querySolutions(sparql: string): Map<string, RDF.Term>[] {
+    return this.queryBindings(sparql).map((b) => b.toMap());
+  }
+
+  /**
+   * [OPUS-4.8] #1123 — the streaming counterpart of {@link querySolutions}: yields one
+   * Oxigraph-shaped `Map<string, Term>` solution at a time without materialising the whole
+   * result (see {@link queryBindingsStream} for the streaming contract). For porting Oxigraph
+   * code that iterates `store.query(...)` lazily.
+   */
+  *querySolutionsStream(sparql: string): Generator<Map<string, RDF.Term>, void, undefined> {
+    for (const b of this.queryBindingsStream(sparql)) yield b.toMap();
   }
 
   /**
@@ -300,6 +442,50 @@ export class SparqStore {
   }
 
   /**
+   * [OPUS-4.8] sq-u78ol (#1117 / #1129): serialises the store's contents to a **Turtle**,
+   * **TriG**, or **JSON-LD** document string.
+   *
+   * Where {@link queryQuadsString} writes a CONSTRUCT/DESCRIBE *result graph* as flat
+   * N-Triples, this writes the **store itself** in a readable syntax — `'turtle'` (the
+   * default graph), `'trig'` (the whole dataset, named graphs as `GRAPH <g> { … }` blocks),
+   * or JSON-LD (`'jsonld'` ≡ `'jsonld-expanded'`, plus `'jsonld-flattened'` /
+   * `'jsonld-compacted'`; the whole dataset). It calls straight through to `sparq-engine`'s
+   * writers, so the output is byte-identical to the native serialiser.
+   *
+   * `options` (all optional): `pretty` (default `true`) indents the output; `indent`
+   * (default `'  '`) is the indent unit; `abbreviate` (Turtle/TriG only, default `true`)
+   * emits a `@prefix` header and `prefix:local` CURIEs; `prefixes` (#1129) is an optional
+   * `[[prefix, iri], …]` map driving `@prefix`/`@context` compaction (omit for the engine
+   * defaults). An unrecognised `format` (or a malformed `prefixes`) throws.
+   *
+   * Requires a `serialize-rdf`-enabled wasm bundle (the published `@jeswr/sparq` ships one);
+   * a `serialize-rdf`-less custom build throws a clear error here rather than a cryptic
+   * "not a function". (The full W3C JSON-LD 1.1 Compaction against a caller `@context` is the
+   * sibling raw-`Store` `serializeCompact` binding — see the javascript-wasm SKILL.)
+   */
+  serialize(format: SerializeFormat | string = 'turtle', options: SerializeOptions = {}): string {
+    if (typeof this.#inner.serialize !== 'function') {
+      throw new Error(
+        'SparqStore.serialize requires a serialize-rdf-enabled wasm bundle (build sparq-wasm with --features serialize-rdf)',
+      );
+    }
+    const pretty = options.pretty ?? true;
+    const indent = options.indent ?? '  ';
+    const abbreviate = options.abbreviate ?? true;
+    // The wasm binding takes a mutable `Array<[prefix, iri]>`; copy the readonly pairs.
+    const prefixes = options.prefixes ? options.prefixes.map(([p, iri]) => [p, iri]) : undefined;
+    return ((this.#inner as any).serialize)(format, pretty, indent, abbreviate, prefixes);
+    // @ts-ignore: optional feature-gated method
+
+  /**
+   * [OPUS-4.8] sq-u78ol (#1117): alias for {@link serialize} — the `dump(format)` spelling the
+   * issue asked for. Identical behaviour and requirements.
+   */
+  dump(format: SerializeFormat | string = 'turtle', options: SerializeOptions = {}): string {
+    return this.serialize(format, options);
+  }
+
+  /**
    * [OPUS-4.8] sq-pxls (#162): validates an RDF **data graph** against a SHACL
    * **shapes graph**, returning a typed SHACL {@link ValidationReport}.
    *
@@ -326,14 +512,14 @@ export class SparqStore {
    */
   validate(data: string, shapes: string, format: RdfFormat = 'turtle'): ValidationReport {
     if (typeof this.#inner.validate !== 'function') {
+    // @ts-ignore: optional feature-gated method
       throw new Error(
-        'SparqStore.validate requires a SHACL-enabled wasm bundle (build sparq-wasm with --features shacl)',
       );
     }
-    return JSON.parse(this.#inner.validate(data, shapes, format)) as ValidationReport;
+    return JSON.parse(((this.#inner as any).validate)(data, shapes, format)) as ValidationReport;
+    // @ts-ignore: optional feature-gated method
   }
 
-  /**
    * The WHERE clause scoping `pattern` to the requested `graph` position:
    * `null`/`undefined`/Variable span the default graph AND every named graph
    * (binding `?g`); `DefaultGraph` scopes to the default graph; a `NamedNode`
@@ -358,7 +544,20 @@ export class SparqStore {
    * there.
    */
   match(subject?: MatchTerm, predicate?: MatchTerm, object?: MatchTerm, graph?: MatchTerm): Quad[] {
-    if (graph && !['Variable', 'DefaultGraph', 'NamedNode', 'BlankNode'].includes(graph.termType)) return [];
+    return [...this.matchStream(subject, predicate, object, graph)];
+  }
+
+  /**
+   * [OPUS-4.8] sq-iwhl8 (#1116): the LAZY counterpart of {@link match} — a generator that yields
+   * one matching {@link Quad} at a time, PULLING solutions from the engine via
+   * {@link queryBindingsStream} (which crosses the wasm boundary in ~64 KiB chunks) instead of
+   * materialising the whole result. The semantics are identical to {@link match} (`match` is
+   * `[...matchStream(...)]`); the difference is that a very large match is never held whole on the
+   * JS side. This backs the RDF/JS `Source.match` quad `Stream`, which pulls quads on demand.
+   * `null`/`undefined`/Variable positions are wildcards; blank-node positions are matched by label.
+   */
+  *matchStream(subject?: MatchTerm, predicate?: MatchTerm, object?: MatchTerm, graph?: MatchTerm): Generator<Quad, void, undefined> {
+    if (graph && !['Variable', 'DefaultGraph', 'NamedNode', 'BlankNode'].includes(graph.termType)) return;
 
     const s = position(subject, 's');
     const p = position(predicate, 'p');
@@ -369,8 +568,7 @@ export class SparqStore {
     const pattern = `${allFixed ? '?s' : s.sparql} ${p.sparql} ${o.sparql}`;
     const sparql = `SELECT * WHERE ${SparqStore.#graphScope(pattern, graph)}`;
 
-    const quads: Quad[] = [];
-    for (const row of this.queryBindings(sparql)) {
+    for (const row of this.queryBindingsStream(sparql)) {
       const subjectTerm = s.fixed && !allFixed ? s.fixed : row.get('s')!;
       const predicateTerm = p.fixed ?? row.get('p')!;
       const objectTerm = o.fixed ?? row.get('o')!;
@@ -383,16 +581,13 @@ export class SparqStore {
       if (object?.termType === 'BlankNode' && !object.equals(objectTerm)) continue;
       if (graph?.termType === 'BlankNode' && !graph.equals(graphTerm)) continue;
       if (allFixed && subject && !subject.equals(subjectTerm)) continue;
-      quads.push(
-        new Quad(
-          subjectTerm as RDF.Quad_Subject,
-          predicateTerm as RDF.Quad_Predicate,
-          objectTerm as RDF.Quad_Object,
-          graphTerm,
-        ),
+      yield new Quad(
+        subjectTerm as RDF.Quad_Subject,
+        predicateTerm as RDF.Quad_Predicate,
+        objectTerm as RDF.Quad_Object,
+        graphTerm,
       );
     }
-    return quads;
   }
 
   /** `match(…).length` without materialising terms where possible. */
@@ -446,6 +641,16 @@ export class SparqStore {
   /** `applyDelta([], quads)` — incremental O(batch) removal (bnodes by label). */
   removeQuads(quads: Iterable<RDF.Quad>): void {
     this.applyDelta([], quads);
+  }
+
+  /**
+   * [OPUS-4.8] sq-iwhl8 (#1116) — a view of this store as an RDF/JS **`Source`** / **`Sink`** /
+   * **`Store`** (the Stream spec, https://rdf.js.org/stream-spec/): `match(...)` yields a quad
+   * `Stream` (events, not the synchronous `Quad[]` this class returns), and `import` / `remove` /
+   * `removeMatches` / `deleteGraph` consume/mutate via streams. The backing store stays the
+   * source of truth; the adapter only re-views its primitives as the streaming interface, so a
+   * sparq store drops into any RDF/JS Stream pipeline.
+   */
   }
 
   /** Releases the wasm-side memory. The store must not be used afterwards. */

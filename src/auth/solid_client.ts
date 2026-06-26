@@ -283,22 +283,26 @@ export function getClientIdUrl(domain: string): string {
  * JWTs expect the raw concatenation of r and s, each zero-padded to 32
  * bytes for P-256.
  */
-function derToRawEcdsa(der: Uint8Array): Uint8Array {
+function derToRawEcdsa(sig: Uint8Array): Uint8Array {
+  // Some runtimes (Deno) return raw r||s (64 bytes for P-256) directly
+  if (sig.length === 64) return sig;
+
   // DER: 0x30 <len> 0x02 <rLen> <r> 0x02 <sLen> <s>
+  if (sig[0] !== 0x30) throw new Error("Invalid ECDSA signature: not DER or raw format");
   let offset = 2; // skip SEQUENCE tag + length
 
   // Parse r
-  if (der[offset] !== 0x02) throw new Error("Invalid DER: expected INTEGER tag for r");
+  if (sig[offset] !== 0x02) throw new Error("Invalid DER: expected INTEGER tag for r");
   offset++;
-  const rLen = der[offset++];
-  let r = der.subarray(offset, offset + rLen);
+  const rLen = sig[offset++];
+  let r = sig.subarray(offset, offset + rLen);
   offset += rLen;
 
   // Parse s
-  if (der[offset] !== 0x02) throw new Error("Invalid DER: expected INTEGER tag for s");
+  if (sig[offset] !== 0x02) throw new Error("Invalid DER: expected INTEGER tag for s");
   offset++;
-  const sLen = der[offset++];
-  let s = der.subarray(offset, offset + sLen);
+  const sLen = sig[offset++];
+  let s = sig.subarray(offset, offset + sLen);
 
   // Strip leading zero byte (DER uses it for sign padding)
   if (r.length === 33 && r[0] === 0) r = r.subarray(1);

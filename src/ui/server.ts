@@ -1877,21 +1877,30 @@ export async function startUiServer(
     // --- ActivityPub config API (always available, even when AP is not enabled) ---
 
     if (pathname === "/api/activitypub/config" && req.method === "GET") {
+      const defaultConfig = {
+        enabled: false, domain: "", approval_mode: "allowlist",
+        allowlist: [], public_summaries: false, max_sessions_per_follower: 1,
+      };
       if (!apRouteHandler) {
-        return new Response(JSON.stringify({
-          enabled: false, domain: "", approval_mode: "allowlist",
-          allowlist: [], public_summaries: false, max_sessions_per_follower: 1,
-        }), { headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify(defaultConfig), { headers: { "Content-Type": "application/json" } });
       }
+      // Try MinIO first, then filesystem fallback
+      try {
+        const { ApS3Client } = await import("../activitypub/s3.ts");
+        const s3Cfg = (await import("../activitypub/s3.ts")).loadS3Config();
+          if (!s3Cfg) throw new Error("no S3");
+          const s3 = new ApS3Client(s3Cfg);
+        const text = await s3.getObject("ap-config.json");
+        if (text) {
+          return new Response(text, { headers: { "Content-Type": "application/json" } });
+        }
+      } catch { /* MinIO not available */ }
       const home = Deno.env.get("HOME") ?? Deno.cwd();
       try {
         const text = await Deno.readTextFile(`${home}/.porter/activitypub/config.json`);
         return new Response(text, { headers: { "Content-Type": "application/json" } });
       } catch {
-        return new Response(JSON.stringify({
-          enabled: false, domain: "", approval_mode: "allowlist",
-          allowlist: [], public_summaries: false, max_sessions_per_follower: 1,
-        }), { headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify(defaultConfig), { headers: { "Content-Type": "application/json" } });
       }
     }
 
@@ -1982,9 +1991,18 @@ export async function startUiServer(
       const home = Deno.env.get("HOME") ?? Deno.cwd();
       try {
         const body = await req.json();
+        const text = JSON.stringify(body, null, 2);
+        // Persist to MinIO (primary) and filesystem (fallback)
+        try {
+          const { ApS3Client } = await import("../activitypub/s3.ts");
+          const s3Cfg = (await import("../activitypub/s3.ts")).loadS3Config();
+          if (!s3Cfg) throw new Error("no S3");
+          const s3 = new ApS3Client(s3Cfg);
+          await s3.putObject("ap-config.json", text);
+        } catch { /* MinIO not available — filesystem only */ }
         const dir = `${home}/.porter/activitypub`;
         await Deno.mkdir(dir, { recursive: true });
-        await Deno.writeTextFile(`${dir}/config.json`, JSON.stringify(body, null, 2));
+        await Deno.writeTextFile(`${dir}/config.json`, text);
         return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
       } catch (err) {
         return new Response(JSON.stringify({ error: (err as Error).message }), {

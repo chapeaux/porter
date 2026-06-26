@@ -154,7 +154,7 @@ export class SparqApStore implements FederationStore {
         OPTIONAL { ?team <${P}podUrl> ?pod }
       }
     `);
-    return rows.map((r) => ({
+    return rows.map((r: any) => ({
       teamSlug: decodeURIComponent(r.get("team")!.value.replace("urn:porter:ap:team/", "")),
       ownerId: r.get("owner")!.value,
       publishedAt: r.get("pub")!.value,
@@ -171,7 +171,7 @@ export class SparqApStore implements FederationStore {
               <${P}enabled> ?en .
       }
     `);
-    return rows.map((r) => ({
+    return rows.map((r: any) => ({
       teamSlug: decodeURIComponent(r.get("team")!.value.replace("urn:porter:ap:team/", "")),
       ownerId: r.get("owner")!.value,
       publishedAt: r.get("pub")!.value,
@@ -197,7 +197,7 @@ export class SparqApStore implements FederationStore {
         OPTIONAL { ?f <${P}sharedInbox> ?shared }
       }
     `);
-    return rows.map((r) => ({
+    return rows.map((r: any) => ({
       actorId: r.get("actor")!.value,
       acct: r.get("acct")!.value,
       inbox: r.get("inbox")!.value,
@@ -258,7 +258,7 @@ export class SparqApStore implements FederationStore {
         OPTIONAL { ?f <${P}sharedInbox> ?shared }
       }
     `);
-    return rows.map((r) => ({
+    return rows.map((r: any) => ({
       actorId: r.get("actor")!.value,
       acct: r.get("acct")!.value,
       inbox: r.get("inbox")!.value,
@@ -311,7 +311,7 @@ export class SparqApStore implements FederationStore {
            <${P}lastActivityAt> ?last .
       }
     `);
-    return rows.map((r) => ({
+    return rows.map((r: any) => ({
       apConversationId: r.get("cid")!.value,
       remoteActorId: r.get("remote")!.value,
       sessionName: r.get("session")!.value,
@@ -398,7 +398,7 @@ export class SparqApStore implements FederationStore {
       approval_mode: r.get("mode")!.value as "open" | "allowlist" | "manual",
       public_summaries: r.get("pub")?.value === "true",
       max_sessions_per_follower: parseInt(r.get("max")?.value ?? "1", 10),
-      allowlist: allowlistRows.map((row) => row.get("val")!.value),
+      allowlist: allowlistRows.map((row: any) => row.get("val")!.value),
     };
   }
 

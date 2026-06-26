@@ -76,7 +76,6 @@ export class SolutionCursor {
  * An immutable, dictionary-encoded RDF store queryable with SPARQL.
  */
 export class Store {
-    private constructor();
     free(): void;
     [Symbol.dispose](): void;
     /**
@@ -181,6 +180,44 @@ export class Store {
      */
     static loadDataset(text: string, format: string): Store;
     /**
+     * [OPUS-4.8] sq-f66jz (#1115): like [`load`](Self::load) but resolves the document's
+     * RELATIVE IRIs against `base`.
+     *
+     * A document fetched from a URL (or a SHACL shapes graph / W3C test manifest addressed
+     * by its location) often carries relative IRIs and no `@base` of its own; `base` is the
+     * base IRI those resolve against — e.g. `loadWithBase("<a> <p> <o> .", "turtle",
+     * "http://example.org/dir/")` interns `<http://example.org/dir/a>` etc. A document-level
+     * `@base` directive still overrides the supplied `base` (standard Turtle/TriG scoping).
+     * The line-based formats (`"ntriples"` / `"nquads"`) allow only absolute IRIs, so `base`
+     * has no effect on them. An invalid `base` (not a syntactically valid IRI) is rejected
+     * with a `JsError`. Calls straight through to `sparq_core::Graph::load_str_with_base`,
+     * so the resolution is byte-identical to the native loader. Named graphs are folded into
+     * the default graph (as [`load`](Self::load)); there is no dataset-preserving base
+     * variant at this layer yet.
+     */
+    static loadWithBase(text: string, format: string, base: string): Store;
+    /**
+     * [OPUS-4.8] sq-ty78o (#1114): a public **empty, mutable** store — the ergonomic
+     * `new Store()` constructor.
+     *
+     * Until now the only way to obtain a `Store` was a static [`load`](Self::load) /
+     * [`loadDataset`](Self::load_dataset) / [`loadCompressed`](Self::load_compressed)
+     * factory, so a JS caller who wanted to start from nothing and build the graph up with
+     * [`updateInPlace`](Self::update_in_place) / [`applyDelta`](Self::apply_delta) had to
+     * reach for `Store.load("", "turtle")`. This exposes the natural `new Store()` spelling,
+     * returning an empty graph that is immediately mutable through the engine's delta overlay.
+     *
+     * **Named graphs work out of the box.** The overlay creates a named graph on the first
+     * insert that targets it, so `new Store()` then
+     * `updateInPlace("INSERT DATA { GRAPH <g> { … } }")` followed by a `GRAPH ?g { … }`
+     * query returns the inserted rows — no dataset-mode flag is required for an *empty*
+     * store. (Dataset mode matters only when *loading* an existing document whose named
+     * graphs would otherwise be folded into the default graph — use
+     * [`loadDataset`](Self::load_dataset) for that.) Equivalent to `Store.load("", "turtle")`,
+     * surfaced as a `constructor`.
+     */
+    constructor();
+    /**
      * Runs a SELECT query and returns the results as a SPARQL 1.1 JSON string
      * (`application/sparql-results+json`). Benefits from the engine's streaming
      * optimisations: LIMIT stops the scan early, numeric FILTERs are pushed into
@@ -253,35 +290,6 @@ export class Store {
      */
     updateInPlace(sparql: string): void;
     /**
-     * [OPUS-4.8] sq-yqi1 (#162): validates an RDF **data graph** against a SHACL
-     * **shapes graph**, returning a SHACL validation report as a JSON string.
-     *
-     * Both arguments are RDF documents in the same syntaxes [`Store::load`]
-     * accepts (`"turtle"` | `"ntriples"` | `"nquads"` | `"trig"`); they are
-     * parsed identically (named graphs folded into the default graph). This is a
-     * stateless one-shot — it does not consult the receiver's stored triples —
-     * so it is the drop-in replacement for `rdf-validate-shacl`'s
-     * `validate(dataDataset, { shapes })`: validation runs through
-     * `sparq-shacl`'s SHACL Core + SHACL-SPARQL (`sh:sparql`, §5.2) engine.
-     *
-     * Returns a JSON object `{ conforms: boolean, results: [...] }`; each result
-     * has `focusNode`, `path`, `value`, `sourceShape`,
-     * `sourceConstraintComponent`, `severity` and `message` (see the module
-     * docs for the exact shape). `JSON.parse` it on the JS side. `sh:conforms`
-     * counts EVERY result regardless of severity (the W3C-suite notion); filter
-     * `results` by `severity` for a violations-only gate.
-     *
-     * Errors only if a graph fails to parse (a `JsError` carrying the parse
-     * error) — malformed shapes are skipped by the engine, never surfaced as an
-     * error. Small-document write-validation (~10–100 triples) sits far below
-     * the wasm linear-memory ceiling; very large data graphs should use the
-     * server-side HTTP `validate` path instead (#162 path (c)).
-     *
-     * The `data`/`shapes` arguments take ownership of two parameters; both
-     * graphs are dropped when the call returns.
-     */
-    validate(data: string, shapes: string, format: string): string;
-    /**
      * The number of (deduplicated) triples in the store.
      */
     readonly size: number;
@@ -309,6 +317,8 @@ export interface InitOutput {
     readonly store_load: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly store_loadCompressed: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly store_loadDataset: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly store_loadWithBase: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
+    readonly store_new: () => [number, number, number];
     readonly store_query: (a: number, b: number, c: number) => [number, number, number, number];
     readonly store_queryChunks: (a: number, b: number, c: number) => [number, number, number];
     readonly store_queryCursor: (a: number, b: number, c: number, d: number) => [number, number, number];
@@ -317,7 +327,6 @@ export interface InitOutput {
     readonly store_size: (a: number) => number;
     readonly store_update: (a: number, b: number, c: number) => [number, number, number];
     readonly store_updateInPlace: (a: number, b: number, c: number) => [number, number];
-    readonly store_validate: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly querychunks_next: (a: number) => [number, number];
     readonly __wbg_querychunks_free: (a: number, b: number) => void;
     readonly __wbindgen_exn_store: (a: number) => void;

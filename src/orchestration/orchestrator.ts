@@ -487,6 +487,12 @@ export async function start(
           eventObj.input_tokens = event.input_tokens;
           eventObj.output_tokens = event.output_tokens;
           break;
+        case "turn_complete":
+          if (patternId === "deliberation" && agentConfig.role === "worker") {
+            metrics.advanceRound();
+            bus.publish("deliberation", (event as { summary: string }).summary, agentConfig.name);
+          }
+          return;
         case "done":
           eventObj.event = "done";
           break;
@@ -534,13 +540,6 @@ export async function start(
           const outputHandler = makeOutputHandler(agentConfig, displayHandler);
           outputHandler(data.agentName as string, event);
 
-          // Pattern handoff: when a deliberation worker finishes a turn,
-          // notify the reflector via the deliberation channel
-          if (event.type === "turn_complete" && patternId === "deliberation" && agentConfig.role === "worker") {
-            metrics.advanceRound();
-            const summary = (event as { summary: string }).summary;
-            bus.publish("deliberation", summary, agentConfig.name);
-          }
           break;
         }
         case "bus_publish":

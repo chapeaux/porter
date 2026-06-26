@@ -19,6 +19,8 @@ export const store_heapBytes: (a: number) => number;
 export const store_load: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const store_loadCompressed: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const store_loadDataset: (a: number, b: number, c: number, d: number) => [number, number, number];
+export const store_loadWithBase: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
+export const store_new: () => [number, number, number];
 export const store_query: (a: number, b: number, c: number) => [number, number, number, number];
 export const store_queryChunks: (a: number, b: number, c: number) => [number, number, number];
 export const store_queryCursor: (a: number, b: number, c: number, d: number) => [number, number, number];
@@ -27,7 +29,6 @@ export const store_queryQuadsChunks: (a: number, b: number, c: number, d: number
 export const store_size: (a: number) => number;
 export const store_update: (a: number, b: number, c: number) => [number, number, number];
 export const store_updateInPlace: (a: number, b: number, c: number) => [number, number];
-export const store_validate: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
 export const querychunks_next: (a: number) => [number, number];
 export const __wbg_querychunks_free: (a: number, b: number) => void;
 export const __wbindgen_exn_store: (a: number) => void;
