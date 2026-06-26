@@ -94,8 +94,9 @@ porter:AgentShape a sh:NodeShape ;
     sh:path porter:hasRole ;
     sh:minCount 1 ;
     sh:maxCount 1 ;
-    sh:in ( "admin" "worker" "reviewer" ) ;
-    sh:message "role must be one of: admin, worker, reviewer"
+    sh:in ( "admin" "worker" "reviewer" "specialist" "synthesizer"
+            "reflector" "expert" "learner" ) ;
+    sh:message "role must be one of: admin, worker, reviewer, specialist, synthesizer, reflector, expert, learner"
   ] ;
   sh:property [
     sh:path porter:systemPrompt ;

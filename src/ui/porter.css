@@ -408,20 +408,10 @@ h1 {
 }
 .team-list-header p { color: var(--text-secondary); font-size: 0.85rem; margin: 0; }
 .team-list-items { display: flex; flex-direction: column; gap: 0.4rem; }
-.team-list-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.6rem 0.75rem;
-}
-.team-list-card .launch-session-form {
+.dialog-card:hover { border-color: var(--accent-gold); }
+.dialog-card .launch-session-form {
   flex-basis: 100%;
 }
-.team-list-card:hover { border-color: var(--accent-gold); }
 .team-list-info { flex: 1; min-width: 0; }
 .team-list-name { font-weight: bold; font-size: 0.9rem; color: var(--text-primary); }
 .team-list-meta { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.15rem; }
@@ -1553,17 +1543,6 @@ label.inline-check input[type="checkbox"] {
 }
 
 /* MCP server cards */
-.mcp-server-card {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  margin-bottom: 0.3rem;
-  font-size: 0.8rem;
-}
 .mcp-enable-label {
   display: flex;
   align-items: center;
@@ -1738,8 +1717,8 @@ label.inline-check input[type="checkbox"] {
 
 /* Onboarding dialog */
 .onboarding-options {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.8rem;
   margin-top: 1rem;
 }
@@ -1858,6 +1837,14 @@ label.inline-check input[type="checkbox"] {
   letter-spacing: 0.08em;
   color: var(--text-dim);
 }
+.metrics-workspace {
+  cursor: pointer;
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metrics-workspace:hover { color: var(--accent-gold); }
 .metrics-detail-btn {
   background: none;
   border: 1px solid rgba(201,168,76,0.3);
@@ -1902,6 +1889,55 @@ label.inline-check input[type="checkbox"] {
   flex-direction: column;
   gap: 0.25rem;
 }
+/* Shared card style for dialog list items */
+.dialog-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: var(--bg-card);
+  margin-bottom: 0.5rem;
+}
+#pattern-manager-body .dialog-card {
+  display: grid;
+  grid-gap: 8px;
+}
+.dialog-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+.dialog-card-header strong { color: var(--accent-gold); }
+.dialog-card-meta, .dialog-card-summary {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.dialog-card-meta::before {
+  content: "Description:";
+  font-weight: bold;
+}
+.dialog-card-summary::before {
+  content: "Summary:";
+  font-weight: bold;
+}
+.dialog-card-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.dialog-header-add {
+  background: none;
+  border: 1px solid var(--accent-gold);
+  color: var(--accent-gold);
+  padding: 0.15rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dialog-header-add:hover { background: rgba(201,168,76,0.15); }
+
 .pattern-role-section {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1941,8 +1977,13 @@ label.inline-check input[type="checkbox"] {
 .flow-branch-label { font-size: 0.7rem; color: rgba(255,255,255,0.5); font-style: italic; min-width: 3rem; }
 
 /* Pattern editor */
-.pattern-editor-grid { display: grid; grid-template-rows: auto auto auto; }
+.pattern-editor-body { flex: 1; min-height: 0; }
+.pattern-editor-grid { display: grid; grid-template-rows: auto auto auto; height: 100%; }
 .pattern-editor-header { padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.1); overflow-y: auto; }
+.pattern-editor-header h4 { color:var(--accent-gold); margin:0 0 0.4rem; font-size:0.85rem; }
+.pattern-editor-properties { display: grid; gap: 8px; }
+.pattern-editor-property { display: grid; gap: 16px; grid-template-columns: auto 1fr; }
+.pattern-editor-property label { font-size: 0.75rem; color: var(--text-dim); }
 .pattern-editor-canvas { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; overflow: auto; }
 .pattern-editor-canvas svg { display: block; }
 .pattern-editor-footer { padding: 0.75rem; border-top: 1px solid rgba(255,255,255,0.15); overflow-y: auto; }

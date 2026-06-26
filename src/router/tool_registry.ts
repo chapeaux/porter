@@ -15,12 +15,14 @@ export const TOOL_REGISTRY: Record<string, { image: string; binPath: string }> =
   python3: { image: "registry.access.redhat.com/ubi9/python-311:latest",   binPath: "/usr/bin/python3" },
   nodejs:  { image: "registry.access.redhat.com/ubi9/nodejs-20:latest",    binPath: "/usr/bin/node" },
   jq:      { image: "registry.access.redhat.com/ubi9/ubi-minimal:latest",  binPath: "/usr/bin/jq" },
+  deno:    { image: "docker.io/denoland/deno:latest",                      binPath: "/usr/bin/deno" },
 };
 
 export const ALLOWED_REGISTRIES = [
   "registry.access.redhat.com",
   "registry.redhat.io",
   "quay.io",
+  "docker.io",
 ];
 
 /**

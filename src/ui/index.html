@@ -80,6 +80,8 @@
   <!-- Metrics footer (hidden until a session is active) -->
   <footer id="metrics-bar" class="metrics-bar hidden">
     <div class="metrics-inner">
+      <span class="metrics-cell" id="m-pattern" title="Pattern status">--</span>
+      <span class="metrics-cell metrics-workspace" id="m-workspace" title="Click to copy workspace path">--</span>
       <span class="metrics-cell" id="m-tokens-in" title="Input tokens">IN: --</span>
       <span class="metrics-cell" id="m-tokens-out" title="Output tokens">OUT: --</span>
       <span class="metrics-cell" id="m-api-calls" title="API calls">API: --</span>
@@ -142,12 +144,12 @@
 
   <!-- Onboarding / Welcome -->
   <template id="tpl-onboarding">
-    <div id="onboarding-body" style="padding:1rem"></div>
+    <div id="onboarding-body"></div>
   </template>
 
   <!-- MCP Server Editor -->
   <template id="tpl-mcp-editor">
-    <div id="mcp-editor-body" style="padding:1rem"></div>
+    <div id="mcp-editor-body"></div>
     <div data-dialog-footer>
       <button id="mcp-editor-cancel" class="team-btn secondary">Cancel</button>
       <button id="mcp-editor-save" class="team-btn primary">Save</button>
@@ -156,12 +158,12 @@
 
   <!-- Session Launcher -->
   <template id="tpl-session-launcher">
-    <div id="session-launcher-body" style="padding:1rem"></div>
+    <div id="session-launcher-body"></div>
   </template>
 
   <!-- Model Setup -->
   <template id="tpl-model-setup">
-    <div id="model-dialog-body" style="max-height:70vh;overflow-y:auto;padding:1rem"></div>
+    <div id="model-dialog-body"></div>
     <div data-dialog-footer>
       <button id="model-dialog-close" class="team-btn secondary">Close</button>
     </div>
@@ -169,7 +171,7 @@
 
   <!-- Pattern Manager -->
   <template id="tpl-pattern-manager">
-    <div id="pattern-manager-body" style="max-height:70vh;overflow-y:auto;padding:1rem"></div>
+    <div id="pattern-manager-body"></div>
     <div data-dialog-footer>
       <button id="pattern-manager-close" class="team-btn secondary">Close</button>
       <button id="pattern-manager-upload" class="team-btn primary">Upload Pattern</button>
@@ -178,7 +180,7 @@
 
   <!-- Federation Editor -->
   <template id="tpl-federation-editor">
-    <div id="federation-editor-body" style="max-height:70vh;overflow-y:auto;padding:1rem"></div>
+    <div id="federation-editor-body"></div>
     <div data-dialog-footer>
       <button id="federation-cancel" class="team-btn secondary">Cancel</button>
       <button id="federation-save" class="team-btn primary">Save</button>
@@ -187,7 +189,7 @@
 
   <!-- Pattern Editor -->
   <template id="tpl-pattern-editor">
-    <div id="pattern-editor-body" style="height:70vh"></div>
+    <div id="pattern-editor-body" class="pattern-editor-body"></div>
     <div data-dialog-footer>
       <button id="pattern-editor-cancel" class="team-btn secondary">Cancel</button>
       <button id="pattern-editor-save" class="team-btn primary">Save Pattern</button>

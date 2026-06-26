@@ -196,7 +196,11 @@ export async function renderEmptyState() {
   _ensureSkeleton();
 
   const modelStore = document.getElementById('models');
-  const modelCount = modelStore?.getAvailable()?.length ?? 0;
+  let modelCount = modelStore?.getAvailable()?.length ?? 0;
+  if (modelCount === 0) {
+    await modelStore?.refresh();
+    modelCount = modelStore?.getAvailable()?.length ?? 0;
+  }
   const hasModels = modelCount > 0;
 
   const configStore = document.getElementById('config');
@@ -238,16 +242,21 @@ export async function renderEmptyState() {
     hasTeams);
 
   let hasFederation = false;
+  let federationAvailable = false;
   if (hasTeams) {
     try {
       const fedResp = await fetch('/api/activitypub/config').catch(() => null);
-      if (fedResp?.ok) { const d = await fedResp.json(); hasFederation = !!d.enabled; }
+      if (fedResp?.ok) { const d = await fedResp.json(); hasFederation = !!d.enabled; federationAvailable = !!d.domain; }
     } catch { /* ignore */ }
   }
-  _updateStep('federation', hasFederation,
-    hasFederation ? 'Federation enabled' : 'Federation (optional)',
-    hasFederation ? 'Manage' : 'Set Up',
-    hasTeams);
+  if (federationAvailable) {
+    _updateStep('federation', hasFederation,
+      hasFederation ? 'Federation enabled' : 'Federation (optional)',
+      hasFederation ? 'Manage' : 'Set Up',
+      hasTeams);
+  } else if (_stepRefs?.federation) {
+    _stepRefs.federation.row.style.display = 'none';
+  }
 
   _updateStep('launch', false, 'Launch a session', 'Launch', hasTeams && hasModels);
 
@@ -303,7 +312,6 @@ export function _renderOnboardingContent(dlg, body) {
         h('div', { style: 'display:flex;gap:0.4rem' }, solidIssuerInput, solidLoginBtn),
         h('p', { class: 'field-hint' }, 'Authenticate via a Solid OIDC identity provider. Your config syncs to your Pod.')
       ),
-      h('div', { class: 'onboarding-divider' }, h('span', null, 'or')),
       h('div', { class: 'onboarding-option' },
         h('h4', null, 'Continue with Email'),
         h('div', { style: 'display:flex;gap:0.4rem' }, emailInput, emailSaveBtn),

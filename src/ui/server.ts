@@ -285,6 +285,16 @@ export async function startUiServer(
     }
   }
 
+  // Auto-detect local AI providers (cached for all subsequent requests)
+  let _autoDetect: typeof import("../auth/model_autodetect.ts") | null = null;
+  try {
+    _autoDetect = await import("../auth/model_autodetect.ts");
+    const detected = _autoDetect.detectModels();
+    if (detected.length > 0) {
+      console.error(`[porter] Auto-detected models: ${detected.map(m => `${m.display_name} (${m.provider_type})`).join(", ")}`);
+    }
+  } catch { /* model autodetect not available */ }
+
   if (singleUser) {
     console.error("[porter] Running in single-user mode (OIDC disabled, router handles auth)");
   } else if (oidcConfig) {
@@ -349,6 +359,7 @@ export async function startUiServer(
   async function injectCredentials(config: Record<string, unknown>, userId: string): Promise<void> {
     const { ModelStore } = await import("../auth/model_store.ts");
     const modelStore = new ModelStore();
+    const autoDetected = _autoDetect?.detectModels() ?? [];
 
     const modelIds = new Set<string>();
     if (config.model) modelIds.add(config.model as string);
@@ -360,15 +371,16 @@ export async function startUiServer(
     for (const modelId of modelIds) {
       const modelConfig = await modelStore.resolve(userId, modelId);
       const resolved = await credentialStore.resolve(userId, modelId);
+      const autoModel = autoDetected.find(m => m.id === modelId);
 
-      if (!modelConfig && !resolved) continue;
+      if (!modelConfig && !resolved && !autoModel) continue;
 
       const providerConfig: Record<string, unknown> = {
-        type: modelConfig?.provider_type ?? "openai_compat",
-        base_url: resolved?.base_url ?? modelConfig?.base_url ?? "",
+        type: modelConfig?.provider_type ?? autoModel?.provider_type ?? "openai_compat",
+        base_url: resolved?.base_url ?? modelConfig?.base_url ?? autoModel?.base_url ?? "",
         api_key: resolved?.api_key,
-        api_key_env: modelConfig?.api_key_env,
-        auth: modelConfig?.auth ?? "bearer",
+        api_key_env: modelConfig?.api_key_env ?? autoModel?.api_key_env,
+        auth: modelConfig?.auth ?? autoModel?.auth ?? "bearer",
         chat_endpoint: modelConfig?.chat_endpoint,
         models: [modelId],
       };
@@ -383,6 +395,9 @@ export async function startUiServer(
 
     if (providers.length > 0) {
       config.providers = providers;
+      console.error(`[porter] injectCredentials: ${providers.length} provider(s) — ${providers.map(p => `${p.type}@${p.base_url}`).join(', ')}`);
+    } else {
+      console.error(`[porter] injectCredentials: no providers resolved for models: ${[...modelIds].join(', ')}`);
     }
   }
 
@@ -1274,7 +1289,8 @@ export async function startUiServer(
       try {
         const { ModelStore: MS } = await import("../auth/model_store.ts");
         const ms = new MS();
-        const models = await ms.list(userId);
+        const userModels = await ms.list(userId);
+        const models = _autoDetect ? _autoDetect.mergeWithDetected(userModels, _autoDetect.detectModels()) : userModels;
         return new Response(JSON.stringify({ models }), {
           headers: { "Content-Type": "application/json" },
         });
@@ -1369,7 +1385,7 @@ export async function startUiServer(
       try {
         const { ModelStore: MS } = await import("../auth/model_store.ts");
         const ms = new MS();
-        const userModels = await ms.list(userId);
+        const userModels = _autoDetect ? _autoDetect.mergeWithDetected(await ms.list(userId), _autoDetect.detectModels()) : await ms.list(userId);
         const models = userModels.map(m => ({
           model_id: m.id,
           base_url: m.base_url,
@@ -1412,6 +1428,89 @@ export async function startUiServer(
       return new Response(JSON.stringify(session.porter.metrics.getMetrics()), {
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // --- Workspace sync endpoint ---
+    const syncMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/sync-workspace$/);
+    if (syncMatch && req.method === "POST") {
+      const sessionName = decodeURIComponent(syncMatch[1]);
+      if (!options?.sessionManager) {
+        return new Response(JSON.stringify({ error: "Session management not available" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const ownerErr = await checkSessionOwnership(req, sessionName, options.sessionManager);
+      if (ownerErr) return ownerErr;
+      const session = options.sessionManager.getSession(sessionName);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Session not found" }), {
+          status: 404, headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const body = await req.json();
+        const destination = body.destination as string;
+        if (!destination) {
+          return new Response(JSON.stringify({ error: "destination is required" }), {
+            status: 400, headers: { "Content-Type": "application/json" },
+          });
+        }
+        // deno-lint-ignore no-explicit-any
+        const srcDir = (session.porter as any).metrics.getMetrics().workingDir as string | undefined;
+        if (!srcDir) {
+          return new Response(JSON.stringify({ error: "No workspace directory" }), {
+            status: 400, headers: { "Content-Type": "application/json" },
+          });
+        }
+        const { copy } = await import("@std/fs/copy");
+        await copy(srcDir, destination, { overwrite: true });
+        let fileCount = 0;
+        for await (const entry of Deno.readDir(destination)) {
+          if (entry.isFile) fileCount++;
+        }
+        return new Response(JSON.stringify({ ok: true, files: fileCount, source: srcDir, destination }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // --- Open workspace in file manager ---
+    const openWsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/open-workspace$/);
+    if (openWsMatch && req.method === "POST") {
+      const sessionName = decodeURIComponent(openWsMatch[1]);
+      if (!options?.sessionManager) {
+        return new Response(JSON.stringify({ error: "Session management not available" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const session = options.sessionManager.getSession(sessionName);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Session not found" }), {
+          status: 404, headers: { "Content-Type": "application/json" },
+        });
+      }
+      // deno-lint-ignore no-explicit-any
+      const dir = (session.porter as any).metrics.getMetrics().workingDir as string | undefined;
+      if (!dir) {
+        return new Response(JSON.stringify({ error: "No workspace directory" }), {
+          status: 400, headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const cmd = new Deno.Command("xdg-open", { args: [dir], stdout: "null", stderr: "null" });
+        cmd.spawn();
+        return new Response(JSON.stringify({ ok: true, dir }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch {
+        return new Response(JSON.stringify({ error: "Could not open folder" }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
     }
 
     // --- Session memory graph export/import ---
@@ -1591,6 +1690,8 @@ export async function startUiServer(
         channels: body.channels || body.subscribe || [],
         mcp_tools: body.mcp_tools || body.mcpTools || [],
         max_tokens: body.max_tokens || body.maxTokens || 8192,
+        max_turns: body.max_turns || body.maxTurns || undefined,
+        max_context_tokens: body.max_context_tokens || body.maxContextTokens || undefined,
         reasoning: body.reasoning || false,
         _context: body._context,
         visibility: body.visibility || "private",
@@ -1776,6 +1877,12 @@ export async function startUiServer(
     // --- ActivityPub config API (always available, even when AP is not enabled) ---
 
     if (pathname === "/api/activitypub/config" && req.method === "GET") {
+      if (!apRouteHandler) {
+        return new Response(JSON.stringify({
+          enabled: false, domain: "", approval_mode: "allowlist",
+          allowlist: [], public_summaries: false, max_sessions_per_follower: 1,
+        }), { headers: { "Content-Type": "application/json" } });
+      }
       const home = Deno.env.get("HOME") ?? Deno.cwd();
       try {
         const text = await Deno.readTextFile(`${home}/.porter/activitypub/config.json`);
@@ -1901,9 +2008,10 @@ export async function startUiServer(
       try {
         const body = await req.json();
         const now = new Date().toISOString();
+        const config = { ...body.config, session: body.config.session || body.name };
         await userStore.saveTeam(userId, {
           name: body.name,
-          config: body.config,
+          config,
           created_at: now,
           updated_at: now,
         });

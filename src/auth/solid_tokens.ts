@@ -56,11 +56,11 @@ export async function getPorterAccessToken(
   podUrl: string,
   domain: string,
 ): Promise<string> {
-  // Normalise the Pod URL for discovery
-  const base = podUrl.replace(/\/+$/, "");
+  // Discover against the Pod server origin, not the user's storage path
+  const origin = new URL(podUrl).origin;
 
   // 1. Discover issuer to use as cache key
-  const asMeta = await discoverOAuthAS(base);
+  const asMeta = await discoverOAuthAS(origin);
   const issuer = asMeta.issuer;
 
   // 2. Check cache

@@ -41,6 +41,10 @@ export async function cmdStart(args: string[]): Promise<void> {
     config.sandbox = { enabled: true };
   }
 
+  if (args.includes("--split-panes")) {
+    config.tmux_layout = "panes";
+  }
+
   const { findAvailablePort, registerSession, unregisterSession } = await import("../orchestration/registry.ts");
   const configBusPort = (config as unknown as Record<string, unknown>).bus_port as number | undefined;
   const busPort = parseFlag(args, "--bus-port")

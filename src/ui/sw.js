@@ -61,6 +61,7 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.method !== 'GET') return;
   if (event.request.headers.get('upgrade') === 'websocket') return;
+  if (!url.protocol.startsWith('http')) return;
 
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {
     event.respondWith(

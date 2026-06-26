@@ -45,10 +45,13 @@ export function showAgentLibrary() {
         }
       } catch { /* ignore */ }
 
-      const newAgentBtn = h('button', { class: 'team-btn primary', id: 'lib-new-agent' }, '+ New Agent');
-
       const selected = new Set();
-      const buildTeamBtn = h('button', { class: 'team-btn primary', id: 'lib-build-team', disabled: true, style: 'margin-left:0.5rem' }, 'Build Team (0)');
+      const buildTeamBtn = h('button', { class: 'dialog-header-add', id: 'lib-build-team', disabled: true }, 'Build Team (0)');
+
+      // Header buttons
+      const importBtn2 = h('button', { class: 'dialog-header-add' }, 'Import');
+      const newAgentBtn = h('button', { class: 'dialog-header-add' }, '+ New');
+      dlg.headerExtra.replaceChildren(buildTeamBtn, importBtn2, newAgentBtn);
 
       let listContent;
       if (agents.length === 0) {
@@ -79,13 +82,8 @@ export function showAgentLibrary() {
         });
       }
 
-      const importBtn2 = h('button', { class: 'team-btn', id: 'lib-import' }, 'Import');
-
       replaceContent(body,
-        h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem' },
-          h('p', { style: 'color:var(--text-dim);margin:0' }, `${agents.length} saved agent${agents.length !== 1 ? 's' : ''}`),
-          h('div', { style: 'display:flex;gap:0.5rem' }, buildTeamBtn, importBtn2, newAgentBtn)
-        ),
+        h('p', { style: 'color:var(--text-dim);margin:0 0 0.75rem' }, `${agents.length} saved agent${agents.length !== 1 ? 's' : ''}`),
         h('div', { class: 'saved-agent-list' }, ...listContent)
       );
 
@@ -125,6 +123,8 @@ export function showAgentLibrary() {
               tools: agent.tools || [],
               channels: agent.channels || [],
               maxTokens: agent.max_tokens || 8192,
+              maxTurns: agent.max_turns || undefined,
+              maxContextTokens: agent.max_context_tokens || undefined,
               reasoning: agent.reasoning || false,
               mcpTools: agent.mcp_tools || [],
             }, null, true);

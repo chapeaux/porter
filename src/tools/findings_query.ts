@@ -1,5 +1,6 @@
 import type { ToolEntry } from "./mod.ts";
 import { getGraphStore } from "../graph/store.ts";
+import { COLLECTIONS, embedAndSearch } from "../vector/mod.ts";
 
 const entry: ToolEntry = {
   definition: {
@@ -9,6 +10,11 @@ const entry: ToolEntry = {
     input_schema: {
       type: "object" as const,
       properties: {
+        query: {
+          type: "string",
+          description:
+            "Semantic search query. When provided, returns findings ranked by relevance instead of confidence. Requires a vector store.",
+        },
         domain: {
           type: "string",
           description:
@@ -25,8 +31,25 @@ const entry: ToolEntry = {
   },
 
   async execute(params) {
+    const query = params.query as string | undefined;
     const domain = params.domain as string | undefined;
     const minConfidence = params.min_confidence as number | undefined;
+
+    // Semantic search path — when query is provided and vector store is available
+    if (query) {
+      const filter = domain ? { domain } : undefined;
+      const results = await embedAndSearch(COLLECTIONS.findings, query, filter, 10);
+      if (results.length > 0) {
+        const lines = results.map(
+          (r) =>
+            `- [${r.payload.domain}] (score: ${r.score.toFixed(3)}): ${r.payload.finding} about ${r.payload.about}`,
+        );
+        return {
+          content: `${results.length} finding(s) by relevance:\n\n${lines.join("\n")}`,
+        };
+      }
+      // Fall through to SPARQL if vector search returned nothing
+    }
 
     const store = getGraphStore();
     if (!store) {

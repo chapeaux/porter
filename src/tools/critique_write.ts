@@ -1,6 +1,7 @@
 import type { ToolEntry } from "./mod.ts";
 import { getGraphStore } from "../graph/store.ts";
 import { GRAPHS, PORTER, PROV, RDF } from "../graph/vocabulary.ts";
+import { COLLECTIONS, embedAndUpsert } from "../vector/mod.ts";
 
 const entry: ToolEntry = {
   definition: {
@@ -60,6 +61,10 @@ const entry: ToolEntry = {
         new Date().toISOString(),
         g,
       );
+
+      await embedAndUpsert(COLLECTIONS.critiques, id, `${issue}: ${suggestion}`, {
+        issue, suggestion, round, discoveredBy: agentName,
+      });
 
       return {
         content:

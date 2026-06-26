@@ -334,13 +334,6 @@ export class ConfigStore extends CPXStore {
           ))
         : undefined,
       agents: this.state.agents.map(a => {
-        // If agent came from the library, serialize as a reference
-        if (a._isRef || a._fromLibrary) {
-          const ref = { ref: a.ref || a.name, name: a.name, role: a.role };
-          if (a.model) ref.model = a.model;
-          return ref;
-        }
-        // Otherwise serialize as full inline agent
         const agent = {
           name: a.name,
           role: a.role,
@@ -352,6 +345,10 @@ export class ConfigStore extends CPXStore {
           max_turns: a.maxTurns || undefined,
           max_context_tokens: a.maxContextTokens || undefined,
         };
+        // Preserve ref for launch-time resolution
+        if (a._isRef || a._fromLibrary) {
+          agent.ref = a.ref || a.name;
+        }
         if (a.reasoning) agent.reasoning = true;
         if (a.mcpTools?.length) agent.mcp_tools = a.mcpTools;
         return agent;
@@ -403,7 +400,7 @@ export class ConfigStore extends CPXStore {
             };
           }
           // Full inline agent (existing format)
-          return {
+          const parsed = {
             name: a.name,
             role: a.role || 'worker',
             model: a.model || '',
@@ -417,6 +414,11 @@ export class ConfigStore extends CPXStore {
             reasoning: a.reasoning || false,
             mcpTools: a.mcp_tools || [],
           };
+          if (a.ref) {
+            parsed.ref = a.ref;
+            parsed._fromLibrary = true;
+          }
+          return parsed;
         }),
         step: 2,
         errors: {},

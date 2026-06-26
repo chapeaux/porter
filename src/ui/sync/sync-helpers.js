@@ -458,6 +458,8 @@ export function agentToTurtle(agent, uri) {
   const mcpTools = agent.mcpTools || agent.mcp_tools || [];
   const model = agent.model || '';
   const maxTokens = agent.maxTokens || agent.max_tokens || 0;
+  const maxTurns = agent.maxTurns || agent.max_turns || 0;
+  const maxContextTokens = agent.maxContextTokens || agent.max_context_tokens || 0;
   const reasoning = agent.reasoning || false;
   const role = agent.role || 'worker';
   const visibility = agent.visibility || 'private';
@@ -488,6 +490,8 @@ export function agentToTurtle(agent, uri) {
 
   if (model) lines.push(`  porter:usesModel "${escapeTtl(model)}" ;`);
   if (maxTokens) lines.push(`  porter:maxTokens "${maxTokens}"^^xsd:integer ;`);
+  if (maxTurns) lines.push(`  porter:maxTurns "${maxTurns}"^^xsd:integer ;`);
+  if (maxContextTokens) lines.push(`  porter:maxContextTokens "${maxContextTokens}"^^xsd:integer ;`);
   if (reasoning) lines.push(`  porter:reasoning "true"^^xsd:boolean ;`);
   if (visibility !== 'private') lines.push(`  porter:visibility "${escapeTtl(visibility)}" ;`);
 

@@ -81,6 +81,33 @@ class GraphStoreProxy {
 }
 
 // ---------------------------------------------------------------------------
+// VectorStoreProxy — proxies embedding + vector ops to the main thread
+// ---------------------------------------------------------------------------
+
+class VectorStoreProxy {
+  async ensureCollection(): Promise<void> { /* main thread handles this */ }
+
+  async upsert(collection: string, points: Array<{ id: string; vector: number[]; payload: Record<string, unknown> }>): Promise<void> {
+    self.postMessage({ type: "vector_upsert", collection, points });
+  }
+
+  async search(collection: string, vector: number[], filter?: Record<string, unknown>, limit?: number): Promise<Array<{ id: string; score: number; payload: Record<string, unknown> }>> {
+    const result = await rpc({ type: "vector_search", collection, vector, filter, limit });
+    return (result as { points: Array<{ id: string; score: number; payload: Record<string, unknown> }> }).points ?? [];
+  }
+}
+
+class EmbedderProxy {
+  readonly dimensions = 0;
+  readonly name = "proxy";
+
+  async embed(texts: string[]): Promise<number[][]> {
+    const result = await rpc({ type: "embed_text", texts });
+    return (result as { vectors: number[][] }).vectors ?? [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // BusProxy — implements the MessageBus interface over postMessage
 // ---------------------------------------------------------------------------
 
@@ -210,6 +237,13 @@ self.onmessage = async (evt: MessageEvent) => {
       // Install graph store proxy so memory_write/memory_query work in isolates
       const { setGraphStore } = await import("./src/graph/store.ts");
       setGraphStore(new GraphStoreProxy() as unknown as import("./src/graph/store.ts").GraphStore);
+
+      // Install vector store proxy if main thread has vector store enabled
+      if (data.vectorEnabled) {
+        const { setVectorStore, setEmbedder } = await import("./src/vector/mod.ts");
+        setVectorStore(new VectorStoreProxy() as unknown as import("./src/vector/mod.ts").VectorStore);
+        setEmbedder(new EmbedderProxy() as unknown as import("./src/vector/mod.ts").EmbeddingProvider);
+      }
 
       // Inject session-level environment variables into tools
       const sessionEnv = data.sessionEnv as Record<string, string> | undefined;

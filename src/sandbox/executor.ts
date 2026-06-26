@@ -144,6 +144,52 @@ async function containerExec(
   };
 }
 
+// Tools that can't be installed via dnf — need binary copy from host or download
+const BINARY_COPY_TOOLS = new Set(["deno"]);
+
+const BINARY_TOOL_INSTALLERS: Record<string, (rt: ContainerRuntime, container: string) => Promise<void>> = {
+  async deno(rt, container) {
+    // Try copying from host first
+    const hostPaths = [
+      Deno.env.get("DENO_INSTALL_ROOT"),
+      `${Deno.env.get("HOME")}/.deno/bin/deno`,
+      "/usr/bin/deno",
+      "/usr/local/bin/deno",
+    ].filter(Boolean) as string[];
+
+    for (const p of hostPaths) {
+      const path = p.endsWith("/deno") ? p : `${p}/deno`;
+      try {
+        await Deno.stat(path);
+        const cp = new Deno.Command(rt, {
+          args: ["cp", path, `${container}:/usr/local/bin/deno`],
+          stdout: "piped", stderr: "piped",
+        });
+        const result = await cp.output();
+        if (result.success) {
+          console.error(`[sandbox] Installed deno from host: ${path}`);
+          return;
+        }
+      } catch { /* path doesn't exist */ }
+    }
+
+    // Fall back to downloading inside the container
+    console.error("[sandbox] Downloading deno into container...");
+    const dl = new Deno.Command(rt, {
+      args: ["exec", container, "sh", "-c",
+        "curl -fsSL https://deno.land/install.sh | sh && cp /root/.deno/bin/deno /usr/local/bin/deno"],
+      stdout: "piped", stderr: "piped",
+    });
+    const result = await dl.output();
+    if (!result.success) {
+      const stderr = new TextDecoder().decode(result.stderr);
+      console.error(`[sandbox] Warning: deno installation failed: ${stderr.slice(0, 200)}`);
+    } else {
+      console.error("[sandbox] Installed deno via download");
+    }
+  },
+};
+
 // ---------------------------------------------------------------------------
 // ContainerSandbox — full lifecycle owner
 // ---------------------------------------------------------------------------
@@ -221,8 +267,15 @@ export class ContainerSandbox implements SandboxExecutor {
 
     // Install baseline tools (git is required) + any configured runtime tools
     const packages = new Set(["git"]);
+    const binaryCopyTools: string[] = [];
     for (const tool of this._runtimeTools) {
-      if (typeof tool === "string") packages.add(tool);
+      if (typeof tool === "string") {
+        if (BINARY_COPY_TOOLS.has(tool)) {
+          binaryCopyTools.push(tool);
+        } else {
+          packages.add(tool);
+        }
+      }
     }
     const installCmd = new Deno.Command(rt, {
       args: ["exec", this._containerName, "dnf", "install", "-y", "--setopt=install_weak_deps=False", ...packages],
@@ -233,6 +286,20 @@ export class ContainerSandbox implements SandboxExecutor {
     if (!installResult.success) {
       const stderr = new TextDecoder().decode(installResult.stderr);
       console.error(`[sandbox] Warning: tool installation failed: ${stderr.slice(0, 200)}`);
+    }
+
+    // Install tools that need binary copy from host or download
+    for (const tool of binaryCopyTools) {
+      await this._installBinaryTool(rt, tool);
+    }
+  }
+
+  private async _installBinaryTool(rt: ContainerRuntime, tool: string): Promise<void> {
+    const installer = BINARY_TOOL_INSTALLERS[tool];
+    if (installer) {
+      await installer(rt, this._containerName);
+    } else {
+      console.error(`[sandbox] Warning: no installer for binary tool '${tool}'`);
     }
   }
 

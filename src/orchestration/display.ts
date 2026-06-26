@@ -101,6 +101,7 @@ export class DisplayManager {
         break;
 
       case "usage":
+      case "turn_complete":
         return;
 
       case "done":

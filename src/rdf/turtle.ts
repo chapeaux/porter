@@ -135,6 +135,8 @@ export function agentToTurtle(agent: SavedAgent, uri: string): string {
   }
   if (agent.model) quads.push(litQuad(uri, `${PORTER_NS}usesModel`, agent.model));
   if (agent.max_tokens) quads.push(litQuad(uri, `${PORTER_NS}maxTokens`, agent.max_tokens));
+  if (agent.max_turns) quads.push(litQuad(uri, `${PORTER_NS}maxTurns`, agent.max_turns));
+  if (agent.max_context_tokens) quads.push(litQuad(uri, `${PORTER_NS}maxContextTokens`, agent.max_context_tokens));
   if (agent.reasoning) quads.push(litQuad(uri, `${PORTER_NS}reasoning`, true));
   if (agent.visibility && agent.visibility !== "private") {
     quads.push(litQuad(uri, `${PORTER_NS}visibility`, agent.visibility));

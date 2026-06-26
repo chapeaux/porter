@@ -141,6 +141,7 @@ export class VertexClaudeProvider implements ModelProvider {
     const url = this.tier
       ? `${this.baseUrl}/${this.tier}/models/${params.model}:${endpoint}`
       : `${this.baseUrl}/models/${params.model}:${endpoint}`;
+    console.error(`[vertex] POST ${url}`);
     const token = await this.getAuthToken();
 
     const body: Record<string, unknown> = {

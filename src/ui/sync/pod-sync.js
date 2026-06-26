@@ -566,7 +566,8 @@ export class PorterPodSync {
         for (const model of data.models) {
           const id = model.id || model.model_id;
           if (!id) continue;
-          const url = `${this._podRoot}porter/models/${encodeURIComponent(id)}.ttl`;
+          const safeId = id.replace(/\//g, '--');
+          const url = `${this._podRoot}porter/models/${encodeURIComponent(safeId)}.ttl`;
           const turtle = modelToTurtle(model, url);
           await this._fetch(url, {
             method: 'PUT',

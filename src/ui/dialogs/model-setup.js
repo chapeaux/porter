@@ -26,9 +26,14 @@ export function renderModelSetup(useOverlay = false) {
         .then(data => {
           const models = data.models || [];
 
-          const editor = h('cpx-model-config', { id: 'model-config-editor' });
+          const editor = h('cpx-model-config', { id: 'model-config-editor', 'hide-header': '' });
           replaceContent(body, editor);
           editor.models = models;
+
+          // Add button in dialog header
+          const addBtn = h('button', { class: 'dialog-header-add' }, '+ Add Model');
+          addBtn.addEventListener('click', () => editor.addModel());
+          dlg.headerExtra.replaceChildren(addBtn);
 
           // Handle model changes -- save to server
           editor.addEventListener('models-change', async (e) => {

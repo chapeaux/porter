@@ -47,7 +47,7 @@ export function renderMcpList(container, servers) {
       cardChildren.push(remoteBtn);
     }
 
-    return h('div', { class: `mcp-server-card ${compatible ? '' : 'context-incompatible'}` }, ...cardChildren);
+    return h('div', { class: `dialog-card ${compatible ? '' : 'context-incompatible'}` }, ...cardChildren);
   });
 
   replaceContent(list, ...cards);
@@ -242,6 +242,9 @@ export function openMcpEditorDialog(editName = null, useOverlay = false) {
         configStore.setState({ mcpServers: servers });
         dlg.close();
         updateSetupBar();
+        if (document.querySelector('.empty-state-prompt')) {
+          import('../features/empty-state.js').then(m => m.renderEmptyState());
+        }
         syncMcpToPod();
       };
 
@@ -273,14 +276,18 @@ export function showMcpManageDialog() {
       const serverCards = entries.map(([name, cfg]) => {
         const editBtn = h('button', { class: 'mcp-action-btn mcp-manage-edit', 'data-name': name, style: 'margin-left:auto' }, 'Edit');
         const removeBtn = h('button', { class: 'mcp-action-btn mcp-manage-remove', 'data-name': name, style: 'background:var(--status-error)' }, 'Remove');
-        return h('div', { class: 'mcp-server-card', style: 'margin-bottom:0.5rem' },
+        return h('div', { class: 'dialog-card', style: 'margin-bottom:0.5rem' },
           formatMcpSummary(name, cfg),
           editBtn,
           removeBtn
         );
       });
-      const addBtn = h('button', { class: 'team-btn primary', id: 'mcp-manage-add', style: 'margin-top:0.5rem' }, '+ Add Server');
-      replaceContent(body, ...serverCards, addBtn);
+      replaceContent(body, ...serverCards);
+
+      // + Add Server in dialog header
+      const addBtn = h('button', { class: 'dialog-header-add' }, '+ Add Server');
+      addBtn.addEventListener('click', () => { dlg.close(); openMcpEditorDialog(); });
+      dlg.headerExtra.replaceChildren(addBtn);
 
       saveBtn.style.display = 'none';
       cancelBtn.textContent = 'Close';
@@ -294,13 +301,15 @@ export function showMcpManageDialog() {
           const s = { ...configStore.state.mcpServers };
           delete s[btn.dataset.name];
           configStore.setState({ mcpServers: s });
-          btn.closest('.mcp-server-card').remove();
+          btn.closest('.dialog-card').remove();
           updateSetupBar();
+          if (document.querySelector('.empty-state-prompt')) {
+            import('../features/empty-state.js').then(m => m.renderEmptyState());
+          }
           syncMcpToPod();
           if (Object.keys(s).length === 0) dlg.close();
         });
       });
-      body.querySelector('#mcp-manage-add')?.addEventListener('click', () => { dlg.close(); openMcpEditorDialog(); });
     },
   });
 }

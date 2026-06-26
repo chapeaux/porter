@@ -432,25 +432,25 @@ function initEditor(dlg, pattern, readOnly) {
 
     // Header: pattern properties (always visible)
     replaceContent(headerPanel,
-      h('h4', { style: 'color:var(--accent-gold);margin:0 0 0.4rem;font-size:0.85rem' }, 'Pattern Properties'),
-      h('div', { style: 'display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-start' },
-        h('div', { style: 'flex:1;min-width:120px' },
-          h('label', { style: 'font-size:0.75rem;color:var(--text-dim)' }, 'Name'),
+      h('h4', 'Pattern Properties'),
+      h('div', { class: 'pattern-editor-properties'},
+        h('div', { class: 'pattern-editor-property' },
+          h('label', { for: 'pattern-name' }, 'Name'),
           readOnly
             ? h('div', { style: 'font-size:0.85rem' }, patternProps.name)
-            : createInput('text', patternProps.name, v => { patternProps.name = v; patternProps.id = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }),
+            : createInput('text', patternProps.name, v => { patternProps.name = v; patternProps.id = v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }, 'pattern-name'),
         ),
-        h('div', { style: 'flex:2;min-width:200px' },
-          h('label', { style: 'font-size:0.75rem;color:var(--text-dim)' }, 'Description'),
+        h('div', { class: 'pattern-editor-property' },
+          h('label', { for: 'pattern-description' }, 'Description'),
           readOnly
             ? h('div', { style: 'font-size:0.85rem' }, patternProps.description)
-            : createInput('text', patternProps.description, v => { patternProps.description = v; }),
+            : createInput('text', patternProps.description, v => { patternProps.description = v; }, 'pattern-description'),
         ),
-        h('div', { style: 'flex:0 0 4rem' },
-          h('label', { style: 'font-size:0.75rem;color:var(--text-dim)' }, 'Rounds'),
+        h('div', { class: 'pattern-editor-property' },
+          h('label', { for: 'pattern-rounds' }, 'Rounds'),
           readOnly
             ? h('div', { style: 'font-size:0.85rem' }, String(patternProps.max_rounds || '--'))
-            : createInput('number', patternProps.max_rounds, v => { patternProps.max_rounds = v ? parseInt(v) : ''; }),
+            : createInput('number', patternProps.max_rounds, v => { patternProps.max_rounds = v ? parseInt(v) : ''; }, 'pattern-rounds'),
         ),
       ),
     );
@@ -510,8 +510,8 @@ function initEditor(dlg, pattern, readOnly) {
   render();
 }
 
-function createInput(type, value, onChange) {
-  const input = h('input', { type, value: value ?? '' });
+function createInput(type, value, onChange, id) {
+  const input = h('input', { type, value: value ?? '', id });
   input.addEventListener('input', () => onChange(input.value));
   return input;
 }

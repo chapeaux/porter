@@ -16,16 +16,16 @@
  */
 
 const HELP = `
-Pullman Porter -- pure-Deno tmux agent orchestrator
-
-     _______________
-    /               \\
-   /                 \\
-  |___________________|
-  |___________________|
+Pullman Porter -- Deno agent orchestrator
+      _____________     
+     /             \\    
+    /               \\   
+   / PULLMAN  PORTER \\  
+  |___________________| 
+  |___________________| 
 
 USAGE:
-  deno run --allow-all cli.ts <command> [options]
+  porter <command> [options]
 
 COMMANDS:
   init        Create a porter.json config in the current directory

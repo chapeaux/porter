@@ -108,6 +108,7 @@ export function renderTeamStep() {
 
   if (stepsEl) stepsEl.style.display = '';
   dlg.dialogTitle = 'Team Builder';
+  dlg.headerExtra.replaceChildren();
 
   // Update step indicators
   stepsEl?.querySelectorAll('.step').forEach(el => {
@@ -171,20 +172,18 @@ function handleImportFile(file, errorEl) {
 }
 
 export function renderTeamList(body) {
-  const createNewBtn = h('button', { id: 'team-create-new', class: 'team-btn primary' }, '+ New Team');
   const listItems = h('div', { id: 'team-list-items', class: 'team-list-items' },
     h('p', { class: 'import-hint' }, 'Loading teams...')
   );
 
   replaceContent(body,
-    h('div', { class: 'team-list-view' },
-      h('div', { class: 'team-list-header' },
-        h('p', null, 'Your saved team configurations.'),
-        createNewBtn
-      ),
-      listItems
-    )
+    h('div', { class: 'team-list-view' }, listItems)
   );
+
+  // "+ New Team" in dialog header
+  const dlg = getDlg();
+  const createNewBtn = h('button', { class: 'dialog-header-add' }, '+ New Team');
+  dlg.headerExtra.replaceChildren(createNewBtn);
 
   createNewBtn.addEventListener('click', () => {
     const configStore = document.getElementById('config');
@@ -223,12 +222,12 @@ export function renderTeamList(body) {
       if (refCount > 0) metaParts += ` (${refCount} ref${refCount !== 1 ? 's' : ''})`;
       metaParts += `${model ? ' · ' + model : ''}${updated ? ' · ' + updated : ''}`;
 
-      return h('div', { class: `team-list-card ${compatible ? '' : 'context-incompatible'}`, 'data-team': t.name },
-        h('div', { class: 'team-list-info' },
-          h('div', { class: 'team-list-name' }, ...nameChildren),
-          h('div', { class: 'team-list-meta' }, metaParts)
+      return h('div', { class: `dialog-card ${compatible ? '' : 'context-incompatible'}`, 'data-team': t.name },
+        h('div', { class: 'dialog-card-header' },
+          h('strong', null, ...nameChildren),
         ),
-        h('div', { class: 'team-list-actions' },
+        h('div', { class: 'dialog-card-meta' }, metaParts),
+        h('div', { class: 'dialog-card-actions' },
           h('button', { class: 'team-list-action team-action-launch', 'data-team': t.name, title: 'Launch session' }, 'Launch'),
           h('button', { class: 'team-list-action team-action-edit', 'data-team': t.name, title: 'Edit team' }, 'Edit'),
           h('button', { class: 'team-list-action team-action-json', 'data-team': t.name, title: 'View JSON' }, 'JSON'),
@@ -243,7 +242,7 @@ export function renderTeamList(body) {
     list.querySelectorAll('.team-action-launch').forEach(btn => {
       btn.addEventListener('click', async () => {
         const name = btn.dataset.team;
-        const card = btn.closest('.team-list-card');
+        const card = btn.closest('.dialog-card');
 
         // Show inline session name form
         const existing = card.querySelector('.launch-session-form');
@@ -251,17 +250,25 @@ export function renderTeamList(body) {
 
         const defaultSessionName = generateSessionName(name);
         const input = h('input', { type: 'text', class: 'launch-session-input', value: defaultSessionName, style: 'flex:1;padding:0.25rem 0.5rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary)' });
+        const wdInput = h('input', { type: 'text', class: 'launch-session-input', placeholder: 'Default (~/.porter/workspaces/)', style: 'flex:1;padding:0.25rem 0.5rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary)' });
         const confirmBtn = h('button', { class: 'team-list-action launch-confirm-btn' }, 'Go');
-        const form = h('div', { class: 'launch-session-form', style: 'display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;padding:0.5rem 0' },
-          h('label', { style: 'font-size:0.85rem;white-space:nowrap' }, 'Session Name:'),
-          input,
-          confirmBtn
+        const form = h('div', { class: 'launch-session-form', style: 'display:flex;flex-direction:column;gap:0.4rem;margin-top:0.5rem;padding:0.5rem 0' },
+          h('div', { style: 'display:flex;gap:0.5rem;align-items:center' },
+            h('label', { style: 'font-size:0.85rem;white-space:nowrap;min-width:6rem' }, 'Session Name:'),
+            input,
+          ),
+          h('div', { style: 'display:flex;gap:0.5rem;align-items:center' },
+            h('label', { style: 'font-size:0.85rem;white-space:nowrap;min-width:6rem' }, 'Workspace:'),
+            wdInput,
+          ),
+          h('div', { style: 'display:flex;justify-content:flex-end' }, confirmBtn),
         );
         card.appendChild(form);
         input.select();
 
         confirmBtn.addEventListener('click', async () => {
           const sessionName = input.value.trim() || defaultSessionName;
+          const workspaceDir = wdInput.value.trim() || undefined;
           btn.textContent = 'Launching...';
           btn.disabled = true;
           form.querySelectorAll('button, input').forEach(el => { el.disabled = true; });
@@ -270,6 +277,7 @@ export function renderTeamList(body) {
             if (!resp.ok) throw new Error('Team not found');
             const team = await resp.json();
             const config = { ...team.config, session: team.config.session || name };
+            if (workspaceDir) config.working_dir = workspaceDir;
 
             // Check for unresolved agent refs
             const missingRefs = (config.agents || []).filter(a => a.ref && !a.system_prompt);
@@ -338,7 +346,7 @@ export function renderTeamList(body) {
         if (resp.ok) {
           const team = await resp.json();
           const configStore = document.getElementById('config');
-          configStore.fromJSON(team.config);
+          configStore.fromJSON({ ...team.config, session: team.config.session || team.name });
           configStore.setState({ editingSession: null });
           configStore.setStep(1);
           renderTeamStep();
@@ -365,8 +373,8 @@ export function renderTeamList(body) {
         if (!confirm(`Delete team "${name}"?`)) return;
         const resp = await fetch(`/api/teams/${encodeURIComponent(name)}`, { method: 'DELETE' });
         if (resp.ok) {
-          btn.closest('.team-list-card').remove();
-          const remaining = list.querySelectorAll('.team-list-card');
+          btn.closest('.dialog-card').remove();
+          const remaining = list.querySelectorAll('.dialog-card');
           if (remaining.length === 0) {
             replaceContent(list, h('p', { class: 'import-hint' }, 'No saved teams yet. Click "+ New Team" to create one.'));
           }
@@ -422,7 +430,7 @@ export function renderStep1(body, s) {
   envTextarea.value = Object.entries(configState.sessionEnv || {}).map(([k,v]) => k+'='+v).join('\n');
 
   // Runtime tool checkboxes
-  const runtimeToolLabels = ['python3', 'nodejs', 'curl', 'wget', 'jq'].map(t => {
+  const runtimeToolLabels = ['deno', 'python3', 'nodejs', 'curl', 'wget', 'jq'].map(t => {
     const isChecked = (configState.runtimeTools || []).includes(t);
     return h('label', { style: 'display:flex;align-items:center;gap:0.25rem;cursor:pointer;padding:0.25rem 0.5rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary)' },
       h('input', { type: 'checkbox', class: 'runtime-tool-cb', value: t, checked: isChecked }),
@@ -668,7 +676,7 @@ export async function renderStep2(body, s) {
   renderPatternLayout(body, bodyChildren, s, pattern);
 }
 
-function renderAgentCard(a, i) {
+function renderAgentCard(a, i, patternChannels) {
   const removeBtn = h('button', null, 'Remove');
   removeBtn.addEventListener('click', () => window.removeAgentAt(i));
 
@@ -688,10 +696,19 @@ function renderAgentCard(a, i) {
   // Resolved ref — show with indicator
   const nameText = a._isRef ? `${a.name} (ref)` : a.name;
 
+  // Show pattern-assigned channels if available, otherwise agent's own channels
+  const channels = patternChannels || a.channels || [];
+  const channelText = channels.length > 0
+    ? channels.map(ch => `#${ch}`).join(' ')
+    : 'no channels';
+  const channelStyle = patternChannels
+    ? 'font-size:0.75rem;color:var(--accent-gold);opacity:0.7'
+    : '';
+
   return h('div', { class: 'agent-preview', 'data-role': a.role },
     h('div', { class: 'agent-name' }, nameText),
     h('div', { class: 'agent-meta' }, `${a.role} · ${(a.tools || []).length} tools`),
-    h('div', { class: 'agent-meta' }, (a.channels || []).join(', ') || 'no channels'),
+    h('div', { class: 'agent-meta', style: channelStyle }, channelText),
     h('div', { class: 'agent-actions' }, editBtn, removeBtn)
   );
 }
@@ -744,7 +761,7 @@ async function renderPatternLayout(body, bodyChildren, s, patternId) {
       .map((a, i) => ({ agent: a, idx: i }))
       .filter(({ agent }) => agent.role === role.id);
 
-    const agentCards = roleAgents.map(({ agent, idx }) => renderAgentCard(agent, idx));
+    const agentCards = roleAgents.map(({ agent, idx }) => renderAgentCard(agent, idx, role.subscribe));
 
     // Requirement label
     let reqText;

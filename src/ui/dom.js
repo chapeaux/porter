@@ -15,6 +15,7 @@ export function h(tag, attrs, ...children) {
       if (v === false || v == null) continue;
       if (k === 'class' || k === 'className') el.className = v;
       else if (k === 'style' && typeof v === 'string') el.style.cssText = v;
+      else if (k === 'for' && typeof v === 'string') el.setAttribute('for', v);
       else if (k === 'checked' || k === 'disabled' || k === 'selected' || k === 'readOnly') el[k] = !!v;
       else if (k === 'value') el.value = v;
       else el.setAttribute(k, String(v));

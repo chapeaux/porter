@@ -1,6 +1,7 @@
 import type { ToolEntry } from "./mod.ts";
 import { getGraphStore } from "../graph/store.ts";
 import { observationToTriples } from "../graph/converters.ts";
+import { COLLECTIONS, embedAndUpsert } from "../vector/mod.ts";
 
 const entry: ToolEntry = {
   definition: {
@@ -55,6 +56,12 @@ const entry: ToolEntry = {
         { about, finding, discoveredBy: agentName, severity },
         store,
       );
+
+      const obsId = obsUri.split("/").pop() ?? crypto.randomUUID();
+      await embedAndUpsert(COLLECTIONS.observations, obsId, `${about}: ${finding}`, {
+        about, finding, severity, discoveredBy: agentName,
+      });
+
       return {
         content: `Observation recorded: ${obsUri}\n  about: ${about}\n  finding: ${finding}\n  severity: ${severity}`,
       };

@@ -17,6 +17,13 @@ export interface AgentMetrics {
   last_event_at: string | null;
 }
 
+export interface PatternMetrics {
+  id: string;
+  round: number;
+  maxRounds: number;
+  approved: boolean;
+}
+
 export interface SessionMetrics {
   session: string;
   started_at: string;
@@ -24,6 +31,8 @@ export interface SessionMetrics {
   total_messages: number;
   rate_limit_hits: number;
   messages_by_channel: Record<string, number>;
+  pattern?: PatternMetrics;
+  workingDir?: string;
 }
 
 function emptyAgentMetrics(): AgentMetrics {
@@ -100,6 +109,22 @@ export class MetricsCollector {
 
   recordRateLimit(): void {
     this.metrics.rate_limit_hits++;
+  }
+
+  setPattern(id: string, maxRounds: number): void {
+    this.metrics.pattern = { id, round: 0, maxRounds, approved: false };
+  }
+
+  advanceRound(): void {
+    if (this.metrics.pattern) this.metrics.pattern.round++;
+  }
+
+  setApproved(): void {
+    if (this.metrics.pattern) this.metrics.pattern.approved = true;
+  }
+
+  setWorkingDir(dir: string): void {
+    this.metrics.workingDir = dir;
   }
 
   getMetrics(): SessionMetrics {

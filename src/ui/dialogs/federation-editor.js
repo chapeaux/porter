@@ -67,11 +67,12 @@ async function loadAndRender(body, saveBtn, cancelBtn, dlg) {
   // Team cards container
   const teamsContainer = h('div');
 
-  // Publish button
-  const publishBtn = h('button', { class: 'team-btn primary', style: 'margin-top:0.75rem' }, '+ Publish Team');
+  // Publish button in dialog header
+  const publishBtn = h('button', { class: 'dialog-header-add' }, '+ Publish');
   publishBtn.addEventListener('click', () => showPublishPicker(publishBtn, teamsContainer));
+  dlg.headerExtra.replaceChildren(publishBtn);
 
-  replaceContent(body, headerRow, teamsContainer, publishBtn);
+  replaceContent(body, headerRow, teamsContainer);
 
   await renderTeamCards(teamsContainer);
 }
@@ -129,12 +130,17 @@ async function renderTeamCards(container) {
       syncPublishedTeamsToPod();
     });
 
-    return h('div', { class: 'mcp-server-card', style: 'margin-bottom:0.5rem' },
-      h('span', { class: 'mcp-name', style: 'flex:1' }, slug),
-      copyBtn,
-      h('label', { class: 'inline-check', style: 'font-size:0.8rem;margin-right:0.5rem' }, toggle, ' enabled'),
-      editBtn,
-      unpubBtn,
+    return h('div', { class: 'dialog-card' },
+      h('div', { class: 'dialog-card-header' },
+        h('strong', null, slug),
+        copyBtn,
+      ),
+      h('div', { class: 'dialog-card-meta' }, handle),
+      h('div', { class: 'dialog-card-actions' },
+        h('label', { class: 'inline-check', style: 'font-size:0.8rem' }, toggle, ' enabled'),
+        editBtn,
+        unpubBtn,
+      ),
     );
   });
 
@@ -236,7 +242,7 @@ function showServerConfigOverlay(config, onSave) {
             state.allowlist.splice(i, 1);
             renderAllowlist();
           });
-          return h('div', { class: 'mcp-server-card' },
+          return h('div', { class: 'dialog-card' },
             h('span', { style: 'flex:1' }, entry),
             removeBtn,
           );
@@ -380,7 +386,7 @@ async function renderFollowers(container, teamSlug) {
       children.push(removeBtn);
     }
 
-    return h('div', { class: 'mcp-server-card' }, ...children);
+    return h('div', { class: 'dialog-card' }, ...children);
   });
 
   replaceContent(container,

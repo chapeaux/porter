@@ -57,11 +57,12 @@ WHERE {
 }`,
       );
 
-      // Publish APPROVED signal on the deliberation channel
+      // Publish APPROVED signal on the deliberation channel + activity event
       try {
         const bus = getBus();
         const agentName = Deno.env.get("PORTER_AGENT_NAME") ?? "reflector";
         await bus.publish("deliberation", `APPROVED: ${summary}`);
+        await bus.publish("activity", JSON.stringify({ event: "approved", round, agent: agentName }), agentName);
       } catch {
         // Bus may not be available in all contexts
       }

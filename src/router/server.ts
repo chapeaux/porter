@@ -692,7 +692,7 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
               if (ownerId.startsWith("http")) {
                 try {
                   const profileUrl = ownerId.replace(/#.*$/, "");
-                  const resp = await fetch(profileUrl, { headers: { Accept: "text/turtle" } });
+                  const resp = await fetch(profileUrl, { headers: { Accept: "text/turtle" }, signal: AbortSignal.timeout(5000) });
                   if (resp.ok) {
                     const turtle = await resp.text();
                     const match = turtle.match(/(?:pim:storage|space:storage|<http:\/\/www\.w3\.org\/ns\/pim\/space#storage>)\s+<([^>]+)>/);
@@ -706,7 +706,7 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
               try {
                 const entry = podRegistry.get(ownerId);
                 if (entry?.ready) {
-                  const teamResp = await fetch(`${entry.podUrl}/api/teams/${encodeURIComponent(slug)}`);
+                  const teamResp = await fetch(`${entry.podUrl}/api/teams/${encodeURIComponent(slug)}`, { signal: AbortSignal.timeout(5000) });
                   if (teamResp.ok) {
                     const team = await teamResp.json();
                     const { UserStore } = await import("../auth/user_store.ts");

@@ -74,6 +74,8 @@ async function loadTool(name: ToolName): Promise<ToolEntry> {
       return (await import("./plan_query.ts")).default;
     case "step_update":
       return (await import("./step_update.ts")).default;
+    case "semantic_search":
+      return (await import("./semantic_search.ts")).default;
   }
 }
 

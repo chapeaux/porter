@@ -59,7 +59,7 @@ export class GraphStore {
     try {
       const shapesPath = new URL("./shapes.ttl", import.meta.url);
       const shapesText = await Deno.readTextFile(shapesPath);
-      gs.load(shapesText, GRAPHS.shapes);
+      await gs.loadAsync(shapesText, GRAPHS.shapes);
     } catch {
       // shapes.ttl may not exist in test/CI environments — tolerate.
     }

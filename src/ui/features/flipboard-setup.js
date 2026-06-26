@@ -118,8 +118,14 @@ export function updateFederationStatus() {
   const val = document.getElementById('fb-federation-val');
   if (!cell || !val) return;
   fetch('/api/activitypub/config')
-    .then(r => r.ok ? r.json() : { enabled: false })
+    .then(r => r.ok ? r.json() : null)
     .then(data => {
+      if (!data || !data.domain) {
+        cell.style.display = 'none';
+        document.querySelector('flipboard-bar')?._updateWidths?.();
+        return;
+      }
+      cell.style.display = '';
       if (data.enabled) {
         val.textContent = 'ENABLED';
         cell.setAttribute('status', 'ok');
@@ -130,8 +136,7 @@ export function updateFederationStatus() {
       document.querySelector('flipboard-bar')?._updateWidths?.();
     })
     .catch(() => {
-      val.textContent = '--';
-      cell.removeAttribute('status');
+      cell.style.display = 'none';
     });
 }
 

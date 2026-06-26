@@ -28,7 +28,8 @@ export type ToolName =
   | "approve"
   | "plan_write"
   | "plan_query"
-  | "step_update";
+  | "step_update"
+  | "semantic_search";
 
 /** Agent role for organizational purposes. */
 export type AgentRole =
@@ -187,6 +188,8 @@ export interface PorterConfig {
   pattern?: CollaborationPattern;
   /** Maximum deliberation rounds (deliberation pattern only). Default: 3. */
   max_deliberation_rounds?: number;
+  /** tmux layout: "windows" (default, one window per agent) or "panes" (all agents in one window). */
+  tmux_layout?: "windows" | "panes";
   /** Container sandbox configuration. When true, enables default sandbox. */
   sandbox?: boolean | SandboxConfig;
   /** ActivityPub federation configuration. Enables fediverse interaction with teams. */
@@ -329,6 +332,9 @@ export async function loadConfig(path: string): Promise<PorterConfig> {
     mcp_servers: (raw as Record<string, unknown>).mcp_servers as
       Record<string, import("../mcp/mcp_client.ts").McpServerConfig> | undefined,
     runtime_tools: runtimeTools,
+    pattern: (raw as Record<string, unknown>).pattern as CollaborationPattern | undefined,
+    max_deliberation_rounds: (raw as Record<string, unknown>).max_deliberation_rounds as number | undefined,
+    tmux_layout: (raw as Record<string, unknown>).tmux_layout as "windows" | "panes" | undefined,
     sandbox,
   };
 

@@ -92,15 +92,15 @@ function renderPatternCards(body, patterns) {
       actionBtns.push(editBtn, deleteBtn);
     }
 
-    return h('div', { class: 'mcp-server-card', style: 'flex-direction:column;align-items:stretch;margin-bottom:0.5rem;gap:0.25rem' },
-      h('div', { style: 'display:flex;align-items:center;gap:0.5rem' },
-        h('span', { class: 'mcp-name', style: 'flex:1' }, p.name),
+    return h('div', { class: 'dialog-card' },
+      h('div', { class: 'dialog-card-header' },
+        h('strong', null, p.name),
         badge,
       ),
-      h('div', { style: 'font-size:0.75rem;color:var(--text-dim)' }, p.description || ''),
-      h('div', { style: 'font-size:0.75rem;color:var(--text-secondary)' }, summary),
+      h('div', { class: 'dialog-card-meta' }, p.description || ''),
+      h('div', { class: 'dialog-card-summary' }, summary),
       p.bus_flow ? renderBusFlow(p.bus_flow, { compact: true }) : null,
-      h('div', { style: 'display:flex;gap:0.3rem;margin-top:0.25rem' }, ...actionBtns),
+      h('div', { class: 'dialog-card-actions' }, ...actionBtns),
     );
   });
 
@@ -207,7 +207,14 @@ export function showPatternsDialog() {
       const uploadBtn = dlg.footerEl.querySelector('#pattern-manager-upload');
 
       closeBtn?.addEventListener('click', () => dlg.close());
-      uploadBtn?.addEventListener('click', () => handleUpload(body));
+      if (uploadBtn) uploadBtn.style.display = 'none';
+
+      // Header buttons
+      const newBtn = h('button', { class: 'dialog-header-add' }, '+ New Pattern');
+      const uploadHeaderBtn = h('button', { class: 'dialog-header-add' }, 'Upload');
+      newBtn.addEventListener('click', () => openPatternEditor(null, false));
+      uploadHeaderBtn.addEventListener('click', () => handleUpload(body));
+      dlg.headerExtra.replaceChildren(uploadHeaderBtn, newBtn);
 
       replaceContent(body, h('p', { style: 'color:var(--text-dim);font-size:0.85rem' }, 'Loading patterns...'));
       refreshPatterns(body);

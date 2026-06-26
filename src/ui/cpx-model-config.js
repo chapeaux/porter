@@ -52,17 +52,18 @@ const STYLES = `
   :host { display: block; font-family: var(--mcfg-font, system-ui, sans-serif); color: var(--mcfg-color, #e0e0e0); }
   * { box-sizing: border-box; }
 
-  .mcfg { border: 1px solid var(--mcfg-border, #333); border-radius: 6px; overflow: hidden; }
+  .mcfg { overflow: hidden; }
   .mcfg-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--mcfg-header-bg, #1a1a1a); border-bottom: 1px solid var(--mcfg-border, #333); }
+  :host([hide-header]) .mcfg-header { display: none; }
   .mcfg-title { font-weight: 600; font-size: 14px; }
   .mcfg-add { background: var(--mcfg-accent, #4a9eff); color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
   .mcfg-add:hover { filter: brightness(1.1); }
-  .mcfg-list { background: var(--mcfg-bg, #111); }
+  .mcfg-list { }
   .mcfg-empty { padding: 32px; text-align: center; color: var(--mcfg-muted, #666); font-size: 13px; }
 
-  .mcfg-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--mcfg-border, #222); }
-  .mcfg-row:last-child { border-bottom: none; }
-  .mcfg-row-info { flex: 1; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .mcfg-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 16px; border: 1px solid var(--mcfg-border, #222); border-radius: 6px; margin: 0.4rem 0; background: var(--mcfg-bg, #111); }
+  .mcfg-row-info { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .mcfg-row-actions { display: flex; gap: 4px; flex-wrap: wrap; }
   .mcfg-row-name { font-weight: 500; font-size: 13px; }
   .mcfg-row-provider { font-size: 11px; color: var(--mcfg-muted, #888); background: var(--mcfg-tag-bg, #252525); padding: 2px 6px; border-radius: 3px; }
   .mcfg-row-url { font-size: 11px; color: var(--mcfg-muted, #666); font-family: monospace; }
@@ -71,11 +72,12 @@ const STYLES = `
   .mcfg-status { font-size: 11px; font-weight: 500; padding: 2px 6px; border-radius: 3px; }
   .status-ok { background: #1a2e1a; color: #5b5; }
   .status-err { background: #2e1a1a; color: #b55; }
-  .mcfg-row-actions { display: flex; gap: 4px; }
   .mcfg-btn-sm { background: none; border: 1px solid var(--mcfg-border, #444); color: var(--mcfg-color, #ccc); padding: 3px 10px; border-radius: 3px; cursor: pointer; font-size: 12px; }
   .mcfg-btn-sm:hover { background: var(--mcfg-hover-bg, #222); }
   .mcfg-btn-danger { border-color: #633; color: #c66; }
   .mcfg-btn-danger:hover { background: #2a1515; }
+
+  .mcfg-auto-badge { font-size: 10px; background: #2a4a2a; color: #7c7; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
 
   .mcfg-form { padding: 16px; border-bottom: 1px solid var(--mcfg-border, #333); background: var(--mcfg-form-bg, #0d0d0d); }
   fieldset { border: 1px solid var(--mcfg-border, #2a2a2a); border-radius: 4px; padding: 12px; margin: 0 0 12px; }
@@ -155,6 +157,8 @@ class CpxModelConfig extends HTMLElement {
   _emit(name, detail) {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
   }
+
+  addModel() { this._addModel(); }
 
   _addModel() {
     this._editIndex = this._models.length;
@@ -316,8 +320,10 @@ class CpxModelConfig extends HTMLElement {
     const statusText = vr ? (vr.success ? "OK" : "Failed") : "";
     const statusTitle = vr?.error ? vr.error : "";
 
+    const nameChildren = [m.display_name || m.id];
+    if (m._autodetected) nameChildren.push(h('span', { class: 'mcfg-auto-badge', title: 'Auto-detected from environment' }, 'auto'));
     const infoChildren = [
-      h('span', { class: 'mcfg-row-name' }, m.display_name || m.id),
+      h('span', { class: 'mcfg-row-name' }, ...nameChildren),
       h('span', { class: 'mcfg-row-provider' }, PROVIDER_LABELS[m.provider_type]),
       h('span', { class: 'mcfg-row-url' }, m.base_url),
     ];

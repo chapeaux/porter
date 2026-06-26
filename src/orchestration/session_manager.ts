@@ -111,18 +111,20 @@ export class SessionManager {
       config.sandbox = { enabled: true };
     }
 
-    // Each session gets a unique workspace directory to prevent cross-run
-    // contamination. Paths already under /workspace or /tmp are kept only
-    // during restoreFrom (editing an existing session keeps its workspace).
-    const restoring = !!options?.restoreFrom;
+    // Workspace directory: respect user-specified paths, otherwise generate
+    // a unique directory to prevent cross-run contamination.
     const wsBase = Deno.env.get("PORTER_WORKSPACE_DIR") ??
       `${Deno.env.get("HOME") ?? Deno.cwd()}/.porter/workspaces`;
-    if (!restoring || !config.working_dir?.startsWith(wsBase)) {
-      const suffix = Date.now().toString(36);
-      config.working_dir = `${wsBase}/${config.session}-${suffix}`;
-    }
-    if (!config.working_dir) {
-      config.working_dir = `${wsBase}/${config.session}`;
+    const userSpecifiedDir = config.working_dir && config.working_dir !== "." && !config.working_dir.startsWith(wsBase);
+    if (!userSpecifiedDir) {
+      const restoring = !!options?.restoreFrom;
+      if (!restoring || !config.working_dir?.startsWith(wsBase)) {
+        const suffix = Date.now().toString(36);
+        config.working_dir = `${wsBase}/${config.session}-${suffix}`;
+      }
+      if (!config.working_dir) {
+        config.working_dir = `${wsBase}/${config.session}`;
+      }
     }
 
     // Probe the OS for a free port — 8787 is reserved for the admin bus (Phase E).

@@ -237,36 +237,68 @@ export class RouterBackend implements ActivityPubBackend {
   async getTeam(ownerId: string, teamSlug: string): Promise<SavedTeam | null> {
     // 1. Try local cache
     const local = await this.userStore.getTeam(ownerId, teamSlug);
-    if (local) return local;
+    if (local) {
+      console.log(`[backend] getTeam: found '${teamSlug}' in local cache`);
+      return local;
+    }
 
     // 2. Try fetching directly from the user's Solid Pod
     const federated = await listFederated();
     const entry = federated.find((e) => e.teamSlug === teamSlug);
+    console.log(`[backend] getTeam: federated entry for '${teamSlug}':`, entry ? `podUrl=${entry.podUrl}` : "NOT FOUND");
+
+    // Self-heal: discover podUrl if missing but ownerId is a WebID
+    if (entry && !entry.podUrl && entry.ownerId.startsWith("http")) {
+      try {
+        const profileUrl = entry.ownerId.replace(/#.*$/, "");
+        const profileResp = await fetch(profileUrl, { headers: { Accept: "text/turtle" } });
+        if (profileResp.ok) {
+          const turtle = await profileResp.text();
+          const match = turtle.match(/(?:pim:storage|space:storage|<http:\/\/www\.w3\.org\/ns\/pim\/space#storage>)\s+<([^>]+)>/);
+          if (match) {
+            entry.podUrl = match[1];
+            console.log(`[backend] getTeam: discovered podUrl=${entry.podUrl}`);
+            // Persist the discovered podUrl for future lookups
+            const { publishTeam } = await import("./registry.ts");
+            await publishTeam(teamSlug, entry.ownerId, entry.podUrl);
+          }
+        }
+      } catch (err) {
+        console.error(`[backend] getTeam: Pod URL discovery failed:`, err);
+      }
+    }
+
     if (entry?.podUrl) {
       const domain = Deno.env.get("PORTER_AP_DOMAIN") || "";
       try {
         const { getPorterAccessToken } = await import("../auth/solid_tokens.ts");
         const token = await getPorterAccessToken(entry.podUrl, domain);
+        console.log(`[backend] getTeam: got Solid token for ${entry.podUrl} (${token ? token.substring(0, 20) + '...' : 'null'})`);
 
-        // Fetch team Turtle from the user's Pod
         const { turtleToTeam } = await import("../rdf/turtle.ts");
         const teamUrl = `${entry.podUrl.replace(/\/+$/, "")}/porter/teams/${encodeURIComponent(teamSlug)}.ttl`;
+        console.log(`[backend] getTeam: fetching ${teamUrl}`);
         const resp = await fetch(teamUrl, {
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: "text/turtle",
           },
         });
+        console.log(`[backend] getTeam: Pod response ${resp.status}`);
         if (resp.ok) {
           const turtle = await resp.text();
-          return turtleToTeam(turtle);
+          console.log(`[backend] getTeam: turtle length=${turtle.length}`);
+          const team = turtleToTeam(turtle);
+          console.log(`[backend] getTeam: parsed team agents=${team?.config?.agents?.length ?? 'null'}`);
+          return team;
         }
-      } catch {
-        // Pod access failed -- fall through to pod proxy
+      } catch (err) {
+        console.error(`[backend] getTeam: Pod access failed:`, err);
       }
     }
 
     // 3. Fall back to pod proxy
+    console.log(`[backend] getTeam: falling back to pod proxy for '${teamSlug}'`);
     return this.getTeamFromPod(ownerId, teamSlug);
   }
 

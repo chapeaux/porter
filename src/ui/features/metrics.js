@@ -24,6 +24,8 @@ export async function updateMetrics() {
   const projectStore = document.getElementById('projects');
   const session = projectStore?.state?.activeSession;
   if (!session) {
+    document.getElementById('m-pattern').textContent = '--';
+    document.getElementById('m-workspace').textContent = '--';
     document.getElementById('m-tokens-in').textContent = 'IN: --';
     document.getElementById('m-tokens-out').textContent = 'OUT: --';
     document.getElementById('m-api-calls').textContent = 'API: --';
@@ -42,6 +44,49 @@ export async function updateMetrics() {
       totalApi += a.api_calls || 0;
       totalErr += a.errors || 0;
     }
+    // Pattern status
+    const patternEl = document.getElementById('m-pattern');
+    if (patternEl && data.pattern) {
+      const p = data.pattern;
+      if (p.approved) {
+        patternEl.textContent = `${p.id.toUpperCase()}: APPROVED`;
+        patternEl.style.color = 'var(--status-ok)';
+      } else if (p.id === 'deliberation') {
+        const round = Math.max(p.round, 1);
+        patternEl.textContent = `ROUND: ${round}/${p.maxRounds}`;
+        patternEl.style.color = '';
+      } else {
+        patternEl.textContent = p.id.toUpperCase();
+        patternEl.style.color = '';
+      }
+    }
+
+    // Workspace path
+    const wsEl = document.getElementById('m-workspace');
+    if (wsEl && data.workingDir) {
+      const dir = data.workingDir;
+      const short = dir.length > 30 ? '...' + dir.slice(-27) : dir;
+      wsEl.textContent = `DIR: ${short}`;
+      wsEl.title = `Workspace: ${dir} (click to open)`;
+      wsEl.onclick = () => {
+        fetch(`/api/sessions/${encodeURIComponent(session)}/open-workspace`, { method: 'POST' })
+          .then(r => {
+            if (r.ok) {
+              wsEl.textContent = 'DIR: opened!';
+            } else {
+              navigator.clipboard.writeText(dir);
+              wsEl.textContent = 'DIR: copied path!';
+            }
+            setTimeout(() => { wsEl.textContent = `DIR: ${short}`; }, 1500);
+          })
+          .catch(() => {
+            navigator.clipboard.writeText(dir);
+            wsEl.textContent = 'DIR: copied path!';
+            setTimeout(() => { wsEl.textContent = `DIR: ${short}`; }, 1500);
+          });
+      };
+    }
+
     document.getElementById('m-tokens-in').textContent = `IN: ${formatTokenCount(totalIn)}`;
     document.getElementById('m-tokens-out').textContent = `OUT: ${formatTokenCount(totalOut)}`;
     document.getElementById('m-api-calls').textContent = `API: ${totalApi}`;

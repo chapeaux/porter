@@ -16,15 +16,14 @@ git clone https://github.com/chapeaux/porter.git
 cd porter
 deno install --global --allow-all --name porter --config deno.json cli.ts
 
-# Set your API credentials
-export ANTHROPIC_API_KEY=sk-ant-...
-
 # Start the platform
 porter serve
 
 # Open the dashboard
 open http://localhost:3000
 ```
+
+Porter auto-detects your local AI provider from environment variables. If you have `ANTHROPIC_API_KEY`, `CLAUDE_CODE_USE_VERTEX=1`, `OPENAI_API_KEY`, or other provider credentials set, models appear in the dashboard automatically — no manual setup required. See [Model Configuration](#model-configuration) for the full list of detected providers.
 
 The web dashboard opens with a Team Builder wizard. Create agents, configure models, and launch sessions from the browser -- no config file required.
 
@@ -337,10 +336,10 @@ Agents are first-class entities that exist independently of teams. The dashboard
 
 Each saved agent includes:
 - Name, role, and model override
-- System prompt organized into sections (Job Description, Communication, Memory, Processing)
-- Tool list and channel subscriptions
-- MCP tool bindings
-- Context tags for environment compatibility
+- Expertise description (domain knowledge and specialization)
+- Tool list and MCP tool bindings
+- Token limits (max tokens, max turns, max context tokens)
+- Reasoning mode toggle
 
 The library supports multi-select with checkboxes on each agent card:
 
@@ -352,7 +351,32 @@ The library supports multi-select with checkboxes on each agent card:
 
 ## Model Configuration
 
-Models are configured in the `models` array of `porter.json`. Each entry specifies a provider, endpoint, and authentication method.
+### Auto-Detection
+
+Porter automatically detects locally configured AI providers from environment variables on startup. Detected models appear in the dashboard immediately — no manual setup required.
+
+| Environment | Provider | Auto-Registered Model |
+|-------------|----------|-----------------------|
+| `CLAUDE_CODE_USE_VERTEX=1` + `ANTHROPIC_VERTEX_PROJECT_ID` | Google Vertex AI | Claude Sonnet 4.6 (ADC auth) |
+| `ANTHROPIC_API_KEY` | Anthropic Direct | Claude Sonnet 4.6 |
+| `OPENAI_API_KEY` | OpenAI | GPT-4o |
+| `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` | Azure OpenAI | GPT-4o |
+| `GROQ_API_KEY` | Groq | Llama 3.3 70B |
+| `OLLAMA_HOST` | Ollama | Llama 3.3 |
+| `MODEL_API` | Generic OpenAI-compat (vLLM, LM Studio) | `MODEL_ID` or "default" |
+| `PORTER_USE_BEDROCK=1` or `AWS_BEDROCK_MODEL` | AWS Bedrock | Claude Sonnet 4.6 |
+
+Auto-detected models are shown with an "auto" badge in the Model Setup dialog. User-configured models with the same ID take precedence over auto-detected ones.
+
+On startup, detected models are logged:
+
+```
+[porter] Auto-detected models: Claude Sonnet 4.6 (Vertex AI) (vertex_ai)
+```
+
+### Manual Configuration
+
+Models can also be configured in the `models` array of `porter.json` or via the dashboard's Model Setup dialog.
 
 ```json
 {
@@ -377,8 +401,13 @@ Models are configured in the `models` array of `porter.json`. Each entry specifi
 | Type | Use | Auth |
 |------|-----|------|
 | `anthropic` | Anthropic API | `x-api-key` header (default) or Bearer token |
-| `vertex` | Google Cloud Vertex AI | Application Default Credentials |
-| `openai_compat` | vLLM, Ollama, etc. | Bearer token via `api_key_env` |
+| `vertex_ai` | Google Cloud Vertex AI | Application Default Credentials |
+| `openai` | OpenAI API | Bearer token |
+| `openai_compat` | vLLM, Ollama, LM Studio, etc. | Bearer token via `api_key_env` |
+| `azure_openai` | Azure OpenAI | Bearer token |
+| `aws_bedrock` | AWS Bedrock | AWS IAM |
+| `groq` | Groq | Bearer token |
+| `ollama` | Ollama (local) | Bearer token |
 
 ### Authentication Methods
 
@@ -389,6 +418,7 @@ The `auth` field controls how API credentials are sent:
 | `x-api-key` | `x-api-key: <key>` | Standard Anthropic API (default for `anthropic` provider) |
 | `bearer` | `Authorization: Bearer <key>` | API gateways, proxies, and OpenAI-compatible endpoints |
 | `adc` | Google ADC | Vertex AI (automatic via `gcloud` CLI) |
+| `aws_iam` | AWS Signature V4 | AWS Bedrock |
 
 The `api_key` field accepts a raw API key string directly. Alternatively, `api_key_env` names an environment variable to read the key from.
 
@@ -398,7 +428,7 @@ The `chat_endpoint` field overrides the default chat completions path. This is u
 
 ```json
 {
-  "provider_type": "vertex",
+  "provider_type": "vertex_ai",
   "base_url": "https://us-east5-aiplatform.googleapis.com",
   "chat_endpoint": "/v1/projects/my-project/locations/us-east5/publishers/anthropic/models/claude-sonnet-4-6:streamRawPredict",
   "auth": "adc"
@@ -412,6 +442,21 @@ export CLAUDE_CODE_USE_VERTEX=1
 export ANTHROPIC_VERTEX_PROJECT_ID=my-gcp-project-id
 export CLOUD_ML_REGION=us-east5
 gcloud auth application-default login
+```
+
+With these env vars set, Porter auto-detects the Vertex AI provider on startup — no further configuration needed.
+
+### Generic OpenAI-Compatible Providers
+
+For vLLM, LM Studio, or other OpenAI-compatible endpoints:
+
+```bash
+export MODEL_API=https://vllm.example.com/v1
+export MODEL_ID=ibm-granite/granite-3b
+export MODEL_API_KEY=your-key           # optional
+export MODEL_CONTEXT_WINDOW=32768       # optional, default 32768
+export MODEL_MAX_TOKENS=8192            # optional, default 8192
+export MODEL_TOOL_CALLING=true          # optional, default true
 ```
 
 Models are managed in the dashboard via the **MODELS** flipboard cell, which opens a dialog for adding, editing, and testing model configurations. Credentials are stored per-user with AES-256-GCM encryption.
@@ -471,11 +516,11 @@ MCP tool names use `__` (double underscore) as the separator between server name
 
 ### Runtime Tools
 
-Porter can inject runtime tools (Python, Node.js, curl, wget, jq) into agent pods and sandbox containers. In the Team Builder UI, checkboxes for each tool appear in the session configuration step. In config:
+Porter can inject runtime tools (Deno, Python, Node.js, curl, wget, jq) into agent pods and sandbox containers. In the Team Builder UI, checkboxes for each tool appear in the session configuration step. In config:
 
 ```json
 {
-  "runtime_tools": ["python3", "nodejs", "curl", "wget", "jq"]
+  "runtime_tools": ["deno", "python3", "nodejs", "curl", "wget", "jq"]
 }
 ```
 
@@ -520,10 +565,10 @@ Each resource type is stored as individual Turtle files on the Pod, replacing th
 |----------|----------|--------|
 | Agents | `{pod}/porter/agents/{name}.ttl` | Turtle (porter: vocabulary) |
 | Teams | `{pod}/porter/teams/{name}.ttl` | Turtle (porter: vocabulary with embedded config JSON) |
-| Models | `{pod}/porter/config.json` | JSON (models array) |
-| MCP servers | `{pod}/porter/config.json` | JSON (mcp_servers map) |
+| Models | `{pod}/porter/models/{id}.ttl` | Turtle (porter: vocabulary) |
+| MCP servers | `{pod}/porter/mcp/{name}.ttl` | Turtle (porter: vocabulary) |
+| Federation | `{pod}/porter/federation.ttl` | Turtle (porter: vocabulary) |
 | Memory | `{pod}/porter/memory/{session}.ttl` | Turtle (session knowledge graph) |
-| Published teams | `{pod}/porter/config.json` | JSON (federation slugs) |
 
 - **Bidirectional sync** -- changes on the Pod are reflected in Porter via Solid Notifications (SSE), and changes in Porter are written back to the Pod.
 - **ACL-based sharing** -- individual agent or team Turtle files can be made public via `setResourcePublic`, which writes a WAC ACL granting `foaf:Agent` read access. Private resources get their ACL removed.
@@ -563,6 +608,57 @@ Rule of thumb: set `max_context_tokens` to ~75% of the model's context window.
 ### Tool Result Truncation
 
 Tool results exceeding 20,000 characters are automatically truncated to prevent a single large file read or command output from consuming the entire context window.
+
+---
+
+## Vector Store (Qdrant)
+
+Porter optionally integrates with [Qdrant](https://qdrant.tech/) for embedding-level agent coordination. When enabled, pattern tools (`finding_write`, `critique_write`, `memory_write`) automatically embed text and store vectors in Qdrant alongside the SPARQL graph. Query tools (`findings_query`, `critiques_query`) gain a `query` parameter for semantic similarity search, and a new `semantic_search` tool enables free-form retrieval across all agent outputs.
+
+### Setup
+
+```bash
+# Start Qdrant
+podman run -d -p 6333:6333 qdrant/qdrant
+
+# Install an embedding model (Ollama)
+ollama pull nomic-embed-text
+
+# Set the Qdrant URL
+export QDRANT_URL=http://127.0.0.1:6333
+
+# Start Porter
+porter serve
+```
+
+On startup, Porter logs the vector store status:
+```
+[porter] Vector store: Qdrant at http://127.0.0.1:6333, embeddings: ollama/nomic-embed-text (768d)
+```
+
+### Embedding Providers
+
+Porter auto-detects the embedding source:
+
+| Source | Detection | Dimensions |
+|--------|-----------|------------|
+| Custom endpoint | `EMBEDDING_API` + `EMBEDDING_MODEL` | `EMBEDDING_DIMS` (default: 768) |
+| Ollama | `nomic-embed-text` model installed | 768 |
+| OpenAI | `OPENAI_API_KEY` set | 1536 |
+
+### Collections
+
+| Collection | Content | Pattern |
+|------------|---------|---------|
+| `porter-findings` | Specialist findings | Mixture |
+| `porter-critiques` | Reflector critiques | Deliberation |
+| `porter-observations` | General agent memory | All |
+
+### Pluggable Backend
+
+The `VectorStore` interface is backend-agnostic. Qdrant is the default; Milvus or other vector databases can be swapped in by implementing the same interface.
+
+Qdrant is **optional** — Porter works identically without it. All pattern tools fall back to SPARQL-only queries when no vector store is configured.
 
 ---
 
@@ -731,6 +827,7 @@ During AP-initiated sessions, agents gain two additional tools for interacting w
 |------|-------------|
 | `ap_post` | Post a message to the team's followers. Supports `public` or `followers_only` visibility and optional content warning summaries. |
 | `ap_reply` | Reply directly to the fediverse user who initiated the session. Supports file attachments (images, diffs, logs). |
+| `semantic_search` | Search agent findings, critiques, and observations by semantic similarity. Auto-injected when Qdrant is available. |
 
 Agents are instructed via system prompt that they're communicating with a fediverse user and should use `ap_reply` for responses. The passive relay serves as a fallback when agents don't explicitly reply.
 
@@ -1162,16 +1259,40 @@ At session launch, refs are resolved from the local agent library or fetched fro
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `CLAUDE_CODE_USE_VERTEX` | Set to `1` for Vertex AI |
-| `ANTHROPIC_VERTEX_PROJECT_ID` | GCP project ID |
-| `CLOUD_ML_REGION` | GCP region |
+| **Model auto-detection** | |
+| `ANTHROPIC_API_KEY` | Anthropic API key (auto-registers Claude Sonnet 4.6) |
+| `CLAUDE_CODE_USE_VERTEX` | Set to `1` for Vertex AI auto-detection |
+| `ANTHROPIC_VERTEX_PROJECT_ID` | GCP project ID (Vertex AI) |
+| `CLOUD_ML_REGION` | GCP region (Vertex AI, default: `us-east5`) |
+| `OPENAI_API_KEY` | OpenAI API key (auto-registers GPT-4o) |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI API key |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL |
+| `AZURE_OPENAI_DEPLOYMENT` | Azure OpenAI deployment name (default: `gpt-4o`) |
+| `AZURE_OPENAI_API_VERSION` | Azure OpenAI API version (default: `2024-02-01`) |
+| `GROQ_API_KEY` | Groq API key (auto-registers Llama 3.3 70B) |
+| `OLLAMA_HOST` | Ollama endpoint (auto-registers Llama 3.3) |
+| `MODEL_API` | Generic OpenAI-compat endpoint URL |
+| `MODEL_ID` | Model ID for generic endpoint (default: `default`) |
+| `MODEL_API_KEY` | API key env var for generic endpoint |
+| `MODEL_CONTEXT_WINDOW` | Context window for generic endpoint (default: `32768`) |
+| `MODEL_MAX_TOKENS` | Max output tokens for generic endpoint (default: `8192`) |
+| `PORTER_USE_BEDROCK` | Set to `1` to enable AWS Bedrock auto-detection |
+| **Vector store** | |
+| `QDRANT_URL` | Qdrant REST endpoint (e.g., `http://127.0.0.1:6333`) |
+| `QDRANT_API_KEY` | Optional API key for Qdrant Cloud |
+| `EMBEDDING_API` | Custom embedding endpoint URL |
+| `EMBEDDING_MODEL` | Embedding model name |
+| `EMBEDDING_DIMS` | Embedding dimensions (default: 768) |
+| `EMBEDDING_API_KEY` | API key for custom embedding endpoint |
+| **Authentication** | |
 | `PORTER_OIDC_ISSUER_URL` | OIDC issuer URL |
 | `PORTER_OIDC_CLIENT_ID` | OIDC client ID |
 | `PORTER_OIDC_CLIENT_SECRET` | OIDC client secret |
 | `PORTER_OIDC_REDIRECT_URI` | OIDC callback URL |
-| `PORTER_SESSION_KEY` | Session cookie encryption key |
+| `PORTER_SESSION_KEY` | Session cookie encryption key (64 hex chars) |
+| **Storage** | |
 | `PORTER_LWS_BASE_URL` | LWS Pod storage base URL for SSO users |
+| **Federation** | |
 | `PORTER_AP_ENABLED` | Enable ActivityPub federation (`true`) |
 | `PORTER_AP_DOMAIN` | Public domain for AP actor URLs |
 
@@ -1319,6 +1440,11 @@ porter/
       step_update.ts    Update step status (Distillation pattern)
       ap_post.ts        Post to AP followers (AP sessions)
       ap_reply.ts       Reply to fediverse user (AP sessions)
+      semantic_search.ts Semantic similarity search across agent outputs (Qdrant)
+    vector/
+      mod.ts            VectorStore/EmbeddingProvider interfaces, singleton management
+      qdrant.ts         Qdrant REST client (fetch-based, no deps)
+      embeddings.ts     Embedding provider auto-detection (Ollama, OpenAI, custom)
     sandbox/
       mod.ts            Sandbox module exports
       paths.ts          Path validation (workspace boundary enforcement)
@@ -1344,6 +1470,7 @@ porter/
       csrf.ts           CSRF protection (HMAC-SHA256 + PKCE)
       middleware.ts     JWT validation, JWKS fetching
       credentials.ts    Per-user encrypted credential storage
+      model_autodetect.ts  Auto-detect AI providers from environment variables
       user_store.ts     Per-user team persistence
     ui/
       server.ts         HTTP server (API, /ws proxy, assets)

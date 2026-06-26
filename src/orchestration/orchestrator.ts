@@ -159,9 +159,26 @@ export async function start(
   // Determine mode: isolates on by default, disabled only when explicitly false
   const useIsolates = config.isolates !== false;
 
+  // Auto-detect locally configured AI providers and merge into config
+  try {
+    const { detectModels, mergeWithDetected } = await import("../auth/model_autodetect.ts");
+    const detected = detectModels();
+    if (detected.length > 0) {
+      config.models = mergeWithDetected(config.models ?? [], detected);
+      console.error(`[porter] Auto-detected models: ${detected.map(m => m.display_name).join(", ")}`);
+    }
+  } catch { /* model autodetect not available */ }
+
+  // Initialize optional vector store (Qdrant + embedding provider)
+  try {
+    const { initVectorStore } = await import("../vector/mod.ts");
+    await initVectorStore();
+  } catch { /* vector store not available */ }
+
   // Build a default ProviderConfig from the top-level config fields.
   // Agents can override this via per-agent model selection (resolved later).
   const defaultProviderConfig: ProviderConfig = resolveDefaultProviderConfig(config);
+  console.error(`[porter] Default provider: type=${defaultProviderConfig.type}, base_url=${defaultProviderConfig.base_url || '(empty)'}, auth=${"auth" in defaultProviderConfig ? defaultProviderConfig.auth : 'default'}`);
 
   // Resolve bus: use injected per-session instance or fall back to global singleton.
   // Multi-session mode always injects its own bus so sessions are fully isolated.
@@ -207,6 +224,12 @@ export async function start(
   bus.publish = async (channel: string, content: string, from: string = "system") => {
     metrics.recordMessage(channel);
     messageStore.append({ channel, from, content, timestamp: Date.now() });
+    if (channel === "activity") {
+      try {
+        const evt = JSON.parse(content);
+        if (evt.event === "approved") metrics.setApproved();
+      } catch { /* not JSON */ }
+    }
     return origPublish(channel, content, from);
   };
 
@@ -300,6 +323,8 @@ export async function start(
 
   // Inject pattern tools and system prompt suffix into each agent config
   const patternId = config.pattern ?? "sequential";
+  metrics.setPattern(patternId, config.max_deliberation_rounds ?? 3);
+  metrics.setWorkingDir(config.working_dir ?? ".");
   const teamRosterForPattern = config.agents.map(a => ({ name: a.name, role: a.role }));
   for (const agentConfig of config.agents) {
     // Add pattern-specific tools to the agent's tool list
@@ -332,6 +357,18 @@ export async function start(
     if (envRuntimes.length > 0) {
       agentConfig.system_prompt = `${agentConfig.system_prompt}\n\n## Environment\nThe following runtimes and tools are available in your environment via the bash tool:\n${envRuntimes.map(r => `- ${r}`).join("\n")}`;
     }
+
+    // Auto-inject semantic_search when vector store is available
+    try {
+      const { getVectorStore } = await import("../vector/mod.ts");
+      if (getVectorStore()) {
+        const tools = agentConfig.tools ?? [];
+        if (!tools.includes("semantic_search")) {
+          tools.push("semantic_search" as import("../core/config.ts").ToolName);
+          agentConfig.tools = tools;
+        }
+      }
+    } catch { /* vector module not available */ }
   }
 
   for (const agentConfig of config.agents) {
@@ -470,7 +507,8 @@ export async function start(
     const channels = [...(agentConfig.subscribe ?? []), `task:${agentConfig.name}`, "control"];
     bus.subscribe(agentConfig.name, channels);
 
-    display.registerPane(agentConfig.name, display.getPaneId(agentConfig.name) ?? await transport.spawnWindow(config.session, agentConfig.name));
+    const usePanes = config.tmux_layout === "panes";
+    display.registerPane(agentConfig.name, display.getPaneId(agentConfig.name) ?? (usePanes ? await transport.spawnPane(config.session, agentConfig.name) : await transport.spawnWindow(config.session, agentConfig.name)));
     heartbeat.register(agentConfig.name);
 
     const displayHandler = display.handler(agentConfig.name);
@@ -495,6 +533,14 @@ export async function start(
           const event = data.event as import("../runtime/agent.ts").AgentEvent;
           const outputHandler = makeOutputHandler(agentConfig, displayHandler);
           outputHandler(data.agentName as string, event);
+
+          // Pattern handoff: when a deliberation worker finishes a turn,
+          // notify the reflector via the deliberation channel
+          if (event.type === "turn_complete" && patternId === "deliberation" && agentConfig.role === "worker") {
+            metrics.advanceRound();
+            const summary = (event as { summary: string }).summary;
+            bus.publish("deliberation", summary, agentConfig.name);
+          }
           break;
         }
         case "bus_publish":
@@ -569,6 +615,44 @@ export async function start(
           worker.postMessage({ type: "graph_query_response", id: data.id, rows });
           break;
         }
+        case "vector_upsert": {
+          (async () => {
+            try {
+              const { getVectorStore: gvs } = await import("../vector/mod.ts");
+              const vs = gvs();
+              if (vs) await vs.upsert(data.collection as string, data.points as Array<{ id: string; vector: number[]; payload: Record<string, unknown> }>);
+            } catch { /* best effort */ }
+          })();
+          break;
+        }
+        case "vector_search": {
+          (async () => {
+            try {
+              const { getVectorStore: gvs } = await import("../vector/mod.ts");
+              const vs = gvs();
+              const points = vs
+                ? await vs.search(data.collection as string, data.vector as number[], data.filter as Record<string, string | number | boolean> | undefined, data.limit as number | undefined)
+                : [];
+              worker.postMessage({ type: "vector_search_response", id: data.id, points });
+            } catch {
+              worker.postMessage({ type: "vector_search_response", id: data.id, points: [] });
+            }
+          })();
+          break;
+        }
+        case "embed_text": {
+          (async () => {
+            try {
+              const { getEmbedder: ge } = await import("../vector/mod.ts");
+              const emb = ge();
+              const vectors = emb ? await emb.embed(data.texts as string[]) : [];
+              worker.postMessage({ type: "embed_text_response", id: data.id, vectors });
+            } catch {
+              worker.postMessage({ type: "embed_text_response", id: data.id, vectors: [] });
+            }
+          })();
+          break;
+        }
         case "error":
           console.error(`[porter] Agent '${data.agentName}' isolate error: ${data.message}`);
           heartbeat.unregister(data.agentName as string);
@@ -585,6 +669,12 @@ export async function start(
       agentConfig, config, defaultProviderConfig,
     );
 
+    let vectorEnabled = false;
+    try {
+      const { getVectorStore: gvs } = await import("../vector/mod.ts");
+      vectorEnabled = gvs() !== null;
+    } catch { /* vector module not available */ }
+
     worker.postMessage({
       type: "start",
       agentConfig,
@@ -597,6 +687,7 @@ export async function start(
       sandboxContainerName: (sandboxExecutor as import("../sandbox/mod.ts").ContainerSandbox | null)?.containerName,
       sandboxRuntime: sandboxExecutor?.runtime,
       sandboxWorkingDir: sandboxExecutor ? workingDir : undefined,
+      vectorEnabled,
     });
 
     workers.set(agentConfig.name, worker);
@@ -613,6 +704,8 @@ export async function start(
     }
   }
 
+  const usePanes = config.tmux_layout === "panes";
+
   if (useIsolates) {
     for (let i = 0; i < config.agents.length; i++) {
       const agentConfig = config.agents[i];
@@ -622,7 +715,9 @@ export async function start(
         paneId = firstPaneId;
         await transport.setPaneTitle(paneId, `${agentConfig.name} [${agentConfig.role}]`);
       } else {
-        paneId = await transport.spawnWindow(config.session, `${agentConfig.name}`);
+        paneId = usePanes
+          ? await transport.spawnPane(config.session, `${agentConfig.name}`)
+          : await transport.spawnWindow(config.session, `${agentConfig.name}`);
       }
 
       const roleColors: Record<string, string> = {
@@ -652,7 +747,9 @@ export async function start(
         paneId = firstPaneId;
         await transport.setPaneTitle(paneId, `${agentConfig.name} [${agentConfig.role}]`);
       } else {
-        paneId = await transport.spawnWindow(config.session, `${agentConfig.name}`);
+        paneId = usePanes
+          ? await transport.spawnPane(config.session, `${agentConfig.name}`)
+          : await transport.spawnWindow(config.session, `${agentConfig.name}`);
       }
 
       const roleColors: Record<string, string> = {
@@ -869,6 +966,17 @@ import type { ToolEntry } from "../tools/mod.ts";
 function resolveDefaultProviderConfig(config: PorterConfig): ProviderConfig {
   if (config.providers && config.providers.length > 0) {
     return config.providers[0];
+  }
+
+  // Try to derive a provider from the first auto-detected/configured model
+  if (config.models && config.models.length > 0) {
+    const m = config.models[0];
+    return {
+      type: m.provider_type as ProviderConfig["type"],
+      base_url: m.base_url,
+      api_key_env: m.api_key_env ?? config.api_key_env,
+      ...(m.auth === "adc" ? { auth: "adc" as const } : {}),
+    };
   }
 
   return {

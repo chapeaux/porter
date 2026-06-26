@@ -64,6 +64,7 @@ export type AgentOutputHandler = (
 /** Events emitted by the agent loop. */
 export type AgentEvent =
   | { type: "text"; content: string }
+  | { type: "turn_complete"; summary: string }
   | { type: "tool_call"; name: string; params: Record<string, unknown> }
   | { type: "tool_result"; name: string; result: ToolResult }
   | { type: "usage"; input_tokens: number; output_tokens: number }
@@ -465,20 +466,18 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
         const hasErrors = toolResults.some(r => r.is_error);
         if (hasErrors) {
           consecutiveToolErrors++;
-          if (consecutiveToolErrors >= 3) {
-            const available = registry.names().join(", ");
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: "system-nudge",
-              content: `SYSTEM: You have made ${consecutiveToolErrors} consecutive invalid tool calls. STOP and read this carefully. Your available tools are ONLY: ${available}. Use these EXACT names. If you cannot proceed with these tools, respond with text explaining what you need.`,
-              is_error: true,
-            });
-            consecutiveToolErrors = 0;
-          }
         } else {
           consecutiveToolErrors = 0;
         }
         state.history.push({ role: "user", content: toolResults });
+        if (consecutiveToolErrors >= 3) {
+          const available = registry.names().join(", ");
+          state.history.push({
+            role: "user",
+            content: `SYSTEM: You have made ${consecutiveToolErrors} consecutive invalid tool calls. STOP and read this carefully. Your available tools are ONLY: ${available}. Use these EXACT names. If you cannot proceed with these tools, respond with text explaining what you need.`,
+          });
+          consecutiveToolErrors = 0;
+        }
         continue;
       }
 
@@ -488,6 +487,12 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
         response.stop_reason === "end_turn" ||
         response.stop_reason === "stop_sequence"
       ) {
+        // Extract last assistant text for pattern handoff
+        // deno-lint-ignore no-explicit-any
+        const textBlocks = (response.content ?? []).filter((b: any) => b.type === "text");
+        // deno-lint-ignore no-explicit-any
+        const lastAssistant = textBlocks.map((b: any) => b.text).join("\n");
+        onOutput?.(config.name, { type: "turn_complete", summary: lastAssistant.slice(0, 1000) || "Task completed." });
         idle = true;
       }
     }

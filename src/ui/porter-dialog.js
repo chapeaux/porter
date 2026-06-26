@@ -41,15 +41,17 @@ class PorterDialog extends HTMLElement {
     const style = document.createElement('style');
     style.textContent = `
         :host { display: contents; }
-        dialog {
+        dialog:not([open]) { display: none; }
+        dialog[open] {
+          display: flex;
+          flex-direction: column;
           background: var(--bg-card, #003);
           color: var(--text-primary, #f0e6d2);
           border: 1px solid var(--border, #004488);
           border-radius: 8px;
           padding: 0;
-          max-width: 90vw;
-          max-height: 90vh;
-          width: 700px;
+          width: min(90vw, 700px);
+          max-height: 85vh;
           font-family: inherit;
           box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }
@@ -87,7 +89,8 @@ class PorterDialog extends HTMLElement {
         .pd-body {
           padding: 1rem;
           overflow-y: auto;
-          max-height: 70vh;
+          flex: 1;
+          min-height: 0;
         }
         .pd-footer {
           display: flex;
@@ -257,6 +260,7 @@ class PorterDialog extends HTMLElement {
 
   _clear() {
     this._bodyEl.replaceChildren();
+    this._bodyEl.scrollTop = 0;
     this._footerEl.replaceChildren();
     this._footerEl.classList.add('hidden');
     this._headerExtra.replaceChildren();
