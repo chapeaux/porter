@@ -1,4 +1,4 @@
-FROM docker.io/denoland/deno:latest
+FROM docker.io/denoland/deno:2.9.0
 RUN apt-get update && apt-get install -y --no-install-recommends git tmux ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r porter && useradd -r -g porter -d /app porter
 RUN git config --system user.email "porter@chapeaux.io" && git config --system user.name "Porter Agent"

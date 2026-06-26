@@ -464,7 +464,7 @@ export class SparqStore {
    * sibling raw-`Store` `serializeCompact` binding — see the javascript-wasm SKILL.)
    */
   serialize(format: SerializeFormat | string = 'turtle', options: SerializeOptions = {}): string {
-    if (typeof this.#inner.serialize !== 'function') {
+    if (typeof (this.#inner as any).serialize !== 'function') {
       throw new Error(
         'SparqStore.serialize requires a serialize-rdf-enabled wasm bundle (build sparq-wasm with --features serialize-rdf)',
       );
@@ -475,7 +475,7 @@ export class SparqStore {
     // The wasm binding takes a mutable `Array<[prefix, iri]>`; copy the readonly pairs.
     const prefixes = options.prefixes ? options.prefixes.map(([p, iri]) => [p, iri]) : undefined;
     return ((this.#inner as any).serialize)(format, pretty, indent, abbreviate, prefixes);
-    // @ts-ignore: optional feature-gated method
+  }
 
   /**
    * [OPUS-4.8] sq-u78ol (#1117): alias for {@link serialize} — the `dump(format)` spelling the
@@ -511,15 +511,15 @@ export class SparqStore {
    * cryptic "not a function".
    */
   validate(data: string, shapes: string, format: RdfFormat = 'turtle'): ValidationReport {
-    if (typeof this.#inner.validate !== 'function') {
-    // @ts-ignore: optional feature-gated method
+    if (typeof (this.#inner as any).validate !== 'function') {
       throw new Error(
+        'SparqStore.validate requires a SHACL-enabled wasm bundle (build sparq-wasm with --features shacl)',
       );
     }
     return JSON.parse(((this.#inner as any).validate)(data, shapes, format)) as ValidationReport;
-    // @ts-ignore: optional feature-gated method
   }
 
+  /**
    * The WHERE clause scoping `pattern` to the requested `graph` position:
    * `null`/`undefined`/Variable span the default graph AND every named graph
    * (binding `?g`); `DefaultGraph` scopes to the default graph; a `NamedNode`
@@ -642,17 +642,6 @@ export class SparqStore {
   removeQuads(quads: Iterable<RDF.Quad>): void {
     this.applyDelta([], quads);
   }
-
-  /**
-   * [OPUS-4.8] sq-iwhl8 (#1116) — a view of this store as an RDF/JS **`Source`** / **`Sink`** /
-   * **`Store`** (the Stream spec, https://rdf.js.org/stream-spec/): `match(...)` yields a quad
-   * `Stream` (events, not the synchronous `Quad[]` this class returns), and `import` / `remove` /
-   * `removeMatches` / `deleteGraph` consume/mutate via streams. The backing store stays the
-   * source of truth; the adapter only re-views its primitives as the streaming interface, so a
-   * sparq store drops into any RDF/JS Stream pipeline.
-   */
-  }
-
   /** Releases the wasm-side memory. The store must not be used afterwards. */
   free(): void {
     this.#inner.free();
