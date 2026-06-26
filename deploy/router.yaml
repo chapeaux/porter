@@ -110,6 +110,22 @@ spec:
               value: "${PORTER_LWS_BASE_URL}"
             - name: QDRANT_URL
               value: "http://porter-qdrant:6333"
+            - name: S3_ENDPOINT
+              value: "http://porter-minio:9000"
+            - name: S3_BUCKET
+              value: "porter"
+            - name: S3_REGION
+              value: "us-east-1"
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: porter-minio
+                  key: root-user
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: porter-minio
+                  key: root-password
           volumeMounts:
             - name: redhat-ca
               mountPath: /etc/porter-certs

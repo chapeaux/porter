@@ -1,0 +1,123 @@
+# Porter MinIO -- S3-compatible object storage for credentials,
+# AP federation state, and session snapshots.
+#
+# Template variables:
+#   ${NAMESPACE}          -- Target OpenShift namespace
+#   ${MINIO_ROOT_USER}    -- MinIO root user (default: porteradmin)
+#   ${MINIO_ROOT_PASSWORD}-- MinIO root password (generate with: openssl rand -hex 16)
+#
+# Prerequisites:
+#   oc create secret generic porter-minio \
+#     --from-literal=root-user='porteradmin' \
+#     --from-literal=root-password="$(openssl rand -hex 16)" \
+#     -n $NAMESPACE
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: porter-minio
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    app.kubernetes.io/part-of: porter
+    app.kubernetes.io/component: minio
+    component: minio
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: porter
+      component: minio
+  template:
+    metadata:
+      labels:
+        app: porter
+        app.kubernetes.io/part-of: porter
+        app.kubernetes.io/component: minio
+        component: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: porter-minio
+                  key: root-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: porter-minio
+                  key: root-password
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: minio-data
+          persistentVolumeClaim:
+            claimName: porter-minio-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: porter-minio-data
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    app.kubernetes.io/part-of: porter
+    component: minio
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: porter-minio
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    app.kubernetes.io/part-of: porter
+    component: minio
+spec:
+  selector:
+    app: porter
+    component: minio
+  ports:
+    - port: 9000
+      targetPort: 9000
+      name: api
+    - port: 9001
+      targetPort: 9001
+      name: console
