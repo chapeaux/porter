@@ -278,6 +278,8 @@ export class PodRegistry {
         namespace: this.namespace,
         labels: {
           app: "porter",
+          "app.kubernetes.io/part-of": "porter",
+          "app.kubernetes.io/component": "user-orchestrator",
           component: "user-orchestrator",
           "porter.io/user": sanitized,
         },
@@ -295,6 +297,8 @@ export class PodRegistry {
           metadata: {
             labels: {
               app: "porter",
+              "app.kubernetes.io/part-of": "porter",
+              "app.kubernetes.io/component": "user-orchestrator",
               component: "user-orchestrator",
               "porter.io/user": sanitized,
             },
@@ -321,6 +325,7 @@ export class PodRegistry {
                 ...(Deno.env.get("S3_ACCESS_KEY") ? [{ name: "S3_ACCESS_KEY", value: Deno.env.get("S3_ACCESS_KEY") }] : []),
                 ...(Deno.env.get("S3_SECRET_KEY") ? [{ name: "S3_SECRET_KEY", value: Deno.env.get("S3_SECRET_KEY") }] : []),
                 ...(Deno.env.get("S3_REGION") ? [{ name: "S3_REGION", value: Deno.env.get("S3_REGION") }] : []),
+                ...(Deno.env.get("QDRANT_URL") ? [{ name: "QDRANT_URL", value: Deno.env.get("QDRANT_URL") }] : []),
               ],
               volumeMounts: [
                 { name: "porter-home", mountPath: "/app/.porter" },

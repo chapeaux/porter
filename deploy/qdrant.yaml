@@ -1,0 +1,91 @@
+# Qdrant vector database for Porter embedding-level agent coordination.
+#
+# Ephemeral storage — vectors are derived from the SPARQL graph and
+# rebuilt as agents produce output in new sessions.
+#
+# Template variables:
+#   ${NAMESPACE} -- Target OpenShift namespace
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: porter-qdrant
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    app.kubernetes.io/part-of: porter
+    app.kubernetes.io/component: qdrant
+    component: qdrant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: porter
+      component: qdrant
+  template:
+    metadata:
+      labels:
+        app: porter
+        app.kubernetes.io/part-of: porter
+        app.kubernetes.io/component: qdrant
+        component: qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: docker.io/qdrant/qdrant:latest
+          ports:
+            - containerPort: 6333
+              name: http
+            - containerPort: 6334
+              name: grpc
+          env:
+            - name: QDRANT__STORAGE__STORAGE_PATH
+              value: /qdrant/storage/data
+            - name: QDRANT__STORAGE__SNAPSHOTS_PATH
+              value: /qdrant/storage/snapshots
+          volumeMounts:
+            - name: qdrant-storage
+              mountPath: /qdrant/storage
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6333
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 6333
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: qdrant-storage
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: porter-qdrant
+  namespace: ${NAMESPACE}
+  labels:
+    app: porter
+    app.kubernetes.io/part-of: porter
+    component: qdrant
+spec:
+  selector:
+    app: porter
+    component: qdrant
+  ports:
+    - port: 6333
+      targetPort: 6333
+      name: http
+    - port: 6334
+      targetPort: 6334
+      name: grpc

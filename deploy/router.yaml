@@ -61,6 +61,8 @@ metadata:
   namespace: ${NAMESPACE}
   labels:
     app: porter
+    app.kubernetes.io/part-of: porter
+    app.kubernetes.io/component: router
     component: router
 spec:
   replicas: 1
@@ -72,6 +74,8 @@ spec:
     metadata:
       labels:
         app: porter
+        app.kubernetes.io/part-of: porter
+        app.kubernetes.io/component: router
         component: router
     spec:
       serviceAccountName: porter-router
@@ -104,6 +108,8 @@ spec:
               value: "${NAMESPACE}"
             - name: PORTER_LWS_BASE_URL
               value: "${PORTER_LWS_BASE_URL}"
+            - name: QDRANT_URL
+              value: "http://porter-qdrant:6333"
           volumeMounts:
             - name: redhat-ca
               mountPath: /etc/porter-certs
@@ -140,6 +146,7 @@ metadata:
   namespace: ${NAMESPACE}
   labels:
     app: porter
+    app.kubernetes.io/part-of: porter
     component: router
 spec:
   selector:
@@ -156,6 +163,7 @@ metadata:
   namespace: ${NAMESPACE}
   labels:
     app: porter
+    app.kubernetes.io/part-of: porter
     component: router
   annotations:
     haproxy.router.openshift.io/timeout: 3600s
