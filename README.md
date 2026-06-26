@@ -1310,9 +1310,36 @@ porter start --ui                     # single session with dashboard
 
 ### Cloud (OpenShift)
 
-Porter runs as a container in serve mode. Sessions are created dynamically via the dashboard.
+Porter deploys as a self-contained application group with three components:
 
-For multi-tenant deployments, use `porter router` (pod-per-user mode) where each SSO user gets an isolated orchestrator pod. The router handles OIDC authentication, pod provisioning, and reverse proxying. Unauthenticated users see a login chooser page with SSO and Solid/LWS options.
+| Component | Manifest | Purpose | Storage |
+|-----------|----------|---------|---------|
+| **porter-router** | `deploy/router.yaml` | Multi-user router, AP federation, UI | — |
+| **porter-qdrant** | `deploy/qdrant.yaml` | Vector similarity search | Ephemeral (emptyDir) |
+| **porter-minio** | `deploy/minio.yaml` | Credentials, AP state, snapshots | Persistent (5Gi PVC) |
+
+All resources are labeled `app.kubernetes.io/part-of: porter` and appear as one grouped application in the OpenShift console Topology view. User orchestrator pods provisioned by the router inherit the same topology label.
+
+```bash
+# Create secrets
+oc create secret generic porter-oidc --from-literal=client-secret='<secret>'
+oc create secret generic porter-session --from-literal=session-key="$(openssl rand -hex 32)"
+oc create secret generic porter-minio \
+  --from-literal=root-user='porteradmin' \
+  --from-literal=root-password="$(openssl rand -hex 16)"
+
+# Deploy (substitute template variables)
+export NAMESPACE=$(oc project -q) IMAGE=quay.io/yourorg/porter:latest
+envsubst < deploy/minio.yaml | oc apply -f -
+envsubst < deploy/qdrant.yaml | oc apply -f -
+envsubst < deploy/router.yaml | oc apply -f -
+
+# Create the MinIO bucket
+oc exec deployment/porter-minio -- mc alias set local http://localhost:9000 porteradmin <password>
+oc exec deployment/porter-minio -- mc mb local/porter --ignore-existing
+```
+
+For multi-tenant deployments, `porter router` (pod-per-user mode) provisions isolated orchestrator pods per SSO user. The router handles OIDC authentication, pod provisioning, and reverse proxying. Unauthenticated users see a login chooser page with SSO and Solid/LWS options.
 
 See [`docs/deployment-guide.md`](docs/deployment-guide.md) for the full guide covering secrets, manifests, OIDC, RBAC, NetworkPolicy, CA bundle configuration, LWS setup, router deployment, and troubleshooting.
 
@@ -1514,10 +1541,12 @@ porter/
         sync-helpers.js   Sync utilities (agentToTurtle, parseTurtleAgent, setResourcePublic)
   test/                 318 tests (deno task test)
   deploy/
+    router.yaml         Multi-user router deployment + RBAC + Service + Route
+    qdrant.yaml         Qdrant vector database deployment + Service
+    minio.yaml          MinIO object storage deployment + PVC + Service
     orchestrator.yaml   Single-instance orchestrator deployment
     deployment.yaml     Worker pod template
     service.yaml        Bus ClusterIP service
-    router.yaml         Multi-user router deployment + RBAC
     user-pod-template.yaml  Per-user orchestrator pod template
   examples/             Ready-to-use configurations (sequential, mixture, deliberation, distillation)
   docs/

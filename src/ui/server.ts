@@ -2294,7 +2294,7 @@ export async function startUiServer(
         const agents = body.config.agents as Record<string, unknown>[];
         for (let i = 0; i < agents.length; i++) {
           const a = agents[i];
-          if (a.ref && !a.system_prompt) {
+          if (a.ref && a.system_prompt === undefined && !a.tools) {
             let resolved: SavedAgent | null = null;
 
             const ref = a.ref as string;

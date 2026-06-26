@@ -381,8 +381,8 @@ export class ConfigStore extends CPXStore {
         sandbox: !!config.sandbox,
         runtimeTools: config.runtime_tools || [],
         agents: (config.agents || []).map(a => {
-          // Detect agent references (has ref, no system_prompt)
-          if (a.ref && !a.system_prompt) {
+          // Detect agent references (has ref, no inline agent data)
+          if (a.ref && a.system_prompt === undefined && !a.tools) {
             return {
               name: a.name || a.ref,
               role: a.role || 'worker',
