@@ -701,8 +701,7 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
                 } catch { /* Pod URL discovery failed */ }
               }
               await publishTeam(slug, ownerId, podUrl);
-              // Cache the team config on the router so AP bridge can find it
-              // without depending on the user pod having it
+              // Cache team config to MinIO + local so AP bridge can find it
               try {
                 const entry = podRegistry.get(ownerId);
                 if (entry?.ready) {
@@ -712,6 +711,15 @@ export async function startRouter(options: RouterOptions): Promise<Deno.HttpServ
                     const { UserStore } = await import("../auth/user_store.ts");
                     const apUserStore = new UserStore();
                     await apUserStore.saveTeam(ownerId, team);
+                    // Persist to MinIO for cross-restart durability
+                    try {
+                      const { loadS3Config, ApS3Client } = await import("../activitypub/s3.ts");
+                      const s3Cfg = loadS3Config();
+                      if (s3Cfg) {
+                        const s3 = new ApS3Client(s3Cfg);
+                        await s3.putObject(`team-cache/${slug}.json`, JSON.stringify(team));
+                      }
+                    } catch { /* MinIO not available */ }
                   }
                 }
               } catch { /* best effort cache */ }

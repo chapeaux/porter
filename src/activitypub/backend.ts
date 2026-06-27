@@ -297,7 +297,24 @@ export class RouterBackend implements ActivityPubBackend {
       }
     }
 
-    // 3. Fall back to pod proxy
+    // 3. Try MinIO cache
+    try {
+      const { loadS3Config, ApS3Client } = await import("./s3.ts");
+      const s3Cfg = loadS3Config();
+      if (s3Cfg) {
+        const s3 = new ApS3Client(s3Cfg);
+        const cached = await s3.getObject(`team-cache/${teamSlug}.json`);
+        if (cached) {
+          const team = JSON.parse(cached) as SavedTeam;
+          if (team?.config?.agents?.length) {
+            console.log(`[backend] getTeam: loaded '${teamSlug}' from MinIO cache (${team.config.agents.length} agents)`);
+            return team;
+          }
+        }
+      }
+    } catch { /* MinIO not available */ }
+
+    // 4. Fall back to pod proxy
     console.log(`[backend] getTeam: falling back to pod proxy for '${teamSlug}'`);
     return this.getTeamFromPod(ownerId, teamSlug);
   }

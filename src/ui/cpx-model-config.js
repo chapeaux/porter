@@ -126,7 +126,7 @@ class CpxModelConfig extends HTMLElement {
       region: m.region,
       api_version: m.api_version,
       auth: m.auth ?? (PROVIDER_DEFAULTS[m.provider_type]?.auth ?? "bearer"),
-      chat_endpoint: m.chat_endpoint,
+      chat_endpoint: m.chat_endpoint ?? '',
       default_params: m.default_params,
       context_window: m.context_window ?? 128000,
       max_tokens: m.max_tokens ?? 4096,
@@ -223,7 +223,7 @@ class CpxModelConfig extends HTMLElement {
     if (val('f-id') !== undefined) m.id = val('f-id');
     if (val('f-display_name') !== undefined) m.display_name = val('f-display_name');
     if (val('f-base_url') !== undefined) m.base_url = val('f-base_url');
-    if (val('f-chat_endpoint') !== undefined) m.chat_endpoint = val('f-chat_endpoint') || undefined;
+    if (val('f-chat_endpoint') !== undefined) m.chat_endpoint = val('f-chat_endpoint') || '';
     const keyEnv = val('f-api_key_env');
     if (keyEnv !== undefined) m.api_key_env = keyEnv || undefined;
     if (val('f-auth') !== undefined) m.auth = val('f-auth');

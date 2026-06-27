@@ -107,11 +107,25 @@ export const PORTER = {
   derivedFrom: `${NS}derivedFrom`,
   linkedFrom: `${NS}linkedFrom`,
 
-  // Team properties (reference-based)
+  // Agent extended properties
+  hasMcpTool: `${NS}hasMcpTool`,
+  subscribesTo: `${NS}subscribesTo`,
+  maxTurns: `${NS}maxTurns`,
+  maxContextTokens: `${NS}maxContextTokens`,
+  visibility: `${NS}visibility`,
+
+  // Team properties
   hasAgentRef: `${NS}hasAgentRef`,
+  hasAgentSlot: `${NS}hasAgentSlot`,
   agentRef: `${NS}agentRef`,
   assignedRole: `${NS}assignedRole`,
   teamPattern: `${NS}teamPattern`,
+  maxDeliberationRounds: `${NS}maxDeliberationRounds`,
+  sessionEnv: `${NS}sessionEnv`,
+  runtimeTool: `${NS}runtimeTool`,
+  hasMcpServer: `${NS}hasMcpServer`,
+  mcpArgs: `${NS}mcpArgs`,
+  mcpIssuerUrl: `${NS}mcpIssuerUrl`,
 
   // Model properties
   providerType: `${NS}providerType`,

@@ -157,26 +157,91 @@ export function turtleToTeam(turtle: string): SavedTeam | null {
   const name = getValue(quads, subject, `${PORTER_NS}name`);
   if (!name) return null;
 
-  // Check for embedded config JSON (lossless round-trip)
+  // Backwards compat: check for legacy configJson
   const configJson = getValue(quads, subject, `${PORTER_NS}configJson`);
   if (configJson) {
     try {
       const config = JSON.parse(configJson);
       return { name, config, created_at: "", updated_at: "" };
-    } catch { /* fall through to field-by-field */ }
+    } catch { /* fall through to RDF parsing */ }
   }
 
+  // Parse all fields from RDF
   const pattern = getValue(quads, subject, `${PORTER_NS}teamPattern`);
+  const model = getValue(quads, subject, `${PORTER_NS}usesModel`) ?? "";
+  const apiKeyEnv = getValue(quads, subject, `${PORTER_NS}apiKeyEnv`) ?? "ANTHROPIC_API_KEY";
+  const workingDir = getValue(quads, subject, `${PORTER_NS}workingDir`) ?? ".";
+  const maxRounds = parseInt(getValue(quads, subject, `${PORTER_NS}maxDeliberationRounds`) ?? "") || undefined;
+
+  // Parse agent slots (blank nodes linked via hasAgentSlot)
+  const agentSlotIds = getValues(quads, subject, `${PORTER_NS}hasAgentSlot`);
+  const agents = agentSlotIds.map((slotId) => {
+    const agent: Record<string, unknown> = {
+      name: getValue(quads, slotId, `${PORTER_NS}agentRef`) ?? "",
+      ref: getValue(quads, slotId, `${PORTER_NS}agentRef`) ?? "",
+      role: getValue(quads, slotId, `${PORTER_NS}assignedRole`) ?? "worker",
+      model: getValue(quads, slotId, `${PORTER_NS}usesModel`) ?? undefined,
+      system_prompt: getValue(quads, slotId, `${PORTER_NS}agentExpertise`) ?? "",
+      tools: getValues(quads, slotId, `${PORTER_NS}hasTool`),
+      mcp_tools: getValues(quads, slotId, `${PORTER_NS}hasMcpTool`),
+      max_tokens: parseInt(getValue(quads, slotId, `${PORTER_NS}maxTokens`) ?? "") || 8192,
+      max_turns: parseInt(getValue(quads, slotId, `${PORTER_NS}maxTurns`) ?? "") || undefined,
+      max_context_tokens: parseInt(getValue(quads, slotId, `${PORTER_NS}maxContextTokens`) ?? "") || undefined,
+      reasoning: getValue(quads, slotId, `${PORTER_NS}reasoning`) === "true",
+    };
+    return agent;
+  });
+
+  // Parse MCP servers (blank nodes linked via hasMcpServer)
+  const mcpIds = getValues(quads, subject, `${PORTER_NS}hasMcpServer`);
+  const mcpServers: Record<string, Record<string, unknown>> = {};
+  for (const mcpId of mcpIds) {
+    const mcpName = getValue(quads, mcpId, `${PORTER_NS}name`) ?? "";
+    if (!mcpName) continue;
+    const cfg: Record<string, unknown> = {
+      transport: getValue(quads, mcpId, `${PORTER_NS}transport`) ?? "stdio",
+    };
+    const url = getValue(quads, mcpId, `${PORTER_NS}mcpUrl`);
+    if (url) cfg.url = url;
+    const cmd = getValue(quads, mcpId, `${PORTER_NS}mcpCommand`);
+    if (cmd) cfg.command = cmd;
+    const authType = getValue(quads, mcpId, `${PORTER_NS}authType`);
+    if (authType) {
+      cfg.auth = { type: authType } as Record<string, string>;
+      const tokenEnv = getValue(quads, mcpId, `${PORTER_NS}tokenEnv`);
+      if (tokenEnv) (cfg.auth as Record<string, string>).token_env = tokenEnv;
+      const issuerUrl = getValue(quads, mcpId, `${PORTER_NS}mcpIssuerUrl`);
+      if (issuerUrl) (cfg.auth as Record<string, string>).issuer_url = issuerUrl;
+    }
+    const args = getValues(quads, mcpId, `${PORTER_NS}mcpArgs`);
+    if (args.length > 0) cfg.args = args;
+    mcpServers[mcpName] = cfg;
+  }
+
+  // Session env
+  const envStrings = getValues(quads, subject, `${PORTER_NS}sessionEnv`);
+  const env: Record<string, string> = {};
+  for (const s of envStrings) {
+    const eq = s.indexOf("=");
+    if (eq > 0) env[s.slice(0, eq)] = s.slice(eq + 1);
+  }
+
+  // Runtime tools
+  const runtimeTools = getValues(quads, subject, `${PORTER_NS}runtimeTool`);
 
   return {
     name,
     config: {
       session: name,
-      model: getValue(quads, subject, `${PORTER_NS}usesModel`) ?? "",
-      api_key_env: "ANTHROPIC_API_KEY",
+      model,
+      api_key_env: apiKeyEnv,
       pattern: pattern as import("../core/config.ts").CollaborationPattern | undefined,
-      agents: [],
-      working_dir: ".",
+      max_deliberation_rounds: maxRounds,
+      working_dir: workingDir,
+      agents: agents as unknown as import("../core/config.ts").AgentConfig[],
+      mcp_servers: Object.keys(mcpServers).length > 0 ? mcpServers as unknown as Record<string, import("../mcp/mcp_client.ts").McpServerConfig> : undefined,
+      env: Object.keys(env).length > 0 ? env : undefined,
+      runtime_tools: runtimeTools.length > 0 ? runtimeTools : undefined,
     },
     created_at: "",
     updated_at: "",
@@ -187,14 +252,61 @@ export function teamToTurtle(team: SavedTeam, uri: string): string {
   const quads: Quad[] = [
     iriQuad(uri, RDF_TYPE, `${PORTER_NS}Team`),
     litQuad(uri, `${PORTER_NS}name`, team.name),
-    litQuad(uri, `${PORTER_NS}configJson`, JSON.stringify(team.config)),
   ];
+  const c = team.config;
 
-  if (team.config.pattern) {
-    quads.push(litQuad(uri, `${PORTER_NS}teamPattern`, team.config.pattern));
+  if (c.pattern) quads.push(litQuad(uri, `${PORTER_NS}teamPattern`, c.pattern));
+  if (c.model) quads.push(litQuad(uri, `${PORTER_NS}usesModel`, c.model));
+  if (c.api_key_env) quads.push(litQuad(uri, `${PORTER_NS}apiKeyEnv`, c.api_key_env));
+  if (c.working_dir && c.working_dir !== ".") quads.push(litQuad(uri, `${PORTER_NS}workingDir`, c.working_dir));
+  if (c.max_deliberation_rounds) quads.push(litQuad(uri, `${PORTER_NS}maxDeliberationRounds`, c.max_deliberation_rounds));
+
+  // Agents as blank node slots with full inline data
+  for (const a of c.agents ?? []) {
+    const bn = `_:agent_${crypto.randomUUID().slice(0, 8)}`;
+    quads.push(makeQuad(namedNode(uri), namedNode(`${PORTER_NS}hasAgentSlot`), namedNode(bn)) as unknown as Quad);
+    quads.push(litQuad(bn, `${PORTER_NS}agentRef`, (a as unknown as Record<string, string>).ref ?? a.name));
+    quads.push(litQuad(bn, `${PORTER_NS}assignedRole`, a.role ?? "worker"));
+    if (a.model) quads.push(litQuad(bn, `${PORTER_NS}usesModel`, a.model));
+    if (a.system_prompt) quads.push(litQuad(bn, `${PORTER_NS}agentExpertise`, a.system_prompt));
+    for (const t of a.tools ?? []) quads.push(litQuad(bn, `${PORTER_NS}hasTool`, t));
+    for (const t of a.mcp_tools ?? []) quads.push(litQuad(bn, `${PORTER_NS}hasMcpTool`, t));
+    if (a.max_tokens) quads.push(litQuad(bn, `${PORTER_NS}maxTokens`, a.max_tokens));
+    if (a.max_turns) quads.push(litQuad(bn, `${PORTER_NS}maxTurns`, a.max_turns));
+    if (a.max_context_tokens) quads.push(litQuad(bn, `${PORTER_NS}maxContextTokens`, a.max_context_tokens));
+    if (a.reasoning) quads.push(litQuad(bn, `${PORTER_NS}reasoning`, true));
   }
-  if (team.config.model) {
-    quads.push(litQuad(uri, `${PORTER_NS}usesModel`, team.config.model));
+
+  // MCP servers as blank nodes
+  if (c.mcp_servers) {
+    for (const [mcpName, cfg] of Object.entries(c.mcp_servers)) {
+      const bn = `_:mcp_${crypto.randomUUID().slice(0, 8)}`;
+      const mcpCfg = cfg as unknown as Record<string, unknown>;
+      quads.push(makeQuad(namedNode(uri), namedNode(`${PORTER_NS}hasMcpServer`), namedNode(bn)) as unknown as Quad);
+      quads.push(litQuad(bn, `${PORTER_NS}name`, mcpName));
+      quads.push(litQuad(bn, `${PORTER_NS}transport`, (mcpCfg.transport as string) ?? "stdio"));
+      if (mcpCfg.url) quads.push(litQuad(bn, `${PORTER_NS}mcpUrl`, mcpCfg.url as string));
+      if (mcpCfg.command) quads.push(litQuad(bn, `${PORTER_NS}mcpCommand`, mcpCfg.command as string));
+      const auth = mcpCfg.auth as Record<string, string> | undefined;
+      if (auth?.type) quads.push(litQuad(bn, `${PORTER_NS}authType`, auth.type));
+      if (auth?.token_env) quads.push(litQuad(bn, `${PORTER_NS}tokenEnv`, auth.token_env));
+      if (auth?.issuer_url) quads.push(litQuad(bn, `${PORTER_NS}mcpIssuerUrl`, auth.issuer_url));
+    }
+  }
+
+  // Session env as repeated KEY=VALUE strings
+  if (c.env) {
+    for (const [k, v] of Object.entries(c.env)) {
+      quads.push(litQuad(uri, `${PORTER_NS}sessionEnv`, `${k}=${v}`));
+    }
+  }
+
+  // Runtime tools
+  if (c.runtime_tools) {
+    for (const t of c.runtime_tools) {
+      const toolName = typeof t === "string" ? t : (t as { name: string }).name;
+      quads.push(litQuad(uri, `${PORTER_NS}runtimeTool`, toolName));
+    }
   }
 
   return writeTurtle(quads);

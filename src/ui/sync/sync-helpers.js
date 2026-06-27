@@ -505,9 +505,6 @@ export function agentToTurtle(agent, uri) {
 export function teamToTurtle(team, uri) {
   const name = team.name || '';
   const config = team.config || {};
-  const pattern = config.pattern || '';
-  const agents = config.agents || [];
-  const mcpServers = config.mcp_servers || {};
 
   const lines = [
     '@prefix porter: <https://porter.chapeaux.io/vocab#> .',
@@ -517,29 +514,60 @@ export function teamToTurtle(team, uri) {
     `  porter:name "${escapeTtl(name)}" ;`,
   ];
 
-  if (pattern) {
-    lines.push(`  porter:teamPattern "${escapeTtl(pattern)}" ;`);
-  }
+  if (config.pattern) lines.push(`  porter:teamPattern "${escapeTtl(config.pattern)}" ;`);
+  if (config.model) lines.push(`  porter:usesModel "${escapeTtl(config.model)}" ;`);
+  if (config.api_key_env) lines.push(`  porter:apiKeyEnv "${escapeTtl(config.api_key_env)}" ;`);
+  if (config.working_dir && config.working_dir !== '.') lines.push(`  porter:workingDir "${escapeTtl(config.working_dir)}" ;`);
+  if (config.max_deliberation_rounds) lines.push(`  porter:maxDeliberationRounds "${config.max_deliberation_rounds}"^^xsd:integer ;`);
 
-  for (const a of agents) {
+  // Agents as full inline slots
+  for (const a of (config.agents || [])) {
     const ref = a.ref || a.name || '';
     const role = a.role || 'worker';
+    const expertise = a.system_prompt || a.systemPrompt || '';
+    const tools = a.tools || [];
+    const mcpTools = a.mcp_tools || a.mcpTools || [];
     const model = a.model || '';
-    let bnode = `[ porter:agentRef "${escapeTtl(ref)}" ; porter:assignedRole "${escapeTtl(role)}"`;
-    if (model) bnode += ` ; porter:usesModel "${escapeTtl(model)}"`;
-    bnode += ' ]';
-    lines.push(`  porter:hasAgentRef ${bnode} ;`);
+    const maxTokens = a.max_tokens || a.maxTokens || 0;
+    const maxTurns = a.max_turns || a.maxTurns || 0;
+    const maxContextTokens = a.max_context_tokens || a.maxContextTokens || 0;
+    const reasoning = a.reasoning || false;
+
+    const parts = [`porter:agentRef "${escapeTtl(ref)}"`, `porter:assignedRole "${escapeTtl(role)}"`];
+    if (model) parts.push(`porter:usesModel "${escapeTtl(model)}"`);
+    if (expertise) parts.push(`porter:agentExpertise """${escapeTtl(expertise)}"""`);
+    for (const t of tools) parts.push(`porter:hasTool "${escapeTtl(t)}"`);
+    for (const t of mcpTools) parts.push(`porter:hasMcpTool "${escapeTtl(t)}"`);
+    if (maxTokens) parts.push(`porter:maxTokens "${maxTokens}"^^xsd:integer`);
+    if (maxTurns) parts.push(`porter:maxTurns "${maxTurns}"^^xsd:integer`);
+    if (maxContextTokens) parts.push(`porter:maxContextTokens "${maxContextTokens}"^^xsd:integer`);
+    if (reasoning) parts.push(`porter:reasoning "true"^^xsd:boolean`);
+
+    lines.push(`  porter:hasAgentSlot [ ${parts.join(' ; ')} ] ;`);
   }
 
-  // Embed MCP server config as JSON for round-tripping
-  if (Object.keys(mcpServers).length > 0) {
-    const mcpJson = JSON.stringify(mcpServers);
-    lines.push(`  porter:mcpServersJson """${escapeTtl(mcpJson)}""" ;`);
+  // MCP servers as inline blank nodes
+  for (const [mcpName, cfg] of Object.entries(config.mcp_servers || {})) {
+    const parts = [`porter:name "${escapeTtl(mcpName)}"`, `porter:transport "${escapeTtl(cfg.transport || 'stdio')}"`];
+    if (cfg.url) parts.push(`porter:mcpUrl "${escapeTtl(cfg.url)}"`);
+    if (cfg.command) parts.push(`porter:mcpCommand "${escapeTtl(cfg.command)}"`);
+    if (cfg.auth?.type) parts.push(`porter:authType "${escapeTtl(cfg.auth.type)}"`);
+    if (cfg.auth?.token_env) parts.push(`porter:tokenEnv "${escapeTtl(cfg.auth.token_env)}"`);
+    if (cfg.auth?.issuer_url) parts.push(`porter:mcpIssuerUrl "${escapeTtl(cfg.auth.issuer_url)}"`);
+    if (cfg.args) for (const arg of cfg.args) parts.push(`porter:mcpArgs "${escapeTtl(arg)}"`);
+    lines.push(`  porter:hasMcpServer [ ${parts.join(' ; ')} ] ;`);
   }
 
-  // Include full config JSON for lossless round-trip
-  const configJson = JSON.stringify(config);
-  lines.push(`  porter:configJson """${escapeTtl(configJson)}""" ;`);
+  // Session env as repeated KEY=VALUE strings
+  for (const [k, v] of Object.entries(config.env || {})) {
+    lines.push(`  porter:sessionEnv "${escapeTtl(k)}=${escapeTtl(v)}" ;`);
+  }
+
+  // Runtime tools
+  for (const t of (config.runtime_tools || [])) {
+    const toolName = typeof t === 'string' ? t : t.name;
+    lines.push(`  porter:runtimeTool "${escapeTtl(toolName)}" ;`);
+  }
 
   // Replace trailing ; with .
   const lastLine = lines[lines.length - 1];
@@ -611,46 +639,141 @@ export function parseTurtleTeam(turtle) {
   const norm = turtle.replace(new RegExp(`<${NS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^>]+)>`, 'g'), 'porter:$1');
   if (!norm.includes('porter:Team')) return null;
 
-  const extractLiteral = (predicate) => {
-    const longMatch = norm.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
+  const extractLiteral = (predicate, src) => {
+    const text = src || norm;
+    const longMatch = text.match(new RegExp(`${predicate}\\s+"""((?:[^"]|"(?!""))*?)"""`, 's'));
     if (longMatch) return longMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    const shortMatch = norm.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
+    const shortMatch = text.match(new RegExp(`${predicate}\\s+"([^"]*?)"`));
     if (shortMatch) return shortMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     return '';
+  };
+
+  const extractAll = (predicate, src) => {
+    const text = src || norm;
+    const results = [];
+    const blockRe = new RegExp(`${predicate}\\s+([^;.]+)[;.]`, 'gs');
+    let blockMatch;
+    while ((blockMatch = blockRe.exec(text)) !== null) {
+      const valRe = /"([^"]*?)"/g;
+      let m;
+      while ((m = valRe.exec(blockMatch[1])) !== null) {
+        const val = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        if (!results.includes(val)) results.push(val);
+      }
+    }
+    return results;
   };
 
   const name = extractLiteral('porter:name');
   if (!name) return null;
 
-  // Try to restore full config from configJson if present
+  // Backwards compat: try configJson first
   const configJson = extractLiteral('porter:configJson');
   if (configJson) {
     try {
       const config = JSON.parse(configJson);
       return { name, config };
-    } catch { /* fall through to field-by-field parsing */ }
+    } catch { /* fall through to RDF parsing */ }
   }
 
-  // Field-by-field parsing fallback
+  // Parse all fields from RDF
   const pattern = extractLiteral('porter:teamPattern');
+  const model = extractLiteral('porter:usesModel');
+  const apiKeyEnv = extractLiteral('porter:apiKeyEnv') || 'ANTHROPIC_API_KEY';
+  const workingDir = extractLiteral('porter:workingDir') || '.';
+  const maxRoundsStr = extractLiteral('porter:maxDeliberationRounds');
+  const maxRounds = maxRoundsStr ? parseInt(maxRoundsStr, 10) : undefined;
+
+  // Parse agent slots (blank nodes)
   const agents = [];
-  const agentRefRe = /porter:hasAgentRef\s+\[\s*porter:agentRef\s+"([^"]*?)"\s*;\s*porter:assignedRole\s+"([^"]*?)"(?:\s*;\s*porter:usesModel\s+"([^"]*?)")?\s*\]/g;
-  let m;
-  while ((m = agentRefRe.exec(turtle)) !== null) {
-    const entry = { name: m[1], ref: m[1], role: m[2] };
-    if (m[3]) entry.model = m[3];
-    agents.push(entry);
+  const slotRe = /porter:hasAgentSlot\s+\[([\s\S]*?)\]/g;
+  let slotMatch;
+  while ((slotMatch = slotRe.exec(norm)) !== null) {
+    const block = slotMatch[1];
+    const agent = {
+      name: extractLiteral('porter:agentRef', block),
+      ref: extractLiteral('porter:agentRef', block),
+      role: extractLiteral('porter:assignedRole', block) || 'worker',
+      model: extractLiteral('porter:usesModel', block) || undefined,
+      system_prompt: extractLiteral('porter:agentExpertise', block),
+      tools: extractAll('porter:hasTool', block),
+      mcp_tools: extractAll('porter:hasMcpTool', block),
+      max_tokens: parseInt(extractLiteral('porter:maxTokens', block), 10) || 8192,
+      max_turns: parseInt(extractLiteral('porter:maxTurns', block), 10) || undefined,
+      max_context_tokens: parseInt(extractLiteral('porter:maxContextTokens', block), 10) || undefined,
+      reasoning: extractLiteral('porter:reasoning', block) === 'true',
+    };
+    agents.push(agent);
   }
 
-  let mcpServers = {};
-  const mcpJson = extractLiteral('porter:mcpServersJson');
-  if (mcpJson) {
-    try { mcpServers = JSON.parse(mcpJson); } catch { /* ignore */ }
+  // Also try legacy hasAgentRef format
+  if (agents.length === 0) {
+    const agentRefRe = /porter:hasAgentRef\s+\[\s*porter:agentRef\s+"([^"]*?)"\s*;\s*porter:assignedRole\s+"([^"]*?)"(?:\s*;\s*porter:usesModel\s+"([^"]*?)")?\s*\]/g;
+    let m;
+    while ((m = agentRefRe.exec(norm)) !== null) {
+      const entry = { name: m[1], ref: m[1], role: m[2] };
+      if (m[3]) entry.model = m[3];
+      agents.push(entry);
+    }
   }
+
+  // Parse MCP servers (blank nodes)
+  const mcpServers = {};
+  const mcpRe = /porter:hasMcpServer\s+\[([\s\S]*?)\]/g;
+  let mcpMatch;
+  while ((mcpMatch = mcpRe.exec(norm)) !== null) {
+    const block = mcpMatch[1];
+    const mcpName = extractLiteral('porter:name', block);
+    if (!mcpName) continue;
+    const cfg = { transport: extractLiteral('porter:transport', block) || 'stdio' };
+    const url = extractLiteral('porter:mcpUrl', block);
+    if (url) cfg.url = url;
+    const cmd = extractLiteral('porter:mcpCommand', block);
+    if (cmd) cfg.command = cmd;
+    const authType = extractLiteral('porter:authType', block);
+    if (authType) {
+      cfg.auth = { type: authType };
+      const tokenEnv = extractLiteral('porter:tokenEnv', block);
+      if (tokenEnv) cfg.auth.token_env = tokenEnv;
+      const issuerUrl = extractLiteral('porter:mcpIssuerUrl', block);
+      if (issuerUrl) cfg.auth.issuer_url = issuerUrl;
+    }
+    mcpServers[mcpName] = cfg;
+  }
+
+  // Also try legacy mcpServersJson
+  if (Object.keys(mcpServers).length === 0) {
+    const mcpJson = extractLiteral('porter:mcpServersJson');
+    if (mcpJson) {
+      try { Object.assign(mcpServers, JSON.parse(mcpJson)); } catch { /* ignore */ }
+    }
+  }
+
+  // Session env
+  const envStrings = extractAll('porter:sessionEnv');
+  const env = {};
+  for (const s of envStrings) {
+    const eq = s.indexOf('=');
+    if (eq > 0) env[s.slice(0, eq)] = s.slice(eq + 1);
+  }
+
+  // Runtime tools
+  const runtimeTools = extractAll('porter:runtimeTool');
 
   return {
     name,
-    config: { pattern, agents, mcp_servers: mcpServers },
+    config: {
+      session: name,
+      pattern: pattern || undefined,
+      model,
+      api_key_env: apiKeyEnv,
+      working_dir: workingDir,
+      max_deliberation_rounds: maxRounds,
+      agents,
+      mcp_servers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
+      env: Object.keys(env).length > 0 ? env : undefined,
+      runtime_tools: runtimeTools.length > 0 ? runtimeTools : undefined,
+    },
   };
 }
 
