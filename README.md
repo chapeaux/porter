@@ -72,6 +72,7 @@ porter snapshot      Save or restore session state
 porter ui            Launch the web dashboard (standalone)
 porter login         Authenticate with a remote OpenShift cluster
 porter router        Start the multi-user router (pod-per-user mode)
+porter bridge        Start the CLI bridge (MCP server for browser Porter)
 porter deploy        Deploy agent worker pods to OpenShift
 porter teardown      Remove all porter pods and secrets from cluster
 ```
@@ -1099,6 +1100,45 @@ The [`examples/`](examples/) directory includes ready-to-use configurations:
 
 ---
 
+## Internationalization
+
+Porter uses RDF-driven internationalization — UI labels come from the Porter ontology (`porter.ttl`) with `@lang`-tagged `rdfs:label` and `rdfs:comment` values. No i18n framework or JSON translation files.
+
+### How It Works
+
+The ontology defines every UI label:
+```turtle
+porter:Team rdfs:label "Team"@en .
+porter:agentExpertise rdfs:label "Expertise"@en .
+```
+
+Translation files add language-tagged alternatives:
+```turtle
+# src/graph/i18n/es.ttl
+porter:Team rdfs:label "Equipo"@es .
+porter:agentExpertise rdfs:label "Experiencia"@es .
+```
+
+The `UiLabels` class (`src/ui/lib/ui-labels.js`) resolves labels by matching `navigator.language`, falling back to English.
+
+### Available Languages
+
+| Language | File | Status |
+|----------|------|--------|
+| English | `src/graph/porter.ttl` | Complete (canonical) |
+| Spanish | `src/graph/i18n/es.ttl` | Complete |
+| French | `src/graph/i18n/fr.ttl` | Complete |
+
+### Contributing Translations
+
+1. Copy labels from `porter.ttl` into a new `src/graph/i18n/{lang}.ttl`
+2. Add `@{lang}` tagged versions of each `rdfs:label` and `rdfs:comment`
+3. Submit as a PR — it's just a Turtle file, no JS knowledge needed
+
+SHACL validation messages (`shapes.ttl`) can also be language-tagged for localized error messages.
+
+---
+
 ## Linked Data
 
 Porter models agents, teams, and patterns as linked data resources with stable URIs, enabling interoperability across deployments and tools.
@@ -1343,6 +1383,28 @@ For multi-tenant deployments, `porter router` (pod-per-user mode) provisions iso
 
 See [`docs/deployment-guide.md`](docs/deployment-guide.md) for the full guide covering secrets, manifests, OIDC, RBAC, NetworkPolicy, CA bundle configuration, LWS setup, router deployment, and troubleshooting.
 
+### Static (GitHub Pages / Cloudflare / Netlify)
+
+Build the UI as static files deployable to any static host:
+
+```bash
+deno task build:static                # → dist/ directory
+```
+
+The static build supports two modes via `<meta>` tags in `index.html`:
+- **Browser mode** (`porter-mode=browser`) — Solid Pod login, direct model API calls, MCP via Streamable HTTP. No backend needed.
+- **Connected mode** (`porter-mode=connected`, `porter-api=https://porter.example.com`) — static UI connects to a Porter API server.
+
+### CLI Bridge
+
+Expose local filesystem tools to browser-native Porter via MCP:
+
+```bash
+porter bridge --port 3333 --workspace /path/to/project
+```
+
+Browser Porter connects to `http://localhost:3333` as an MCP server, gaining `read_file`, `write_file`, `edit_file`, `bash`, `git`, `glob`, `grep`, `list_dir` tools. Agents don't know if they're using the local filesystem or a Solid Pod — same tool interface, different backend.
+
 ### Hybrid Remote
 
 Orchestrator runs locally; agent workers run as OpenShift pods:
@@ -1378,6 +1440,7 @@ porter/
     session.ts          porter start, stop, status, snapshot, sessions
     serve.ts            porter serve, ui, router
     cluster.ts          porter login, deploy, teardown
+    bridge.ts           porter bridge (MCP server for browser Porter)
     send.ts             porter send
     mcp.ts              porter mcp
   mod.ts                Public API (re-exports)
@@ -1468,6 +1531,7 @@ porter/
       ap_post.ts        Post to AP followers (AP sessions)
       ap_reply.ts       Reply to fediverse user (AP sessions)
       semantic_search.ts Semantic similarity search across agent outputs (Qdrant)
+      pod_provider.ts   Pod-backed tool implementations (read/write/list/glob/grep via HTTP)
     vector/
       mod.ts            VectorStore/EmbeddingProvider interfaces, singleton management
       qdrant.ts         Qdrant REST client (fetch-based, no deps)
@@ -1490,6 +1554,17 @@ porter/
     mcp/
       mcp_client.ts     Connect to external MCP servers
       mcp_server.ts     Porter as MCP endpoint for editors
+    graph/
+      porter.ttl        Formal OWL/RDFS ontology (15 classes, 60+ properties)
+      shapes.ttl        SHACL validation shapes for all resource types
+      context.jsonld    JSON-LD context for content negotiation
+      store.ts          Sparq WASM graph store wrapper
+      vocabulary.ts     RDF vocabulary constants (AS2 + PROV-O + Porter)
+      converters.ts     JSON <-> RDF bidirectional converters
+      validate.ts       SHACL config validation
+      i18n/
+        es.ttl          Spanish translations
+        fr.ttl          French translations
     auth/
       mod.ts            Authentication module exports
       oidc.ts           OIDC discovery, auth URL, code exchange
@@ -1512,6 +1587,12 @@ porter/
       cpx-store.js      Reactive state store base class
       cpx-model-config.js  Model configuration component
       solid-auth.js     Solid OIDC authentication
+      lib/
+        base-element.js   BaseElement lifecycle base class for custom elements
+        porter-card.js    <porter-card> reusable card component
+        porter-form-field.js  <porter-form-field> label + input + hint + error
+        porter-list.js    <porter-list> list with empty/loading states
+        ui-labels.js      RDF-driven i18n label resolver
       porter-dialog.js  Dialog component
       constants.js      UI constants and helpers
       dom.js            Safe DOM construction helpers (replaces innerHTML)
@@ -1548,6 +1629,8 @@ porter/
     deployment.yaml     Worker pod template
     service.yaml        Bus ClusterIP service
     user-pod-template.yaml  Per-user orchestrator pod template
+  tools/
+    build-static.ts     Static build script (deno task build:static → dist/)
   examples/             Ready-to-use configurations (sequential, mixture, deliberation, distillation)
   docs/
     as2-agent-protocol.md  ActivityStreams 2.0 wire format reference
