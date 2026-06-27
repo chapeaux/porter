@@ -201,6 +201,46 @@
     <div id="dialog-body"></div>
   </template>
 
+  <!-- ============================================================
+       Shared Component Templates
+       ============================================================ -->
+
+  <!-- porter-card -->
+  <template id="tmpl-porter-card">
+    <div class="porter-card">
+      <div class="porter-card-header">
+        <span class="card-heading"></span>
+        <span class="card-badge" style="display:none"></span>
+      </div>
+      <div class="card-meta"></div>
+      <div class="card-body"><slot></slot></div>
+      <div class="card-actions"><slot name="actions"></slot></div>
+    </div>
+  </template>
+
+  <!-- porter-form-field -->
+  <template id="tmpl-porter-form-field">
+    <div class="porter-form-field">
+      <label class="form-field-label"></label>
+      <div class="form-field-slot"><slot></slot></div>
+      <div class="field-hint" style="display:none"></div>
+      <div class="field-error" style="display:none"></div>
+    </div>
+  </template>
+
+  <!-- porter-list -->
+  <template id="tmpl-porter-list">
+    <div class="porter-list">
+      <div class="list-loading" style="display:none">Loading...</div>
+      <div class="list-empty" style="display:none">No items</div>
+      <div class="list-items"><slot></slot></div>
+    </div>
+  </template>
+
+  <script src="lib/base-element.js"></script>
+  <script src="lib/porter-card.js"></script>
+  <script src="lib/porter-form-field.js"></script>
+  <script src="lib/porter-list.js"></script>
   <script src="flipboard.js"></script>
   <script src="porter-dialog.js"></script>
   <script type="module" src="cpx-model-config.js"></script>

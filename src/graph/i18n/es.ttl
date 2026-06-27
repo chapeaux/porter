@@ -1,0 +1,376 @@
+@prefix porter: <https://porter.chapeaux.io/vocab#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+
+# =============================================================================
+# Porter Ontology — Spanish / Espanol (es)
+# =============================================================================
+
+<https://porter.chapeaux.io/vocab#>
+  rdfs:label "Ontologia Porter"@es ;
+  rdfs:comment "Vocabulario para orquestacion multiagente: equipos, agentes, modelos, patrones, colaboracion y federacion."@es .
+
+# =============================================================================
+# Clases
+# =============================================================================
+
+porter:Team
+  rdfs:label "Equipo"@es ;
+  rdfs:comment "Un equipo de agentes de IA configurados para colaborar mediante un patron especifico."@es .
+
+porter:Agent
+  rdfs:label "Agente"@es ;
+  rdfs:comment "Un agente de IA con experiencia en un dominio, herramientas y configuracion de modelo. Existe independientemente de los equipos."@es .
+
+porter:AgentSlot
+  rdfs:label "Puesto de agente"@es ;
+  rdfs:comment "Una posicion dentro de un equipo que asigna un agente a un rol. Contiene ajustes especificos del equipo (rol, modelo) mientras la definicion canonica del agente permanece sin cambios."@es .
+
+porter:Model
+  rdfs:label "Modelo"@es ;
+  rdfs:comment "Configuracion de un punto de acceso de modelo de IA: proveedor, URL, autenticacion, capacidades y limites."@es .
+
+porter:McpServer
+  rdfs:label "Servidor MCP"@es ;
+  rdfs:comment "Un servidor de Protocolo de Contexto de Modelo que provee herramientas externas a los agentes."@es .
+
+porter:Pattern
+  rdfs:label "Patron"@es ;
+  rdfs:comment "Un patron de colaboracion que define roles, canales, herramientas automaticas y sufijos de prompt de sistema."@es .
+
+porter:PatternRole
+  rdfs:label "Rol de patron"@es ;
+  rdfs:comment "Un rol dentro de un patron con restricciones de cardinalidad y comportamiento de coordinacion."@es .
+
+porter:Session
+  rdfs:label "Sesion"@es ;
+  rdfs:comment "Una instancia en ejecucion de un equipo con agentes activos, bus de mensajes y metricas."@es .
+
+porter:Observation
+  rdfs:label "Observacion"@es ;
+  rdfs:comment "Una observacion de un agente almacenada en el grafo de conocimiento compartido."@es .
+
+porter:Finding
+  rdfs:label "Hallazgo"@es ;
+  rdfs:comment "Un hallazgo especifico del dominio de un especialista en patron de mezcla."@es .
+
+porter:Critique
+  rdfs:label "Critica"@es ;
+  rdfs:comment "Una critica de un reflector en patron de deliberacion."@es .
+
+porter:PlanStep
+  rdfs:label "Paso del plan"@es ;
+  rdfs:comment "Un paso ordenado en un plan de patron de destilacion."@es .
+
+porter:FederationConfig
+  rdfs:label "Configuracion de federacion"@es ;
+  rdfs:comment "Ajustes de federacion ActivityPub para una instancia de Porter."@es .
+
+# =============================================================================
+# Propiedades de equipo
+# =============================================================================
+
+porter:name
+  rdfs:label "nombre"@es ;
+  rdfs:comment "El identificador de nombre de un recurso."@es .
+
+porter:teamPattern
+  rdfs:label "patron de equipo"@es ;
+  rdfs:comment "Patron de colaboracion: secuencial, mezcla, deliberacion o destilacion."@es .
+
+porter:usesModel
+  rdfs:label "usa modelo"@es ;
+  rdfs:comment "El ID de modelo utilizado por un equipo (predeterminado) o agente (anulacion)."@es .
+
+porter:apiKeyEnv
+  rdfs:label "variable de entorno de clave API"@es ;
+  rdfs:comment "Nombre de la variable de entorno que contiene la clave API."@es .
+
+porter:workingDir
+  rdfs:label "directorio de trabajo"@es ;
+  rdfs:comment "Ruta del sistema de archivos para operaciones de archivo del agente."@es .
+
+porter:maxDeliberationRounds
+  rdfs:label "rondas maximas de deliberacion"@es ;
+  rdfs:comment "Ciclos maximos de trabajador/reflector en patron de deliberacion."@es .
+
+porter:hasAgentSlot
+  rdfs:label "tiene puesto de agente"@es ;
+  rdfs:comment "Vincula un equipo a un puesto de agente (nodo en blanco con asignacion de rol y referencia de agente)."@es .
+
+porter:hasMcpServer
+  rdfs:label "tiene servidor MCP"@es ;
+  rdfs:comment "Vincula un equipo a una configuracion de servidor MCP en linea."@es .
+
+porter:sessionEnv
+  rdfs:label "entorno de sesion"@es ;
+  rdfs:comment "Variable de entorno como cadena CLAVE=VALOR, repetida para multiples variables."@es .
+
+porter:runtimeTool
+  rdfs:label "herramienta de ejecucion"@es ;
+  rdfs:comment "Nombre de herramienta de ejecucion inyectada en contenedores sandbox (p. ej., deno, python3, curl)."@es .
+
+# =============================================================================
+# Propiedades de puesto de agente
+# =============================================================================
+
+porter:agentRef
+  rdfs:label "referencia de agente"@es ;
+  rdfs:comment "Referencia a un agente por nombre o URI."@es .
+
+porter:assignedRole
+  rdfs:label "rol asignado"@es ;
+  rdfs:comment "Rol asignado a un agente dentro de un equipo: admin, trabajador, revisor, especialista, sintetizador, reflector, experto o aprendiz."@es .
+
+# =============================================================================
+# Propiedades de agente
+# =============================================================================
+
+porter:agentExpertise
+  rdfs:label "experiencia del agente"@es ;
+  rdfs:comment "Prompt de sistema que describe la experiencia del agente en su dominio."@es .
+
+porter:hasTool
+  rdfs:label "tiene herramienta"@es ;
+  rdfs:comment "Una herramienta disponible para el agente (p. ej., read_file, bash, send_message)."@es .
+
+porter:hasMcpTool
+  rdfs:label "tiene herramienta MCP"@es ;
+  rdfs:comment "Un enlace de herramienta MCP (p. ej., server.* o server.herramienta_especifica)."@es .
+
+porter:subscribesTo
+  rdfs:label "suscrito a"@es ;
+  rdfs:comment "Un canal del bus al que el agente esta suscrito."@es .
+
+porter:maxTokens
+  rdfs:label "tokens maximos"@es ;
+  rdfs:comment "Tokens de salida maximos por respuesta del modelo."@es .
+
+porter:maxTurns
+  rdfs:label "turnos maximos"@es ;
+  rdfs:comment "Pares de turnos de conversacion maximos mantenidos en contexto."@es .
+
+porter:maxContextTokens
+  rdfs:label "tokens de contexto maximos"@es ;
+  rdfs:comment "Presupuesto estimado de tokens de entrada. Los turnos mas antiguos se eliminan al excederlo."@es .
+
+porter:reasoning
+  rdfs:label "razonamiento"@es ;
+  rdfs:comment "Habilitar modo de pensamiento extendido / razonamiento."@es .
+
+porter:visibility
+  rdfs:label "visibilidad"@es ;
+  rdfs:comment "Visibilidad de comparticion del agente: privado, compartido o vinculado."@es .
+
+porter:derivedFrom
+  rdfs:label "derivado de"@es ;
+  rdfs:comment "URI del agente del cual fue copiado."@es .
+
+porter:linkedFrom
+  rdfs:label "vinculado desde"@es ;
+  rdfs:comment "URI del agente remoto al que esta vinculado (referencia en vivo)."@es .
+
+# =============================================================================
+# Propiedades de modelo
+# =============================================================================
+
+porter:displayName
+  rdfs:label "nombre para mostrar"@es ;
+  rdfs:comment "Nombre legible para mostrar."@es .
+
+porter:providerType
+  rdfs:label "tipo de proveedor"@es ;
+  rdfs:comment "Proveedor de IA: openai, openai_compat, azure_openai, anthropic, aws_bedrock, vertex_ai, groq, ollama."@es .
+
+porter:baseUrl
+  rdfs:label "URL base"@es ;
+  rdfs:comment "URL base de la API del proveedor."@es .
+
+porter:authMethod
+  rdfs:label "metodo de autenticacion"@es ;
+  rdfs:comment "Metodo de autenticacion: bearer, adc, aws_iam, x-api-key."@es .
+
+porter:contextWindow
+  rdfs:label "ventana de contexto"@es ;
+  rdfs:comment "Capacidad total de tokens (entrada + salida)."@es .
+
+porter:toolCalling
+  rdfs:label "llamada de herramientas"@es ;
+  rdfs:comment "El modelo soporta llamadas nativas de herramientas/funciones."@es .
+
+porter:vision
+  rdfs:label "vision"@es ;
+  rdfs:comment "El modelo soporta entrada de imagen/vision."@es .
+
+porter:jsonMode
+  rdfs:label "modo JSON"@es ;
+  rdfs:comment "El modelo soporta salida JSON estructurada."@es .
+
+porter:region
+  rdfs:label "region"@es ;
+  rdfs:comment "Region del proveedor en la nube."@es .
+
+porter:apiVersion
+  rdfs:label "version de API"@es ;
+  rdfs:comment "Cadena de version de la API del proveedor."@es .
+
+# =============================================================================
+# Propiedades de servidor MCP
+# =============================================================================
+
+porter:transport
+  rdfs:label "transporte"@es ;
+  rdfs:comment "Tipo de transporte MCP: stdio o http."@es .
+
+porter:mcpUrl
+  rdfs:label "URL de MCP"@es ;
+  rdfs:comment "URL del punto de acceso HTTP para el servidor MCP."@es .
+
+porter:mcpCommand
+  rdfs:label "comando MCP"@es ;
+  rdfs:comment "Comando a ejecutar para transporte stdio."@es .
+
+porter:mcpArgs
+  rdfs:label "argumentos MCP"@es ;
+  rdfs:comment "Argumento de linea de comandos para servidor MCP stdio (repetido)."@es .
+
+porter:authType
+  rdfs:label "tipo de autenticacion"@es ;
+  rdfs:comment "Tipo de autenticacion MCP: bearer, oidc."@es .
+
+porter:tokenEnv
+  rdfs:label "variable de token"@es ;
+  rdfs:comment "Nombre de variable de entorno para el token de autenticacion MCP."@es .
+
+porter:mcpIssuerUrl
+  rdfs:label "URL del emisor MCP"@es ;
+  rdfs:comment "URL del emisor OIDC para autenticacion HTTP de MCP."@es .
+
+# =============================================================================
+# Propiedades de patron
+# =============================================================================
+
+porter:busFlow
+  rdfs:label "flujo del bus"@es ;
+  rdfs:comment "Cadena de descripcion de topologia de flujo de mensajes."@es .
+
+porter:isBuiltin
+  rdfs:label "es incorporado"@es ;
+  rdfs:comment "Si este patron es un patron incorporado (no eliminable)."@es .
+
+porter:roleId
+  rdfs:label "ID de rol"@es ;
+  rdfs:comment "Identificador de un rol dentro de un patron."@es .
+
+porter:minCount
+  rdfs:label "cantidad minima"@es ;
+  rdfs:comment "Agentes minimos requeridos para este rol."@es .
+
+porter:maxCount
+  rdfs:label "cantidad maxima"@es ;
+  rdfs:comment "Agentes maximos permitidos para este rol."@es .
+
+porter:systemPromptSuffix
+  rdfs:label "sufijo de prompt de sistema"@es ;
+  rdfs:comment "Texto agregado a los prompts de sistema de los agentes al usar este rol."@es .
+
+porter:autoTool
+  rdfs:label "herramienta automatica"@es ;
+  rdfs:comment "Herramienta inyectada automaticamente para agentes con este rol."@es .
+
+porter:defaultTool
+  rdfs:label "herramienta predeterminada"@es ;
+  rdfs:comment "Herramienta predeterminada incluida para agentes con este rol."@es .
+
+porter:subscribeDynamic
+  rdfs:label "suscripcion dinamica"@es ;
+  rdfs:comment "Plantilla de suscripcion de canal dinamico."@es .
+
+# =============================================================================
+# Propiedades de observacion / colaboracion
+# =============================================================================
+
+porter:about
+  rdfs:label "acerca de"@es ;
+  rdfs:comment "De que trata esta observacion, hallazgo o critica."@es .
+
+porter:finding
+  rdfs:label "hallazgo"@es ;
+  rdfs:comment "El texto del hallazgo o problema de la critica."@es .
+
+porter:discoveredBy
+  rdfs:label "descubierto por"@es ;
+  rdfs:comment "Nombre del agente que descubrio o es autor de esta observacion."@es .
+
+porter:severity
+  rdfs:label "severidad"@es ;
+  rdfs:comment "Nivel de severidad: info, bajo, medio, alto, critico."@es .
+
+porter:domain
+  rdfs:label "dominio"@es ;
+  rdfs:comment "Especializacion de dominio: seguridad, rendimiento, arquitectura, etc."@es .
+
+porter:confidence
+  rdfs:label "confianza"@es ;
+  rdfs:comment "Puntuacion de confianza de 0 a 1."@es .
+
+porter:round
+  rdfs:label "ronda"@es ;
+  rdfs:comment "Numero de ronda de deliberacion."@es .
+
+porter:approved
+  rdfs:label "aprobado"@es ;
+  rdfs:comment "Si la critica ha sido atendida."@es .
+
+porter:stepOrder
+  rdfs:label "orden del paso"@es ;
+  rdfs:comment "Posicion ordinal de un paso del plan."@es .
+
+porter:stepState
+  rdfs:label "estado del paso"@es ;
+  rdfs:comment "Estado actual: pendiente, completado o fallido."@es .
+
+porter:addresses
+  rdfs:label "aborda"@es ;
+  rdfs:comment "Notas sobre lo que un paso del plan aborda o resuelve."@es .
+
+# =============================================================================
+# Propiedades de federacion
+# =============================================================================
+
+porter:approvalMode
+  rdfs:label "modo de aprobacion"@es ;
+  rdfs:comment "Manejo de solicitudes de seguimiento: abierto, lista de permitidos o manual."@es .
+
+porter:allowlistEntry
+  rdfs:label "entrada de lista de permitidos"@es ;
+  rdfs:comment "Dominio o usuario @usuario@dominio para aprobar automaticamente (repetido)."@es .
+
+porter:publicSummaries
+  rdfs:label "resumenes publicos"@es ;
+  rdfs:comment "Publicar resumenes de sesion publicamente (vs solo seguidores)."@es .
+
+# =============================================================================
+# Mensajes de validacion SHACL
+# =============================================================================
+
+# Team validation
+_:teamNameMsg sh:message "El equipo debe tener exactamente un nombre."@es .
+_:teamPatternMsg sh:message "El equipo debe especificar un patron de colaboracion."@es .
+_:teamSlotMsg sh:message "El equipo debe tener al menos un puesto de agente."@es .
+_:teamModelMsg sh:message "El equipo debe especificar un modelo predeterminado."@es .
+
+# Agent validation
+_:agentNameMsg sh:message "El agente debe tener exactamente un nombre."@es .
+_:agentExpertiseMsg sh:message "El agente debe tener un prompt de experiencia."@es .
+
+# AgentSlot validation
+_:slotRefMsg sh:message "El puesto de agente debe hacer referencia a un agente."@es .
+_:slotRoleMsg sh:message "El puesto de agente debe tener un rol asignado."@es .
+
+# Model validation
+_:modelNameMsg sh:message "El modelo debe tener exactamente un nombre."@es .
+_:modelProviderMsg sh:message "El modelo debe especificar un tipo de proveedor."@es .
+
+# Pattern validation
+_:patternNameMsg sh:message "El patron debe tener exactamente un nombre."@es .

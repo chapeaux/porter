@@ -1990,3 +1990,96 @@ label.inline-check input[type="checkbox"] {
 .pattern-editor-toolbar { display: flex; gap: 0.3rem; padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
 .pattern-editor-toolbar button { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
 .pattern-editor-toolbar button.active { border-color: var(--accent-gold); color: var(--accent-gold); }
+
+/* =========================================================================
+   Shared Components — porter-card, porter-form-field, porter-list
+   ========================================================================= */
+
+/* porter-card */
+porter-card { display: block; }
+.porter-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: var(--bg-card);
+  margin-bottom: 0.5rem;
+  transition: border-color 0.15s;
+}
+.porter-card:hover {
+  border-color: var(--accent-gold);
+}
+.porter-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+.porter-card .card-heading {
+  font-weight: bold;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+.porter-card .card-badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  color: var(--text-dim);
+}
+.porter-card .card-meta {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 0.4rem;
+}
+.porter-card .card-meta:empty { display: none; }
+.porter-card .card-body { font-size: 0.85rem; color: var(--text-secondary); }
+.porter-card .card-actions {
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+.porter-card .card-actions:empty { display: none; }
+
+/* porter-form-field */
+porter-form-field { display: block; margin-bottom: 1rem; }
+.porter-form-field label.form-field-label {
+  display: block;
+  color: var(--text-secondary);
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+}
+.porter-form-field label.form-field-label:empty { display: none; }
+.porter-form-field .field-hint {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.porter-form-field .field-error {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--status-error);
+}
+.porter-form-field .form-field-input-error {
+  border-color: var(--status-error) !important;
+}
+
+/* porter-list */
+porter-list { display: block; }
+.porter-list .list-loading {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.porter-list .list-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+.porter-list .list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}

@@ -42,6 +42,7 @@ COMMANDS:
   deploy      Deploy agent worker pods to OpenShift
   teardown    Remove all porter pods and secrets from cluster
   router      Start the multi-user router (pod-per-user mode)
+  bridge      Start MCP bridge server for filesystem tool access
 
 OPTIONS:
   --config <path>     Config file path (default: porter.json)
@@ -153,6 +154,11 @@ async function main(): Promise<void> {
     case "mcp": {
       const { cmdMcp } = await import("./src/cli/mcp.ts");
       await cmdMcp(rest);
+      break;
+    }
+    case "bridge": {
+      const { cmdBridge } = await import("./src/cli/bridge.ts");
+      await cmdBridge(rest);
       break;
     }
     default:
