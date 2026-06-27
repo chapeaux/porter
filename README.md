@@ -1395,6 +1395,8 @@ The static build supports two modes via `<meta>` tags in `index.html`:
 - **Browser mode** (`porter-mode=browser`) — Solid Pod login, direct model API calls, MCP via Streamable HTTP. No backend needed.
 - **Connected mode** (`porter-mode=connected`, `porter-api=https://porter.example.com`) — static UI connects to a Porter API server.
 
+See [`docs/static-deployment.md`](docs/static-deployment.md) for the complete guide covering GitHub Pages, Cloudflare Pages, Netlify, S3, Solid Pod hosting, CLI bridge setup, Pod workspace, progressive enhancement levels, i18n, and security considerations.
+
 ### CLI Bridge
 
 Expose local filesystem tools to browser-native Porter via MCP:
@@ -1639,6 +1641,7 @@ porter/
     deployment-guide.md    OpenShift deployment guide
     tools.md               Runtime tool injection guide
     collaboration-patterns.md  Pattern design and schema reference
+    static-deployment.md       Static hosting guide (GitHub Pages, Cloudflare, Netlify, Pod)
 ```
 
 ---
