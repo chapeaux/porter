@@ -88,7 +88,7 @@ setProjectSwitcherCallbacks({ connectWebSocket });
 document.addEventListener('DOMContentLoaded', async () => {
   // Register service worker for PWA support
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').catch(() => {});
     navigator.serviceWorker.addEventListener('message', (event) => {
       const { type, data } = event.data || {};
       if (type === 'metrics') {

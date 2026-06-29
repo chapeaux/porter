@@ -165,6 +165,10 @@ html = html.replace(
   '$1$3',
 );
 
+// 4a2. Make absolute paths relative (for GitHub Pages subpath deployment)
+html = html.replace('href="/manifest.json"', 'href="manifest.json"');
+html = html.replace('href="/porter-192.png"', 'href="porter-192.png"');
+
 // 4b. Add porter-mode meta tag and runtime config script after bus-url line
 const CONFIG_SCRIPT = `
   <meta name="porter-mode" content="browser">

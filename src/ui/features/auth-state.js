@@ -40,17 +40,20 @@ async function _checkAuthStateInner() {
   const authArea = document.getElementById('auth-area');
   if (!authArea) return false;
 
-  try {
-    const resp = await fetch('/auth/me');
-    if (resp.ok) {
-      const data = await resp.json();
-      oidcAvailable = data.oidc_configured ?? false;
-      if (data.authenticated) {
-        renderUserProfile(authArea, data.user);
-        return true;
+  const browserMode = document.querySelector('meta[name="porter-mode"]')?.content === 'browser';
+  if (!browserMode) {
+    try {
+      const resp = await fetch('/auth/me');
+      if (resp.ok) {
+        const data = await resp.json();
+        oidcAvailable = data.oidc_configured ?? false;
+        if (data.authenticated) {
+          renderUserProfile(authArea, data.user);
+          return true;
+        }
       }
-    }
-  } catch { /* OIDC not configured — fall through */ }
+    } catch { /* OIDC not configured — fall through */ }
+  }
 
   // Check Solid session
   const solidSession = window.solidAuth?.getSessionInfo?.();
