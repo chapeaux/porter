@@ -41,6 +41,7 @@ export class PorterPodSync {
     this._clientId = 'porter-' + Math.random().toString(36).slice(2, 10);
     this._retryDelay = 1000;
     this._connected = false;
+    this._browserMode = document.querySelector('meta[name="porter-mode"]')?.content === 'browser';
   }
 
   async connect() {
@@ -136,8 +137,7 @@ export class PorterPodSync {
 
     try {
       const federation = await this._loadFederationFromPod();
-      if (federation) {
-        // Apply federation config to the server
+      if (federation && !this._browserMode) {
         fetch('/api/activitypub/config', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
@@ -612,6 +612,7 @@ export class PorterPodSync {
 
   _applyRemoteAgents(agents) {
     localStorage.setItem('porter-pod-agents', JSON.stringify(agents));
+    if (this._browserMode) { _updateSetupBar(); return; }
     const podAgentNames = new Set(agents.map(a => a.name).filter(Boolean));
     for (const a of agents) {
       if (a.name) {
@@ -642,6 +643,7 @@ export class PorterPodSync {
 
   _applyRemoteTeams(teams) {
     localStorage.setItem('porter-pod-teams', JSON.stringify(teams));
+    if (this._browserMode) { _updateSetupBar(); return; }
     const podTeamNames = new Set(teams.map(t => t.name).filter(Boolean));
     for (const t of teams) {
       if (t.name && t.config) {
@@ -674,12 +676,13 @@ export class PorterPodSync {
       setMODELS(normalized.map(m => m.model_id));
       _updateSetupBar();
     }
-    // Also save to server (in ModelConfig format)
-    fetch('/api/models', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
-      body: JSON.stringify({ models }),
-    }).catch(() => {});
+    if (!this._browserMode) {
+      fetch('/api/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ..._getIdentityHeaders() },
+        body: JSON.stringify({ models }),
+      }).catch(() => {});
+    }
   }
 
   _applyRemoteMcp(servers) {
@@ -727,7 +730,7 @@ export class PorterPodSync {
       }).catch(() => {});
     }
 
-    if (data.published_teams && Array.isArray(data.published_teams)) {
+    if (data.published_teams && Array.isArray(data.published_teams) && !this._browserMode) {
       for (const slug of data.published_teams) {
         fetch('/api/activitypub/publish', {
           method: 'POST',

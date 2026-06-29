@@ -206,7 +206,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const loadingEl = document.getElementById('loading-indicator');
   const loadingText = loadingEl?.querySelector('.loading-text');
   if (BROWSER_MODE) {
-    // Skip pod readiness, API init, and WebSocket — just render the static UI
+    // Browser mode: skip server API calls and WebSocket, but DO sync with Pod
+    if (solidRestored && solidWebId) {
+      await initPodSync(solidWebId);
+    }
+    setupFlipboard();
+    updateSetupBar();
     main.classList.remove('porter-loading');
     if (loadingEl) {
       await renderEmptyState();

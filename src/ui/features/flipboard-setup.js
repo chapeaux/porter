@@ -81,6 +81,29 @@ export function updateSetupBar() {
     mcpCell.setAttribute('status', mcpCount === 0 ? 'warn' : 'ok');
   }
 
+  const browserMode = document.querySelector('meta[name="porter-mode"]')?.content === 'browser';
+  if (browserMode) {
+    // In browser mode, read counts from localStorage (populated by Pod sync)
+    const agents = JSON.parse(localStorage.getItem('porter-pod-agents') || '[]');
+    const teams = JSON.parse(localStorage.getItem('porter-pod-teams') || '[]');
+    const agentCell = document.getElementById('fb-agents');
+    const agentVal = document.getElementById('fb-agents-val');
+    if (agentCell && agentVal) {
+      agentVal.textContent = agents.length === 0 ? 'NONE' : `${agents.length} SAVED`;
+      agentCell.setAttribute('status', agents.length === 0 ? 'warn' : 'ok');
+    }
+    const teamCell = document.getElementById('fb-teams');
+    const teamVal = document.getElementById('fb-teams-val');
+    if (teamCell && teamVal) {
+      teamVal.textContent = teams.length === 0 ? 'NONE' : `${teams.length} SAVED`;
+      teamCell.setAttribute('status', teams.length === 0 ? 'warn' : 'ok');
+    }
+    // Hide federation and patterns in browser mode
+    const fedCell = document.getElementById('fb-federation');
+    if (fedCell) fedCell.style.display = 'none';
+    document.querySelector('flipboard-bar')?._updateWidths?.();
+    return;
+  }
   updateTeamCount();
   updateAgentCount();
   updatePatternCount();

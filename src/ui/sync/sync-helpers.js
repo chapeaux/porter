@@ -267,10 +267,12 @@ export async function initPodSync(webId) {
     const sync = new PorterPodSync(podRoot, authFetch);
     window._podSync = sync;
     await sync.connect();
-    await document.getElementById('models')?.refresh();
+    const browserMode = document.querySelector('meta[name="porter-mode"]')?.content === 'browser';
+    if (!browserMode) {
+      await document.getElementById('models')?.refresh();
+      _syncAllToPod();
+    }
     _updateSetupBar();
-    // Full sync of agents and teams to Pod on connect
-    _syncAllToPod();
   } catch (e) { console.error('[porter-pod] Sync init failed:', e); }
 }
 
@@ -877,6 +879,13 @@ export async function parseTurtleMcp(turtle) {
 
 async function _parseTurtleViaServer(turtle, type) {
   if (!turtle) return null;
+  const browserMode = document.querySelector('meta[name="porter-mode"]')?.content === 'browser';
+  if (browserMode) {
+    // In browser mode, use client-side regex parsers
+    if (type === 'model') return _parseModelTurtleLocal(turtle);
+    if (type === 'mcp') return _parseMcpTurtleLocal(turtle);
+    return null;
+  }
   try {
     const resp = await fetch(`/api/rdf/parse?type=${type}`, {
       method: 'POST',
@@ -1006,4 +1015,59 @@ export async function setResourcePublic(authFetch, resourceUrl) {
 export async function setResourcePrivate(authFetch, resourceUrl) {
   const aclUrl = resourceUrl + '.acl';
   await authFetch(aclUrl, { method: 'DELETE' }).catch(() => {});
+}
+
+// --- Client-side Turtle parsers for browser mode (no server to delegate to) ---
+
+function _parseModelTurtleLocal(turtle) {
+  if (!turtle) return null;
+  const NS = 'https://porter.chapeaux.io/vocab#';
+  const norm = turtle.replace(new RegExp(`<${NS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^>]+)>`, 'g'), 'porter:$1');
+  if (!norm.includes('porter:Model')) return null;
+  const ex = (pred) => {
+    const m = norm.match(new RegExp(`${pred}\\s+"([^"]*?)"`));
+    return m ? m[1] : '';
+  };
+  const id = ex('porter:name');
+  if (!id) return null;
+  return {
+    id,
+    display_name: ex('porter:displayName') || id,
+    provider_type: ex('porter:providerType') || 'openai_compat',
+    base_url: ex('porter:baseUrl') || '',
+    auth: ex('porter:authMethod') || 'bearer',
+    context_window: parseInt(ex('porter:contextWindow'), 10) || 0,
+    max_tokens: parseInt(ex('porter:maxTokens'), 10) || 0,
+    capabilities: {
+      tool_calling: norm.includes('porter:toolCalling "true"'),
+      reasoning: norm.includes('porter:reasoning "true"'),
+      vision: norm.includes('porter:vision "true"'),
+      json_mode: norm.includes('porter:jsonMode "true"'),
+    },
+  };
+}
+
+function _parseMcpTurtleLocal(turtle) {
+  if (!turtle) return null;
+  const NS = 'https://porter.chapeaux.io/vocab#';
+  const norm = turtle.replace(new RegExp(`<${NS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^>]+)>`, 'g'), 'porter:$1');
+  if (!norm.includes('porter:McpServer')) return null;
+  const ex = (pred) => {
+    const m = norm.match(new RegExp(`${pred}\\s+"([^"]*?)"`));
+    return m ? m[1] : '';
+  };
+  const name = ex('porter:name');
+  if (!name) return null;
+  const cfg = { name, transport: ex('porter:transport') || 'stdio' };
+  const url = ex('porter:mcpUrl');
+  if (url) cfg.url = url;
+  const cmd = ex('porter:mcpCommand');
+  if (cmd) cfg.command = cmd;
+  const authType = ex('porter:authType');
+  if (authType) {
+    cfg.auth = { type: authType };
+    const tokenEnv = ex('porter:tokenEnv');
+    if (tokenEnv) cfg.auth.token_env = tokenEnv;
+  }
+  return cfg;
 }
