@@ -169,6 +169,28 @@ html = html.replace(
 html = html.replace('href="/manifest.json"', 'href="manifest.json"');
 html = html.replace('href="/porter-192.png"', 'href="porter-192.png"');
 
+// 4a3. Rewrite manifest.json icon paths and start_url to relative
+{
+  const manifestPath = join(DIST, "manifest.json");
+  try {
+    let manifest = await Deno.readTextFile(manifestPath);
+    manifest = manifest.replace(/"\//g, '"./');
+    await Deno.writeTextFile(manifestPath, manifest);
+    console.log("  dist/manifest.json (paths made relative)");
+  } catch { /* manifest may not exist */ }
+}
+
+// 4a4. Rewrite sw.js cache URLs from absolute to relative
+{
+  const swPath = join(DIST, "sw.js");
+  try {
+    let sw = await Deno.readTextFile(swPath);
+    sw = sw.replace(/'\//g, "'./");
+    await Deno.writeTextFile(swPath, sw);
+    console.log("  dist/sw.js (paths made relative)");
+  } catch { /* sw.js may not exist */ }
+}
+
 // 4b. Add porter-mode meta tag and runtime config script after bus-url line
 const CONFIG_SCRIPT = `
   <meta name="porter-mode" content="browser">
