@@ -1,0 +1,473 @@
+@prefix porter: <https://porter.chapeaux.io/vocab#> .
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+# =============================================================================
+# Porter Ontology
+#
+# Formal vocabulary for the Porter multi-agent orchestration platform.
+# Namespace: https://porter.chapeaux.io/vocab#
+# =============================================================================
+
+<https://porter.chapeaux.io/vocab#> a owl:Ontology ;
+  rdfs:label "Porter Ontology"@en ;
+  rdfs:comment "Vocabulary for multi-agent orchestration: teams, agents, models, patterns, collaboration, and federation."@en ;
+  dcterms:creator "Chapeaux Project" ;
+  owl:versionInfo "0.15" .
+
+# =============================================================================
+# Classes
+# =============================================================================
+
+porter:Team a rdfs:Class ;
+  rdfs:label "Team"@en ;
+  rdfs:comment "A team of AI agents configured to collaborate via a specific pattern."@en .
+
+porter:Agent a rdfs:Class ;
+  rdfs:label "Agent"@en ;
+  rdfs:comment "An AI agent with domain expertise, tools, and model configuration. Exists independently of teams."@en .
+
+porter:AgentSlot a rdfs:Class ;
+  rdfs:label "Agent Slot"@en ;
+  rdfs:comment "A position within a team that binds an agent to a role. Carries team-specific overrides (role, model) while the agent's canonical definition stays unchanged."@en .
+
+porter:Model a rdfs:Class ;
+  rdfs:label "Model"@en ;
+  rdfs:comment "An AI model endpoint configuration: provider, URL, auth, capabilities, and limits."@en .
+
+porter:McpServer a rdfs:Class ;
+  rdfs:label "MCP Server"@en ;
+  rdfs:comment "A Model Context Protocol server providing external tools to agents."@en .
+
+porter:Pattern a rdfs:Class ;
+  rdfs:label "Pattern"@en ;
+  rdfs:comment "A collaboration pattern defining roles, channels, auto-tools, and system prompt suffixes."@en .
+
+porter:PatternRole a rdfs:Class ;
+  rdfs:label "Pattern Role"@en ;
+  rdfs:comment "A role within a pattern with cardinality constraints and coordination behavior."@en .
+
+porter:Session a rdfs:Class ;
+  rdfs:label "Session"@en ;
+  rdfs:comment "A running instance of a team with active agents, message bus, and metrics."@en .
+
+porter:Observation a rdfs:Class ;
+  rdfs:label "Observation"@en ;
+  rdfs:comment "An agent's observation stored in the shared knowledge graph."@en .
+
+porter:Finding a rdfs:Class ;
+  rdfs:subClassOf porter:Observation ;
+  rdfs:label "Finding"@en ;
+  rdfs:comment "A domain-specific finding from a mixture pattern specialist."@en .
+
+porter:Critique a rdfs:Class ;
+  rdfs:subClassOf porter:Observation ;
+  rdfs:label "Critique"@en ;
+  rdfs:comment "A critique from a deliberation pattern reflector."@en .
+
+porter:PlanStep a rdfs:Class ;
+  rdfs:label "Plan Step"@en ;
+  rdfs:comment "An ordered step in a distillation pattern plan."@en .
+
+porter:FederationConfig a rdfs:Class ;
+  rdfs:label "Federation Config"@en ;
+  rdfs:comment "ActivityPub federation settings for a Porter instance."@en .
+
+# =============================================================================
+# Team Properties
+# =============================================================================
+
+porter:name a rdf:Property ;
+  rdfs:label "name"@en ;
+  rdfs:comment "The name identifier for a resource."@en ;
+  rdfs:range xsd:string .
+
+porter:teamPattern a rdf:Property ;
+  rdfs:label "team pattern"@en ;
+  rdfs:comment "Collaboration pattern: sequential, mixture, deliberation, or distillation."@en ;
+  rdfs:domain porter:Team ;
+  rdfs:range xsd:string .
+
+porter:usesModel a rdf:Property ;
+  rdfs:label "uses model"@en ;
+  rdfs:comment "The model ID used by a team (default) or agent (override)."@en ;
+  rdfs:range xsd:string .
+
+porter:apiKeyEnv a rdf:Property ;
+  rdfs:label "API key env var"@en ;
+  rdfs:comment "Environment variable name containing the API key."@en ;
+  rdfs:range xsd:string .
+
+porter:workingDir a rdf:Property ;
+  rdfs:label "working directory"@en ;
+  rdfs:comment "Filesystem path for agent file operations."@en ;
+  rdfs:range xsd:string .
+
+porter:maxDeliberationRounds a rdf:Property ;
+  rdfs:label "max deliberation rounds"@en ;
+  rdfs:comment "Maximum worker/reflector cycles in deliberation pattern."@en ;
+  rdfs:domain porter:Team ;
+  rdfs:range xsd:integer .
+
+porter:hasAgentSlot a rdf:Property ;
+  rdfs:label "has agent slot"@en ;
+  rdfs:comment "Links a team to an agent slot (blank node carrying role assignment and agent reference)."@en ;
+  rdfs:domain porter:Team ;
+  rdfs:range porter:AgentSlot .
+
+porter:hasMcpServer a rdf:Property ;
+  rdfs:label "has MCP server"@en ;
+  rdfs:comment "Links a team to an inline MCP server configuration."@en ;
+  rdfs:domain porter:Team ;
+  rdfs:range porter:McpServer .
+
+porter:sessionEnv a rdf:Property ;
+  rdfs:label "session env"@en ;
+  rdfs:comment "Environment variable as KEY=VALUE string, repeated for multiple vars."@en ;
+  rdfs:domain porter:Team ;
+  rdfs:range xsd:string .
+
+porter:runtimeTool a rdf:Property ;
+  rdfs:label "runtime tool"@en ;
+  rdfs:comment "Runtime tool name injected into sandbox containers (e.g., deno, python3, curl)."@en ;
+  rdfs:domain porter:Team ;
+  rdfs:range xsd:string .
+
+# =============================================================================
+# Agent Slot Properties
+# =============================================================================
+
+porter:agentRef a rdf:Property ;
+  rdfs:label "agent ref"@en ;
+  rdfs:comment "Reference to an agent by name or URI."@en ;
+  rdfs:domain porter:AgentSlot ;
+  rdfs:range xsd:string .
+
+porter:assignedRole a rdf:Property ;
+  rdfs:label "assigned role"@en ;
+  rdfs:comment "Role assigned to an agent within a team: admin, worker, reviewer, specialist, synthesizer, reflector, expert, or learner."@en ;
+  rdfs:range xsd:string .
+
+# =============================================================================
+# Agent Properties
+# =============================================================================
+
+porter:agentExpertise a rdf:Property ;
+  rdfs:label "agent expertise"@en ;
+  rdfs:comment "System prompt describing the agent's domain expertise."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:string .
+
+porter:hasTool a rdf:Property ;
+  rdfs:label "has tool"@en ;
+  rdfs:comment "A tool available to the agent (e.g., read_file, bash, send_message)."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:string .
+
+porter:hasMcpTool a rdf:Property ;
+  rdfs:label "has MCP tool"@en ;
+  rdfs:comment "An MCP tool binding (e.g., server.* or server.specific_tool)."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:string .
+
+porter:subscribesTo a rdf:Property ;
+  rdfs:label "subscribes to"@en ;
+  rdfs:comment "A bus channel the agent subscribes to."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:string .
+
+porter:maxTokens a rdf:Property ;
+  rdfs:label "max tokens"@en ;
+  rdfs:comment "Maximum output tokens per model response."@en ;
+  rdfs:range xsd:integer .
+
+porter:maxTurns a rdf:Property ;
+  rdfs:label "max turns"@en ;
+  rdfs:comment "Maximum conversation turn pairs kept in context."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:integer .
+
+porter:maxContextTokens a rdf:Property ;
+  rdfs:label "max context tokens"@en ;
+  rdfs:comment "Estimated input token budget. Oldest turns dropped when exceeded."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:integer .
+
+porter:reasoning a rdf:Property ;
+  rdfs:label "reasoning"@en ;
+  rdfs:comment "Enable extended thinking / reasoning mode."@en ;
+  rdfs:range xsd:boolean .
+
+porter:visibility a rdf:Property ;
+  rdfs:label "visibility"@en ;
+  rdfs:comment "Agent sharing visibility: private, shared, or linked."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:string .
+
+porter:derivedFrom a rdf:Property ;
+  rdfs:label "derived from"@en ;
+  rdfs:comment "URI of the agent this was copied from."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:string .
+
+porter:linkedFrom a rdf:Property ;
+  rdfs:label "linked from"@en ;
+  rdfs:comment "URI of the remote agent this is linked to (live reference)."@en ;
+  rdfs:domain porter:Agent ;
+  rdfs:range xsd:string .
+
+# =============================================================================
+# Model Properties
+# =============================================================================
+
+porter:displayName a rdf:Property ;
+  rdfs:label "display name"@en ;
+  rdfs:comment "Human-readable display name."@en ;
+  rdfs:range xsd:string .
+
+porter:providerType a rdf:Property ;
+  rdfs:label "provider type"@en ;
+  rdfs:comment "AI provider: openai, openai_compat, azure_openai, anthropic, aws_bedrock, vertex_ai, groq, ollama."@en ;
+  rdfs:domain porter:Model ;
+  rdfs:range xsd:string .
+
+porter:baseUrl a rdf:Property ;
+  rdfs:label "base URL"@en ;
+  rdfs:comment "Provider API base URL."@en ;
+  rdfs:range xsd:string .
+
+porter:authMethod a rdf:Property ;
+  rdfs:label "auth method"@en ;
+  rdfs:comment "Authentication method: bearer, adc, aws_iam, x-api-key."@en ;
+  rdfs:domain porter:Model ;
+  rdfs:range xsd:string .
+
+porter:contextWindow a rdf:Property ;
+  rdfs:label "context window"@en ;
+  rdfs:comment "Total token capacity (input + output)."@en ;
+  rdfs:domain porter:Model ;
+  rdfs:range xsd:integer .
+
+porter:toolCalling a rdf:Property ;
+  rdfs:label "tool calling"@en ;
+  rdfs:comment "Model supports native tool/function calling."@en ;
+  rdfs:domain porter:Model ;
+  rdfs:range xsd:boolean .
+
+porter:vision a rdf:Property ;
+  rdfs:label "vision"@en ;
+  rdfs:comment "Model supports image/vision input."@en ;
+  rdfs:domain porter:Model ;
+  rdfs:range xsd:boolean .
+
+porter:jsonMode a rdf:Property ;
+  rdfs:label "JSON mode"@en ;
+  rdfs:comment "Model supports structured JSON output."@en ;
+  rdfs:domain porter:Model ;
+  rdfs:range xsd:boolean .
+
+porter:region a rdf:Property ;
+  rdfs:label "region"@en ;
+  rdfs:comment "Cloud provider region."@en ;
+  rdfs:range xsd:string .
+
+porter:apiVersion a rdf:Property ;
+  rdfs:label "API version"@en ;
+  rdfs:comment "Provider API version string."@en ;
+  rdfs:range xsd:string .
+
+# =============================================================================
+# MCP Server Properties
+# =============================================================================
+
+porter:transport a rdf:Property ;
+  rdfs:label "transport"@en ;
+  rdfs:comment "MCP transport type: stdio or http."@en ;
+  rdfs:domain porter:McpServer ;
+  rdfs:range xsd:string .
+
+porter:mcpUrl a rdf:Property ;
+  rdfs:label "MCP URL"@en ;
+  rdfs:comment "HTTP endpoint URL for MCP server."@en ;
+  rdfs:domain porter:McpServer ;
+  rdfs:range xsd:string .
+
+porter:mcpCommand a rdf:Property ;
+  rdfs:label "MCP command"@en ;
+  rdfs:comment "Command to spawn for stdio transport."@en ;
+  rdfs:domain porter:McpServer ;
+  rdfs:range xsd:string .
+
+porter:mcpArgs a rdf:Property ;
+  rdfs:label "MCP args"@en ;
+  rdfs:comment "Command-line argument for stdio MCP server (repeated)."@en ;
+  rdfs:domain porter:McpServer ;
+  rdfs:range xsd:string .
+
+porter:authType a rdf:Property ;
+  rdfs:label "auth type"@en ;
+  rdfs:comment "MCP authentication type: bearer, oidc."@en ;
+  rdfs:domain porter:McpServer ;
+  rdfs:range xsd:string .
+
+porter:tokenEnv a rdf:Property ;
+  rdfs:label "token env"@en ;
+  rdfs:comment "Environment variable name for MCP auth token."@en ;
+  rdfs:domain porter:McpServer ;
+  rdfs:range xsd:string .
+
+porter:mcpIssuerUrl a rdf:Property ;
+  rdfs:label "MCP issuer URL"@en ;
+  rdfs:comment "OIDC issuer URL for MCP HTTP authentication."@en ;
+  rdfs:domain porter:McpServer ;
+  rdfs:range xsd:string .
+
+# =============================================================================
+# Pattern Properties
+# =============================================================================
+
+porter:busFlow a rdf:Property ;
+  rdfs:label "bus flow"@en ;
+  rdfs:comment "Message flow topology description string."@en ;
+  rdfs:domain porter:Pattern ;
+  rdfs:range xsd:string .
+
+porter:isBuiltin a rdf:Property ;
+  rdfs:label "is builtin"@en ;
+  rdfs:comment "Whether this pattern is a built-in (non-deletable) pattern."@en ;
+  rdfs:domain porter:Pattern ;
+  rdfs:range xsd:boolean .
+
+porter:roleId a rdf:Property ;
+  rdfs:label "role ID"@en ;
+  rdfs:comment "Identifier for a role within a pattern."@en ;
+  rdfs:domain porter:PatternRole ;
+  rdfs:range xsd:string .
+
+porter:minCount a rdf:Property ;
+  rdfs:label "min count"@en ;
+  rdfs:comment "Minimum agents required for this role."@en ;
+  rdfs:domain porter:PatternRole ;
+  rdfs:range xsd:integer .
+
+porter:maxCount a rdf:Property ;
+  rdfs:label "max count"@en ;
+  rdfs:comment "Maximum agents allowed for this role."@en ;
+  rdfs:domain porter:PatternRole ;
+  rdfs:range xsd:integer .
+
+porter:systemPromptSuffix a rdf:Property ;
+  rdfs:label "system prompt suffix"@en ;
+  rdfs:comment "Text appended to agents' system prompts when using this role."@en ;
+  rdfs:domain porter:PatternRole ;
+  rdfs:range xsd:string .
+
+porter:autoTool a rdf:Property ;
+  rdfs:label "auto tool"@en ;
+  rdfs:comment "Tool automatically injected for agents with this role."@en ;
+  rdfs:domain porter:PatternRole ;
+  rdfs:range xsd:string .
+
+porter:defaultTool a rdf:Property ;
+  rdfs:label "default tool"@en ;
+  rdfs:comment "Default tool included for agents with this role."@en ;
+  rdfs:domain porter:PatternRole ;
+  rdfs:range xsd:string .
+
+porter:subscribeDynamic a rdf:Property ;
+  rdfs:label "subscribe dynamic"@en ;
+  rdfs:comment "Dynamic channel subscription template."@en ;
+  rdfs:domain porter:PatternRole ;
+  rdfs:range xsd:string .
+
+# =============================================================================
+# Observation / Collaboration Properties
+# =============================================================================
+
+porter:about a rdf:Property ;
+  rdfs:label "about"@en ;
+  rdfs:comment "What this observation, finding, or critique is about."@en ;
+  rdfs:range xsd:string .
+
+porter:finding a rdf:Property ;
+  rdfs:label "finding"@en ;
+  rdfs:comment "The finding text or critique issue."@en ;
+  rdfs:range xsd:string .
+
+porter:discoveredBy a rdf:Property ;
+  rdfs:label "discovered by"@en ;
+  rdfs:comment "Agent name that discovered or authored this observation."@en ;
+  rdfs:range xsd:string .
+
+porter:severity a rdf:Property ;
+  rdfs:label "severity"@en ;
+  rdfs:comment "Severity level: info, low, medium, high, critical."@en ;
+  rdfs:domain porter:Observation ;
+  rdfs:range xsd:string .
+
+porter:domain a rdf:Property ;
+  rdfs:label "domain"@en ;
+  rdfs:comment "Domain specialization: security, performance, architecture, etc."@en ;
+  rdfs:domain porter:Finding ;
+  rdfs:range xsd:string .
+
+porter:confidence a rdf:Property ;
+  rdfs:label "confidence"@en ;
+  rdfs:comment "Confidence score from 0 to 1."@en ;
+  rdfs:domain porter:Finding ;
+  rdfs:range xsd:float .
+
+porter:round a rdf:Property ;
+  rdfs:label "round"@en ;
+  rdfs:comment "Deliberation round number."@en ;
+  rdfs:domain porter:Critique ;
+  rdfs:range xsd:integer .
+
+porter:approved a rdf:Property ;
+  rdfs:label "approved"@en ;
+  rdfs:comment "Whether the critique has been addressed."@en ;
+  rdfs:domain porter:Critique ;
+  rdfs:range xsd:boolean .
+
+porter:stepOrder a rdf:Property ;
+  rdfs:label "step order"@en ;
+  rdfs:comment "Ordinal position of a plan step."@en ;
+  rdfs:domain porter:PlanStep ;
+  rdfs:range xsd:integer .
+
+porter:stepState a rdf:Property ;
+  rdfs:label "step state"@en ;
+  rdfs:comment "Current state: pending, done, or failed."@en ;
+  rdfs:domain porter:PlanStep ;
+  rdfs:range xsd:string .
+
+porter:addresses a rdf:Property ;
+  rdfs:label "addresses"@en ;
+  rdfs:comment "Notes on what a plan step addresses or resolves."@en ;
+  rdfs:domain porter:PlanStep ;
+  rdfs:range xsd:string .
+
+# =============================================================================
+# Federation Properties
+# =============================================================================
+
+porter:approvalMode a rdf:Property ;
+  rdfs:label "approval mode"@en ;
+  rdfs:comment "Follow request handling: open, allowlist, or manual."@en ;
+  rdfs:domain porter:FederationConfig ;
+  rdfs:range xsd:string .
+
+porter:allowlistEntry a rdf:Property ;
+  rdfs:label "allowlist entry"@en ;
+  rdfs:comment "Domain or @user@domain handle to auto-approve (repeated)."@en ;
+  rdfs:domain porter:FederationConfig ;
+  rdfs:range xsd:string .
+
+porter:publicSummaries a rdf:Property ;
+  rdfs:label "public summaries"@en ;
+  rdfs:comment "Post session summaries publicly (vs followers-only)."@en ;
+  rdfs:domain porter:FederationConfig ;
+  rdfs:range xsd:boolean .

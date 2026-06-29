@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Porter - Sign In</title>
+  <style>
+    body { font-family: system-ui; display: flex; justify-content: center; align-items: center;
+           min-height: 100vh; margin: 0; background: #1a1a2e; color: #e0d6cc; }
+    .card { text-align: center; padding: 2rem; max-width: 400px; width: 100%; }
+    .card img { width: 4rem; margin-bottom: 1rem; }
+    h2 { margin: 0 0 0.5rem; font-weight: 400; }
+    p { color: #a09888; margin: 0 0 1.5rem; }
+    .options { display: flex; flex-direction: column; gap: 0.75rem; }
+    a.btn { display: block; color: #c9a96e; text-decoration: none; border: 1px solid #c9a96e;
+            padding: 0.65rem 1.5rem; border-radius: 4px; transition: background 0.15s; }
+    a.btn:hover { background: #c9a96e22; }
+    .btn-primary { background: #c9a96e; color: #1a1a2e !important; font-weight: 500; border-color: #c9a96e; }
+    .btn-primary:hover { background: #c9a96e7d !important; color: #1a1a2e !important; }
+    .divider { display: flex; align-items: center; gap: 0.75rem; color: #5a5248; font-size: 0.85rem; margin: 0.25rem 0; }
+    .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid #333; }
+    .solid-form { display: flex; gap: 0.4rem; }
+    .solid-form input { flex: 1; padding: 0.5rem; border: 1px solid #444; border-radius: 4px;
+                        background: #2a2a3e; color: #e0d6cc; font-size: 0.9rem; }
+    .solid-form button { padding: 0.5rem 1rem; border: 1px solid #c9a96e; border-radius: 4px;
+                         background: #c9a96e; color: #1a1a2e; cursor: pointer; }
+    .solid-form button:hover { background: #c9a96e7d; }
+    .hint { color: #6a6258; font-size: 0.8rem; margin-top: 0.25rem; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/porter.svg" alt="Porter">
+    <h2>Sign in to Porter</h2>
+    <p>Choose your login method</p>
+    <div class="options">
+      <a href="{{SSO_URL}}" class="btn btn-primary" {{SSO_HIDDEN}}>Sign in with SSO</a>
+      <div class="divider"><span>or</span></div>
+      <div>
+        <div class="solid-form">
+          <input type="url" id="solid-issuer" placeholder="https://login.inrupt.com" value="">
+          <button onclick="location.href='/auth/solid-login?issuer='+encodeURIComponent(document.getElementById('solid-issuer').value)+'&redirect={{REDIRECT}}'">Login</button>
+        </div>
+        <div class="hint">Sign in with a Solid / LWS identity provider</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,337 @@
+@prefix porter: <https://porter.chapeaux.io/vocab#> .
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix as:     <https://www.w3.org/ns/activitystreams#> .
+
+# =============================================================================
+# Team Shape
+# =============================================================================
+
+porter:TeamShape a sh:NodeShape ;
+  sh:targetClass porter:Team ;
+  sh:property [
+    sh:path porter:name ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:minLength 1 ;
+    sh:message "Team must have a non-empty name"
+  ] ;
+  sh:property [
+    sh:path porter:teamPattern ;
+    sh:maxCount 1 ;
+    sh:in ( "sequential" "mixture" "deliberation" "distillation" ) ;
+    sh:message "pattern must be one of: sequential, mixture, deliberation, distillation"
+  ] ;
+  sh:property [
+    sh:path porter:hasAgentSlot ;
+    sh:minCount 1 ;
+    sh:message "Team must have at least one agent slot"
+  ] ;
+  sh:property [
+    sh:path porter:usesModel ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+  ] ;
+  sh:property [
+    sh:path porter:maxDeliberationRounds ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+    sh:message "max_deliberation_rounds must be a positive integer"
+  ] .
+
+# =============================================================================
+# Agent Slot Shape
+# =============================================================================
+
+porter:AgentSlotShape a sh:NodeShape ;
+  sh:targetClass porter:AgentSlot ;
+  sh:property [
+    sh:path porter:agentRef ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:minLength 1 ;
+    sh:message "Agent slot must reference an agent by name or URI"
+  ] ;
+  sh:property [
+    sh:path porter:assignedRole ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:in ( "admin" "worker" "reviewer" "specialist" "synthesizer"
+            "reflector" "expert" "learner" ) ;
+    sh:message "role must be one of: admin, worker, reviewer, specialist, synthesizer, reflector, expert, learner"
+  ] ;
+  sh:property [
+    sh:path porter:maxTokens ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+    sh:message "max_tokens must be a positive integer"
+  ] .
+
+# =============================================================================
+# Agent Shape
+# =============================================================================
+
+porter:AgentShape a sh:NodeShape ;
+  sh:targetClass porter:Agent ;
+  sh:property [
+    sh:path porter:name ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:minLength 1 ;
+    sh:message "Agent must have a non-empty name"
+  ] ;
+  sh:property [
+    sh:path porter:assignedRole ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:in ( "admin" "worker" "reviewer" "specialist" "synthesizer"
+            "reflector" "expert" "learner" ) ;
+    sh:message "role must be one of: admin, worker, reviewer, specialist, synthesizer, reflector, expert, learner"
+  ] ;
+  sh:property [
+    sh:path porter:agentExpertise ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+  ] ;
+  sh:property [
+    sh:path porter:hasTool ;
+    sh:in ( "read_file" "write_file" "edit_file" "bash" "glob"
+            "grep" "list_dir" "send_message" "read_messages" "git"
+            "memory_write" "memory_query" "finding_write" "findings_query"
+            "critique_write" "critiques_query" "approve"
+            "plan_write" "plan_query" "step_update"
+            "ap_post" "ap_reply" "semantic_search" ) ;
+    sh:message "Unknown tool name"
+  ] ;
+  sh:property [
+    sh:path porter:maxTokens ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:maxTurns ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:maxContextTokens ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:reasoning ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] ;
+  sh:property [
+    sh:path porter:visibility ;
+    sh:maxCount 1 ;
+    sh:in ( "private" "shared" "linked" ) ;
+    sh:message "visibility must be one of: private, shared, linked"
+  ] .
+
+# =============================================================================
+# Model Shape
+# =============================================================================
+
+porter:ModelShape a sh:NodeShape ;
+  sh:targetClass porter:Model ;
+  sh:property [
+    sh:path porter:name ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "Model must have an ID"
+  ] ;
+  sh:property [
+    sh:path porter:providerType ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:in ( "openai" "openai_compat" "azure_openai" "anthropic"
+            "aws_bedrock" "vertex_ai" "groq" "ollama" ) ;
+    sh:message "provider_type must be one of: openai, openai_compat, azure_openai, anthropic, aws_bedrock, vertex_ai, groq, ollama"
+  ] ;
+  sh:property [
+    sh:path porter:baseUrl ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "base_url is required"
+  ] ;
+  sh:property [
+    sh:path porter:authMethod ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:in ( "bearer" "adc" "aws_iam" "x-api-key" ) ;
+    sh:message "auth must be one of: bearer, adc, aws_iam, x-api-key"
+  ] ;
+  sh:property [
+    sh:path porter:contextWindow ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:maxTokens ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+  ] ;
+  sh:property [
+    sh:path porter:toolCalling ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] ;
+  sh:property [
+    sh:path porter:reasoning ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] ;
+  sh:property [
+    sh:path porter:vision ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] ;
+  sh:property [
+    sh:path porter:jsonMode ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] .
+
+# =============================================================================
+# MCP Server Shape
+# =============================================================================
+
+porter:McpServerShape a sh:NodeShape ;
+  sh:targetClass porter:McpServer ;
+  sh:property [
+    sh:path porter:name ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:minLength 1 ;
+    sh:message "MCP server must have a name"
+  ] ;
+  sh:property [
+    sh:path porter:transport ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:in ( "stdio" "http" ) ;
+    sh:message "transport must be one of: stdio, http"
+  ] .
+
+# =============================================================================
+# Pattern Shape
+# =============================================================================
+
+porter:PatternShape a sh:NodeShape ;
+  sh:targetClass porter:Pattern ;
+  sh:property [
+    sh:path porter:name ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+  ] ;
+  sh:property [
+    sh:path porter:busFlow ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+  ] ;
+  sh:property [
+    sh:path porter:isBuiltin ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] .
+
+# =============================================================================
+# Observation Shape
+# =============================================================================
+
+porter:ObservationShape a sh:NodeShape ;
+  sh:targetClass porter:Observation ;
+  sh:property [
+    sh:path porter:about ;
+    sh:minCount 1 ;
+    sh:message "Observation must specify what it is about"
+  ] ;
+  sh:property [
+    sh:path porter:finding ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "Observation must include a finding"
+  ] ;
+  sh:property [
+    sh:path porter:discoveredBy ;
+    sh:minCount 1 ;
+    sh:message "Observation must specify which agent discovered it"
+  ] ;
+  sh:property [
+    sh:path porter:severity ;
+    sh:maxCount 1 ;
+    sh:in ( "info" "low" "medium" "high" "critical" ) ;
+    sh:message "severity must be one of: info, low, medium, high, critical"
+  ] .
+
+# =============================================================================
+# Finding Shape
+# =============================================================================
+
+porter:FindingShape a sh:NodeShape ;
+  sh:targetClass porter:Finding ;
+  sh:property [
+    sh:path porter:confidence ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:float ;
+    sh:minInclusive 0.0 ;
+    sh:maxInclusive 1.0 ;
+    sh:message "confidence must be between 0 and 1"
+  ] ;
+  sh:property [
+    sh:path porter:domain ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+  ] .
+
+# =============================================================================
+# Critique Shape
+# =============================================================================
+
+porter:CritiqueShape a sh:NodeShape ;
+  sh:targetClass porter:Critique ;
+  sh:property [
+    sh:path porter:round ;
+    sh:minCount 1 ;
+    sh:datatype xsd:integer ;
+    sh:minInclusive 1 ;
+    sh:message "Critique must have a positive round number"
+  ] ;
+  sh:property [
+    sh:path porter:approved ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] .
+
+# =============================================================================
+# Federation Config Shape
+# =============================================================================
+
+porter:FederationConfigShape a sh:NodeShape ;
+  sh:targetClass porter:FederationConfig ;
+  sh:property [
+    sh:path porter:approvalMode ;
+    sh:maxCount 1 ;
+    sh:in ( "open" "allowlist" "manual" ) ;
+    sh:message "approval_mode must be one of: open, allowlist, manual"
+  ] ;
+  sh:property [
+    sh:path porter:publicSummaries ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:boolean ;
+  ] .

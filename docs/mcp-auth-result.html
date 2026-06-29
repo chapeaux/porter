@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Porter - MCP Authentication</title>
+  <style>
+    body { font-family: system-ui; display: flex; justify-content: center; align-items: center;
+           min-height: 100vh; margin: 0; background: #1a1a2e; color: #e0d6cc; }
+    .card { text-align: center; padding: 2rem; max-width: 400px; }
+    .error { color: #e57373; }
+  </style>
+</head>
+<body>
+  <div class="card" id="result"></div>
+  <script>
+    var isError = {{IS_ERROR}};
+    var tokenData = {{TOKEN_DATA}};
+    var storageKey = {{STORAGE_KEY}};
+    var serverName = {{SERVER_NAME}};
+    var errorMsg = {{ERROR_MSG}};
+
+    if (!isError && tokenData) {
+      localStorage.setItem(storageKey, tokenData);
+      if (window.opener) {
+        window.opener.postMessage({ type: "mcp-auth-result", server: serverName }, location.origin);
+      }
+      document.getElementById("result").textContent = "Authenticated. You can close this window.";
+      setTimeout(function() { window.close(); }, 500);
+    } else {
+      if (window.opener) {
+        window.opener.postMessage({ type: "mcp-auth-result", error: errorMsg }, location.origin);
+      }
+      document.getElementById("result").className = "card error";
+      document.getElementById("result").textContent = "Authentication failed: " + errorMsg;
+    }
+  </script>
+</body>
+</html>
