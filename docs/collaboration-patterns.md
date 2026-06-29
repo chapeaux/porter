@@ -8,6 +8,32 @@ This separation means the same agent can work in any pattern. A "security-analys
 
 Agents are portable. Patterns are pluggable. You build your agent library once and compose teams by placing agents into pattern roles.
 
+### Example: Same Agent in Different Patterns
+
+The same agent definition works across patterns. The pattern injects the coordination behavior:
+
+```json
+// Agent library definition
+{
+  "name": "security-analyst",
+  "system_prompt": "You are a security expert. Analyze code for vulnerabilities...",
+  "tools": ["read_file", "grep", "glob", "list_dir"]
+}
+
+// In a Mixture team: agent gets finding_write + send_message auto-injected
+{ "pattern": "mixture", "agents": [
+  { "name": "security-analyst", "role": "specialist" },
+  { "name": "perf-analyst", "role": "specialist" },
+  { "name": "reporter", "role": "synthesizer" }
+]}
+
+// In a Deliberation team: same agent gets critique_write + approve auto-injected
+{ "pattern": "deliberation", "agents": [
+  { "name": "coder", "role": "worker" },
+  { "name": "security-analyst", "role": "reflector" }
+]}
+```
+
 ---
 
 ## Pattern Definition Format
@@ -92,7 +118,7 @@ The `@type` values `Pattern` and `PatternRole` map to `porter:Pattern` and `port
 | `description` | `string` | yes | What this role does within the pattern |
 | `min` | `number` | yes | Minimum number of agents required for this role |
 | `max` | `number` | yes | Maximum number of agents allowed for this role |
-| `system_prompt_suffix` | `string` | yes | Text appended to the agent's system prompt at session start, providing pattern-specific instructions |
+| `system_prompt_suffix` | `string` | yes | Text appended to the agent's system prompt at session start, providing pattern-specific instructions. Supports template variables: `{agent_name}` / `{your_name}` (replaced with the agent's name) and `{max_rounds}` (replaced with the configured deliberation round limit) |
 | `auto_tools` | `string[]` | yes | Tools automatically injected for this role (e.g., `finding_write` for specialists). These are added regardless of the agent's configured tool list |
 | `subscribe` | `string[]` | yes | Bus channels this role subscribes to (e.g., `["task", "control"]`) |
 | `subscribe_dynamic` | `string` | no | Dynamic subscription template. Uses `{name}` placeholder to create per-agent channels (e.g., `"specialist:{name}"` subscribes the synthesizer to each specialist's output channel) |
@@ -172,11 +198,11 @@ Traditional admin/worker/reviewer pipeline. An admin plans and coordinates, work
 
 **Roles:**
 
-| Role | Min | Max | Auto Tools | Subscribe |
-|------|-----|-----|------------|-----------|
-| Admin | 0 | 1 | `send_message`, `read_messages` | `log` |
-| Worker | 1 | 8 | `send_message`, `read_messages` | `task`, `control` |
-| Reviewer | 0 | 2 | `send_message`, `read_messages` | `review` |
+| Role | Min | Max | Auto Tools | Default Tools | Subscribe |
+|------|-----|-----|------------|---------------|-----------|
+| Admin | 0 | 1 | `send_message`, `read_messages` | `read_file`, `glob`, `grep`, `list_dir`, `memory_write`, `memory_query` | `log` |
+| Worker | 1 | 8 | `send_message`, `read_messages` | `read_file`, `write_file`, `edit_file`, `bash`, `glob`, `grep`, `list_dir`, `git` | `task`, `control` |
+| Reviewer | 0 | 2 | `send_message`, `read_messages` | `read_file`, `bash`, `glob`, `grep`, `list_dir` | `review` |
 
 **Bus flow:** `task -> role:admin -> task -> role:worker* -> log -> role:reviewer -> response`
 
@@ -190,10 +216,10 @@ Parallel domain specialists analyze a problem independently, then a synthesizer 
 
 **Roles:**
 
-| Role | Min | Max | Auto Tools | Subscribe |
-|------|-----|-----|------------|-----------|
-| Specialist | 2 | 8 | `finding_write`, `send_message` | `task`, `control` |
-| Synthesizer | 1 | 1 | `findings_query`, `send_message` | (dynamic: `specialist:{name}`) |
+| Role | Min | Max | Auto Tools | Default Tools | Subscribe |
+|------|-----|-----|------------|---------------|-----------|
+| Specialist | 2 | 8 | `finding_write`, `send_message` | `read_file`, `glob`, `grep`, `list_dir` | `task`, `control` |
+| Synthesizer | 1 | 1 | `findings_query`, `send_message` | (none) | (dynamic: `specialist:{name}`) |
 
 **Bus flow:** `task -> [role:specialist*] -> graph -> role:synthesizer -> response`
 
@@ -207,14 +233,18 @@ A reflector iteratively critiques a worker's output, triggering corrections unti
 
 **Roles:**
 
-| Role | Min | Max | Auto Tools | Subscribe |
-|------|-----|-----|------------|-----------|
-| Worker | 1 | 1 | `critiques_query`, `send_message` | `task`, `revision`, `control` |
-| Reflector | 1 | 1 | `critique_write`, `approve`, `send_message` | `deliberation`, `control` |
+| Role | Min | Max | Auto Tools | Default Tools | Subscribe |
+|------|-----|-----|------------|---------------|-----------|
+| Worker | 1 | 1 | `critiques_query`, `send_message` | `read_file`, `write_file`, `edit_file`, `bash`, `glob`, `grep`, `list_dir`, `git` | `task`, `revision`, `control` |
+| Reflector | 1 | 1 | `critique_write`, `approve`, `send_message` | `read_file`, `glob`, `grep`, `list_dir` | `deliberation`, `control` |
 
 **Bus flow:** `task -> role:worker -> deliberation -> role:reflector -> (approve -> response | revision -> role:worker)`
 
 **When to use:** Tasks requiring iterative refinement -- coding with review, security auditing, writing. The `max_rounds` field (default: 3) caps the review loop.
+
+**Deliberation handoff:** The worker publishes a summary of its work to the `deliberation` channel via `send_message`. The reflector reviews it and either calls the `approve` tool (which publishes an `APPROVED` signal on the `deliberation` channel and marks all critiques from the current round as addressed in the graph) or writes critiques via `critique_write` and sends a revision request to the `revision` channel. The worker receives the revision, queries specific critiques via `critiques_query`, addresses each one, and resubmits. The loop continues until approval or the round limit is reached.
+
+The `{max_rounds}` template variable in the worker's system prompt suffix is replaced at session start with the configured value (from the team config's `max_deliberation_rounds` or the pattern's `max_rounds` default of 3), so the worker knows how many rounds remain.
 
 **Definition:** `src/orchestration/patterns/deliberation.jsonld`
 
@@ -224,10 +254,10 @@ A larger/stronger expert model reasons and creates a step-by-step plan, which a 
 
 **Roles:**
 
-| Role | Min | Max | Auto Tools | Subscribe |
-|------|-----|-----|------------|-----------|
-| Expert | 1 | 1 | `plan_write`, `send_message` | `task`, `clarify`, `control` |
-| Learner | 1 | 1 | `plan_query`, `step_update`, `send_message` | `guidance`, `control` |
+| Role | Min | Max | Auto Tools | Default Tools | Subscribe |
+|------|-----|-----|------------|---------------|-----------|
+| Expert | 1 | 1 | `plan_write`, `send_message` | `read_file`, `glob`, `grep`, `list_dir` | `task`, `clarify`, `control` |
+| Learner | 1 | 1 | `plan_query`, `step_update`, `send_message` | `read_file`, `write_file`, `edit_file`, `bash`, `git` | `guidance`, `control` |
 
 **Bus flow:** `task -> role:expert -> graph -> role:learner -> response ; role:learner -> clarify -> role:expert`
 
@@ -252,6 +282,7 @@ The `bus_flow` field uses a small grammar to describe message flow between roles
 | **Sequence arrow** | `->` | Sequential flow from left to right |
 | **Secondary flow** | `;` | Separates independent flow paths (e.g., a clarification channel) |
 | **Named channel** | `name` | A bare name like `task`, `graph`, `log`, `response`, `deliberation` |
+| **Labeled store** | `graph(label)` | A graph node with a descriptive label (e.g., `graph(findings)`, `graph(plan)`) |
 
 ### Built-in Pattern bus_flow Strings
 
@@ -278,6 +309,10 @@ Worker output flows to the reflector, who either approves (ending the loop) or s
 task -> role:expert -> graph -> role:learner -> response ; role:learner -> clarify -> role:expert
 ```
 Main flow: expert plans, learner executes. Secondary flow (after `;`): learner can send clarification requests back to the expert.
+
+### Flow Diagram Rendering
+
+The dashboard renders `bus_flow` strings as visual flow diagrams using the `flow-parser` and `flow-diagram` modules. The parser tokenizes the bus_flow string into nodes and edges, and the diagram module renders them as an SVG with directional arrows, parallel groupings, and branch indicators.
 
 ---
 
@@ -362,7 +397,16 @@ Reorders the tool list based on recent usage. If the model last used `grep`, `re
 
 ### Configuration
 
-The inference engine activates automatically for models classified as `small` by the model registry. The `small_model` flag on a model's configuration determines whether simplification and intent classification apply.
+The inference engine activates automatically for models classified as `small` by the model registry. The `small_model` flag on a model's configuration determines whether simplification and intent classification apply. Set `small_model: true` on an agent to enable it explicitly, or let Porter auto-detect from the model name (names containing "1b", "3b", "7b" are treated as small).
+
+```json
+{
+  "name": "developer",
+  "role": "learner",
+  "small_model": true,
+  "tools": ["read_file", "write_file", "edit_file", "bash"]
+}
+```
 
 ---
 
@@ -389,6 +433,8 @@ Patterns are portable JSON-LD files. To share:
 - **Solid Pod ACL:** Patterns stored on a Solid Pod can be made public via ACL. Use `setResourcePublic()` to grant read access to any agent (i.e., the `foaf:Agent` class). Other Porter instances can then import the pattern by URL.
 
 Custom patterns appear alongside built-in patterns in the Team Builder's pattern selector. They work identically to built-in patterns.
+
+Patterns are also managed in the dashboard via the **PATTERNS** flipboard cell, which opens the Pattern Manager dialog.
 
 ---
 
@@ -563,6 +609,23 @@ For Deliberation, the wizard also prompts for `max_deliberation_rounds` (default
 ### Add Agent
 
 The `porter add-agent` command adds an agent to an existing config file. It reads the current agents, prompts for the new agent's configuration, and appends it.
+
+---
+
+## Example Configurations
+
+The [`examples/`](../examples/) directory includes ready-to-use team configurations for each pattern:
+
+| File | Pattern | Description |
+|------|---------|-------------|
+| [`mixture-review.json`](../examples/mixture-review.json) | mixture | Code review with correctness, security, and performance specialists |
+| [`mixture-research.json`](../examples/mixture-research.json) | mixture | Codebase research with code, doc, and test analysts |
+| [`deliberation-coder.json`](../examples/deliberation-coder.json) | deliberation | Coding with iterative review (3 rounds) |
+| [`deliberation-security.json`](../examples/deliberation-security.json) | deliberation | Security audit with iterative verification (5 rounds) |
+| [`distillation-guided.json`](../examples/distillation-guided.json) | distillation | Large model architect guides small model developer |
+| [`solo-dev.json`](../examples/solo-dev.json) | sequential | Single developer agent |
+| [`full-team.json`](../examples/full-team.json) | sequential | Admin, worker, and reviewer team |
+| [`multi-model.json`](../examples/multi-model.json) | sequential | Mixed model team (different providers) |
 
 ---
 
