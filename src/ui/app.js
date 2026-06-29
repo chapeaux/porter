@@ -174,19 +174,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (email) authenticated = true;
   }
 
-  // 5. Check server-side session (SSO or server-side Solid)
+  // 5. Browser mode — no backend, skip server checks
+  const { BROWSER_MODE } = await import('./constants.js');
+  if (BROWSER_MODE) {
+    authenticated = true; // allow through — auth is via Solid login only
+  }
+
+  // 6. Check server-side session (SSO or server-side Solid)
   let ssoMe = null;
-  if (!authenticated) {
+  if (!authenticated && !BROWSER_MODE) {
     try {
       const meResp = await fetch('/auth/me');
       if (meResp.ok) {
         ssoMe = await meResp.json();
         if (ssoMe.authenticated) authenticated = true;
-        // No OIDC configured and no auth — standalone mode, allow through
         if (!ssoMe.authenticated && !ssoMe.oidc_configured) authenticated = true;
       }
     } catch {
-      // /auth/me failed — likely no auth configured, allow through
       authenticated = true;
     }
   }
@@ -201,6 +205,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- Authenticated — wait for pod readiness before making API calls ---
   const loadingEl = document.getElementById('loading-indicator');
   const loadingText = loadingEl?.querySelector('.loading-text');
+  if (BROWSER_MODE) {
+    // Skip pod readiness, API init, and WebSocket — just render the static UI
+    main.classList.remove('porter-loading');
+    if (loadingEl) {
+      await renderEmptyState();
+    }
+    checkAuthState();
+    return;
+  }
   if (ssoMe?.authenticated) {
     // In router mode, the user pod may still be starting
     let podReady = false;

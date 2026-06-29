@@ -2,6 +2,12 @@
  * Shared constants for the Porter UI.
  */
 
+/** True when running as a static site with no backend (GitHub Pages, etc.) */
+export const BROWSER_MODE = document.querySelector('meta[name="porter-mode"]')?.content === 'browser';
+
+/** The API base URL — empty string for same-origin, or a full URL for connected mode */
+export const API_BASE = document.querySelector('meta[name="porter-api"]')?.content || '';
+
 export const CHANNEL_COLORS = {
   task: '#c9a84c',
   log: '#5b8c6b',

@@ -196,8 +196,9 @@ export async function renderEmptyState() {
   _ensureSkeleton();
 
   const modelStore = document.getElementById('models');
+  const { BROWSER_MODE } = await import('../constants.js');
   let modelCount = modelStore?.getAvailable()?.length ?? 0;
-  if (modelCount === 0) {
+  if (modelCount === 0 && !BROWSER_MODE) {
     await modelStore?.refresh();
     modelCount = modelStore?.getAvailable()?.length ?? 0;
   }
@@ -217,20 +218,22 @@ export async function renderEmptyState() {
   _updateStep('models', hasModels, hasModels ? `${modelCount} model${modelCount > 1 ? 's' : ''} configured` : 'Configure models', hasModels ? 'Manage' : 'Set Up');
   _updateStep('mcp', mcpCount > 0, mcpCount > 0 ? `${mcpCount} MCP server${mcpCount > 1 ? 's' : ''}` : 'MCP servers (optional)', mcpCount > 0 ? 'Manage' : 'Add');
 
-  // Fetch async data without blocking the UI
+  // Fetch async data without blocking the UI (skip in browser mode — no backend)
   let hasTeams = false;
   let agentCount = 0;
   let patternCount = 0;
-  try {
-    const [teamsResp, agentsResp, patternsResp] = await Promise.all([
-      fetch('/api/teams').catch(() => null),
-      fetch('/api/agents').catch(() => null),
-      fetch('/api/patterns').catch(() => null),
-    ]);
-    if (teamsResp?.ok) { const d = await teamsResp.json(); hasTeams = (d.teams?.length ?? 0) > 0; }
-    if (agentsResp?.ok) { const d = await agentsResp.json(); agentCount = d.agents?.length ?? 0; }
-    if (patternsResp?.ok) { const d = await patternsResp.json(); patternCount = d.patterns?.length ?? 0; }
-  } catch { /* ignore */ }
+  if (!BROWSER_MODE) {
+    try {
+      const [teamsResp, agentsResp, patternsResp] = await Promise.all([
+        fetch('/api/teams').catch(() => null),
+        fetch('/api/agents').catch(() => null),
+        fetch('/api/patterns').catch(() => null),
+      ]);
+      if (teamsResp?.ok) { const d = await teamsResp.json(); hasTeams = (d.teams?.length ?? 0) > 0; }
+      if (agentsResp?.ok) { const d = await agentsResp.json(); agentCount = d.agents?.length ?? 0; }
+      if (patternsResp?.ok) { const d = await patternsResp.json(); patternCount = d.patterns?.length ?? 0; }
+    } catch { /* ignore */ }
+  }
 
   _updateStep('agents', agentCount > 0, agentCount > 0 ? `${agentCount} agent${agentCount > 1 ? 's' : ''} saved` : 'Create an agent', agentCount > 0 ? 'Manage' : 'Create');
   _updateStep('team', hasTeams, hasTeams ? 'Teams available' : 'Create a team', hasTeams ? 'Manage' : 'Create');
@@ -243,7 +246,7 @@ export async function renderEmptyState() {
 
   let hasFederation = false;
   let federationAvailable = false;
-  if (hasTeams) {
+  if (hasTeams && !BROWSER_MODE) {
     try {
       const fedResp = await fetch('/api/activitypub/config').catch(() => null);
       if (fedResp?.ok) { const d = await fedResp.json(); hasFederation = !!d.enabled; federationAvailable = !!d.domain; }
