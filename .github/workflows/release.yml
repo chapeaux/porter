@@ -39,6 +39,7 @@ jobs:
             --allow-all \
             --include src/ui/ \
             --include src/graph/shapes.ttl \
+            --include src/orchestration/patterns/ \
             --include isolate.ts \
             --include worker.ts \
             --target ${{ matrix.target }} \
