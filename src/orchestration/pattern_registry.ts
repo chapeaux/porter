@@ -41,6 +41,11 @@ export interface CompositionResult {
 
 const registry = new Map<string, PatternDefinition>();
 
+// `deno compile` only auto-embeds `new URL(..., import.meta.url)` targets it
+// can statically resolve to a literal path — the dynamic `${baseName}` below
+// defeats that analysis, so this directory must be listed explicitly via
+// `--include src/orchestration/patterns/` in deno.json's `compile` task, or
+// none of the built-in patterns load in the compiled binary.
 function loadBuiltinJson(filename: string): PatternDefinition {
   const dir = new URL("./patterns/", import.meta.url);
   // Prefer .jsonld, fall back to .json
