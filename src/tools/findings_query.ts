@@ -1,5 +1,6 @@
 import type { ToolEntry } from "./mod.ts";
 import { getGraphStore } from "../graph/store.ts";
+import { GRAPHS } from "../graph/vocabulary.ts";
 import { COLLECTIONS, embedAndSearch } from "../vector/mod.ts";
 
 const entry: ToolEntry = {
@@ -62,22 +63,23 @@ const entry: ToolEntry = {
 
     try {
       let sparql = `SELECT ?about ?finding ?domain ?confidence ?discoveredBy ?time WHERE {
-  ?f a porter:Finding ;
-     porter:about ?about ;
-     porter:finding ?finding ;
-     porter:domain ?domain ;
-     porter:confidence ?confidence ;
-     porter:discoveredBy ?discoveredBy ;
-     prov:generatedAtTime ?time .`;
+  GRAPH <${GRAPHS.memory}> {
+    ?f a porter:Finding ;
+       porter:about ?about ;
+       porter:finding ?finding ;
+       porter:domain ?domain ;
+       porter:confidence ?confidence ;
+       porter:discoveredBy ?discoveredBy ;
+       prov:generatedAtTime ?time .`;
 
       if (domain) {
-        sparql += `\n  FILTER(?domain = "${domain}")`;
+        sparql += `\n    FILTER(?domain = "${domain}")`;
       }
       if (minConfidence !== undefined) {
-        sparql += `\n  FILTER(xsd:float(?confidence) >= ${minConfidence})`;
+        sparql += `\n    FILTER(xsd:float(?confidence) >= ${minConfidence})`;
       }
 
-      sparql += "\n} ORDER BY DESC(?confidence)";
+      sparql += "\n  }\n} ORDER BY DESC(?confidence)";
 
       const results = await Promise.resolve(store.query(sparql));
 

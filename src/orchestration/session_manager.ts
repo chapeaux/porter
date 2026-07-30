@@ -2,18 +2,20 @@
  * Session Manager — manages multiple concurrent Porter sessions.
  *
  * Each session has its own MessageBus, BusServer, RateLimitCoordinator,
- * and agent Worker isolates. Sessions are created/stopped dynamically
- * via the UI API.
+ * GraphStore, and agent Worker isolates. Sessions are created/stopped
+ * dynamically via the UI API.
  *
- * The global bus singleton (getBus()) is NOT used here — every session
- * receives its own freshly-constructed MessageBus so that agent mailboxes,
- * subscriptions, and relay lists are fully isolated between sessions.
+ * The global bus/graph-store singletons (getBus(), initGraphStore()) are NOT
+ * used here — every session receives its own freshly-constructed instances
+ * so that agent mailboxes, subscriptions, relay lists, and memory are fully
+ * isolated between sessions.
  */
 
 import type { PorterConfig } from "../core/config.ts";
 import { type Porter, start } from "./orchestrator.ts";
 import { MessageBus, BusServer } from "../runtime/bus.ts";
 import { RateLimitCoordinator } from "../runtime/rate_limiter.ts";
+import { GraphStore } from "../graph/store.ts";
 import { snapshotPath } from "../runtime/snapshot.ts";
 import {
   registerSession,
@@ -60,6 +62,10 @@ export interface ManagedSession {
   busServer: BusServer;
   /** Bus port allocated for this session. */
   busPort: number;
+  /** Memory graph for this session (not the global singleton — see module doc). */
+  graphStore: GraphStore;
+  /** Stable team identity (config.session before any per-launch uniquified override). Keys durable memory. */
+  teamName: string;
   /** ISO timestamp when the session was created. */
   startedAt: string;
   /** Current lifecycle status. */
@@ -97,6 +103,13 @@ export class SessionManager {
     config: PorterConfig,
     options?: { restoreFrom?: string; sessionName?: string; ownerId?: string },
   ): Promise<ManagedSession> {
+    // config.session is the stable team identity (as saved via /api/teams);
+    // options.sessionName, when given, is a per-launch uniquified override
+    // (so the same team can be launched more than once concurrently). Capture
+    // the original before it's overwritten — durable memory is keyed by team
+    // identity, not by the disposable per-launch session name.
+    const teamName = config.session;
+
     const effectiveConfig = options?.sessionName
       ? { ...config, session: options.sessionName }
       : config;
@@ -147,14 +160,20 @@ export class SessionManager {
       });
     };
 
+    // Per-session memory graph: fully isolated from other sessions and from
+    // the global singleton, same reasoning as the bus/coordinator above.
+    const graphStore = await GraphStore.create();
+
     try {
-      // Launch the orchestrator, injecting the per-session bus and coordinator
-      // so that all agent subscriptions, publishes, and rate-limit coordination
-      // are scoped to this session only.
+      // Launch the orchestrator, injecting the per-session bus, coordinator,
+      // and graph store so that all agent subscriptions, publishes,
+      // rate-limit coordination, and memory are scoped to this session only.
       const porter = await start(config, {
         transport: new NullTransport(),
         bus,
         coordinator,
+        graphStore,
+        teamName,
         restoreFrom: options?.restoreFrom,
       });
 
@@ -201,6 +220,8 @@ export class SessionManager {
         bus,
         busServer,
         busPort,
+        graphStore,
+        teamName,
         startedAt,
         status: "running",
         ownerId: options?.ownerId,

@@ -33,6 +33,7 @@ The store partitions data into purpose-specific named graphs:
 | `GRAPHS.metrics`    | `porter:graph/metrics`   | Token usage, API call counts |
 | `GRAPHS.shapes`     | `porter:graph/shapes`    | SHACL shape definitions |
 | `GRAPHS.patterns`   | `porter:graph/patterns`  | Collaboration pattern definitions |
+| `GRAPHS.durable`    | `porter:graph/durable`   | Cross-session memory promoted by a team's librarian; persisted separately from `GRAPHS.memory` |
 
 ## Classes
 
@@ -59,7 +60,7 @@ An LLM-backed agent that belongs to a team.
 | Property | Range | Card. | Notes |
 |----------|-------|-------|-------|
 | `as:name` | `xsd:string` | 1..1 | Unique agent name (required, non-empty) |
-| `porter:hasRole` | `{"admin","worker","reviewer"}` | 1..1 | One of: `admin`, `worker`, `reviewer` |
+| `porter:hasRole` | `{"admin","worker","reviewer","specialist","synthesizer","reflector","expert","learner","librarian"}` | 1..1 | Pattern-defined role; `librarian` is addable to any pattern (see `docs/tool-gateway.md`'s `memory_admin`) |
 | `porter:systemPrompt` | `xsd:string` | 1..* | System prompt text |
 | `porter:usesModel` | `xsd:string` | 0..1 | Model id override |
 | `porter:hasTool` | enumerated string | 0..* | Allowed tool names (see below) |
@@ -73,7 +74,11 @@ An LLM-backed agent that belongs to a team.
 
 **Allowed tool names** (enforced by SHACL): `read_file`, `write_file`,
 `edit_file`, `bash`, `glob`, `grep`, `list_dir`, `send_message`,
-`read_messages`, `git`, `memory_write`, `memory_query`.
+`read_messages`, `git`, `memory`, `memory_admin`, `finding_write`,
+`findings_query`, `critique_write`, `critiques_query`, `approve`,
+`plan_write`, `plan_query`, `step_update`, `ap_post`, `ap_reply`.
+`memory_admin` is librarian-only in practice (see `docs/tool-gateway.md`),
+though SHACL itself doesn't enforce per-role tool restrictions.
 
 ### porter:Model
 
@@ -130,14 +135,24 @@ A role slot within a pattern that agents fill at runtime.
 
 ### porter:Observation
 
-A piece of shared agent memory stored in the memory graph.
+A piece of shared agent memory, written via the `memory` tool. Stored in
+`GRAPHS.memory` (session-local) or, once promoted by a librarian via
+`memory_admin`, in `GRAPHS.durable` (cross-session) — see
+`docs/tool-gateway.md` for the tool interface.
 
 | Property | Range | Card. | Notes |
 |----------|-------|-------|-------|
-| `porter:about` | `xsd:string` | 1..* | Subject of the observation |
+| `porter:about` | `xsd:string` | 1..* | Subject of the observation; derived server-side from `text`, not model-facing |
 | `porter:finding` | `xsd:string` | 1..* | The observation text |
 | `porter:discoveredBy` | `porter:Agent` | 1..* | Agent that created the observation |
 | `porter:severity` | `{"info","low","medium","high","critical"}` | 0..1 | Severity level |
+| `porter:memoryType` | `{"semantic","episodic","procedural"}` | 0..1 | Memory taxonomy; absent means undifferentiated (legacy behavior) |
+| `porter:supersedes` | IRI (`porter:Observation`) | 0..1 | The prior observation this one replaces (set by `memory_admin`'s `adjudicate`) |
+| `porter:validFrom` | `xsd:dateTime` | 0..1 | Defaults to `prov:generatedAtTime` |
+| `porter:validUntil` | `xsd:dateTime` | 0..1 | Absent means still current |
+| `porter:lessonTrigger` | `xsd:string` | 0..1 | Procedural memory: the recurring situation/task this lesson applies to |
+| `porter:lessonAction` | `xsd:string` | 0..1 | Procedural memory: the distilled corrective routine |
+| `porter:lessonSourceRun` | `xsd:string` | 0..1 | Procedural memory: provenance pointer to the originating session/observation |
 | `prov:generatedAtTime` | `xsd:dateTime` | 0..1 | Timestamp |
 
 ### porter:McpServer

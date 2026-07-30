@@ -10,6 +10,7 @@ import { showSessionLauncher } from '../dialogs/session-launcher.js';
 import { showMetricsDetail } from './metrics.js';
 import { showFederationDialog } from '../dialogs/federation-editor.js';
 import { showPatternsDialog } from '../dialogs/pattern-manager.js';
+import { showMemoryBrowser } from '../dialogs/memory-browser.js';
 
 export function setupFlipboard() {
   // Header gear toggle
@@ -54,6 +55,7 @@ export function setupFlipboard() {
 
   // Metrics detail button
   document.getElementById('m-detail-btn')?.addEventListener('click', showMetricsDetail);
+  document.getElementById('m-memory-btn')?.addEventListener('click', showMemoryBrowser);
 
   // Export config button
   document.getElementById('fb-export')?.addEventListener('click', async () => {

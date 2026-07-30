@@ -12,6 +12,8 @@ const PROVIDER_DEFAULTS = {
   anthropic:     { base_url: "https://api.anthropic.com",     auth: "x-api-key" },
   aws_bedrock:   { base_url: "",                              auth: "aws_iam" },
   vertex_ai:     { base_url: "",                              auth: "adc" },
+  vertex_claude: { base_url: "",                              auth: "bearer" },
+  vertex_gemini: { base_url: "",                              auth: "bearer" },
   groq:          { base_url: "https://api.groq.com/openai",  auth: "bearer" },
   ollama:        { base_url: "http://localhost:11434",        auth: "bearer" },
 };
@@ -22,14 +24,16 @@ const PROVIDER_LABELS = {
   azure_openai:  "Azure OpenAI",
   anthropic:     "Anthropic",
   aws_bedrock:   "AWS Bedrock",
-  vertex_ai:     "Google Vertex AI",
+  vertex_ai:     "Google Vertex AI (auto-detect Claude/Gemini)",
+  vertex_claude: "Claude via Vertex AI proxy",
+  vertex_gemini: "Gemini via Vertex AI proxy",
   groq:          "Groq",
   ollama:        "Ollama",
 };
 
 const PROVIDER_TYPES = [
   "openai", "openai_compat", "azure_openai", "anthropic",
-  "aws_bedrock", "vertex_ai", "groq", "ollama",
+  "aws_bedrock", "vertex_ai", "vertex_claude", "vertex_gemini", "groq", "ollama",
 ];
 
 const CLOUD_PROVIDERS = ["azure_openai", "aws_bedrock", "vertex_ai"];
@@ -127,6 +131,7 @@ class CpxModelConfig extends HTMLElement {
       api_version: m.api_version,
       auth: m.auth ?? (PROVIDER_DEFAULTS[m.provider_type]?.auth ?? "bearer"),
       chat_endpoint: m.chat_endpoint ?? '',
+      tier: m.tier ?? '',
       default_params: m.default_params,
       context_window: m.context_window ?? 128000,
       max_tokens: m.max_tokens ?? 4096,
@@ -224,6 +229,7 @@ class CpxModelConfig extends HTMLElement {
     if (val('f-display_name') !== undefined) m.display_name = val('f-display_name');
     if (val('f-base_url') !== undefined) m.base_url = val('f-base_url');
     if (val('f-chat_endpoint') !== undefined) m.chat_endpoint = val('f-chat_endpoint') || '';
+    if (val('f-tier') !== undefined) m.tier = val('f-tier') || undefined;
     const keyEnv = val('f-api_key_env');
     if (keyEnv !== undefined) m.api_key_env = keyEnv || undefined;
     if (val('f-auth') !== undefined) m.auth = val('f-auth');
@@ -380,6 +386,16 @@ class CpxModelConfig extends HTMLElement {
         h('legend', null, 'Connection'),
         h('label', null, 'Base URL ', h('input', { id: 'f-base_url', value: m.base_url, placeholder: 'https://api.example.com' })),
         h('label', null, 'Chat Endpoint ', h('input', { id: 'f-chat_endpoint', value: m.chat_endpoint ?? '', placeholder: '/v1/chat/completions (default)' })),
+        m.provider_type === 'vertex_claude'
+          ? h('label', null, 'Tier ',
+              h('select', { id: 'f-tier' },
+                h('option', { value: '', selected: !m.tier }, '(none)'),
+                h('option', { value: 'sonnet', selected: m.tier === 'sonnet' }, 'Sonnet'),
+                h('option', { value: 'haiku', selected: m.tier === 'haiku' }, 'Haiku'),
+                h('option', { value: 'opus', selected: m.tier === 'opus' }, 'Opus'),
+              )
+            )
+          : null,
         h('label', null, 'API Key Env Var ', h('input', { id: 'f-api_key_env', value: m.api_key_env ?? '', placeholder: 'OPENAI_API_KEY' })),
         h('label', null, 'Auth Method ',
           h('select', { id: 'f-auth' },

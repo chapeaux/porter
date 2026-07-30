@@ -915,9 +915,13 @@ export function renderStep3(body, s) {
       const data = await resp.json().catch(() => ({}));
       console.log('[porter] Save Team response:', resp.status, data);
       if (resp.ok) {
+        // Must complete before the button reports success — otherwise a refresh
+        // right after "Saved" races the Pod write: pod-sync reloads on every page
+        // init and overwrites /api/teams with whatever's still on the Pod, which
+        // silently reverts this save if the write hasn't landed yet.
+        await syncTeamsToPod();
         btn.textContent = 'Saved';
         setTimeout(() => { btn.textContent = 'Save Team'; }, 2000);
-        syncTeamsToPod();
         updateSetupBar();
         if (document.querySelector('.empty-state-prompt')) renderEmptyState();
       } else {
@@ -959,7 +963,7 @@ export async function handleTeamSave() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: teamName, config }),
     });
-    if (saveResp.ok) syncTeamsToPod();
+    if (saveResp.ok) await syncTeamsToPod();
   } catch (e) { console.error('[porter] Team save failed:', e); }
   const editingSession = configStore.state.editingSession;
 
@@ -1031,7 +1035,10 @@ export async function handleTeamSave() {
         });
       } catch { /* team save is best-effort */ }
 
-      syncTeamsToPod();
+      // Awaited for the same reason as the Save Team button: pod-sync reloads
+      // on every page init and will silently revert this save if a refresh
+      // races ahead of an unawaited Pod write.
+      await syncTeamsToPod();
 
       const busUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws?session=${encodeURIComponent(result.session)}`;
       _connectWebSocket?.(busUrl);

@@ -22,6 +22,19 @@
 
   var currentSession = null;
   var podStorageCache = {};
+  // Shared between the proactive refresh timer and authFetch's reactive
+  // 401 handling — without this, both can call refreshAccessToken()
+  // concurrently. With a rotating-refresh-token IdP, the second request to
+  // land reuses a refresh token the first already rotated out, which many
+  // IdPs treat as token theft and respond to by revoking the whole token
+  // family — a hard failure that no amount of retrying can recover from.
+  var _refreshPromise = null;
+  function refreshAccessTokenDeduped() {
+    if (!_refreshPromise) {
+      _refreshPromise = refreshAccessToken().finally(function () { _refreshPromise = null; });
+    }
+    return _refreshPromise;
+  }
 
   // ── UUID v4 ────────────────────────────────────────────────────────
 
@@ -461,7 +474,7 @@
     if (interval < 30000) interval = 30000;
     _refreshTimer = setTimeout(async function() {
       _refreshTimer = null;
-      var ok = await refreshAccessToken();
+      var ok = await refreshAccessTokenDeduped();
       if (ok) {
         scheduleProactiveRefresh();
         window.dispatchEvent(new CustomEvent('porter-auth-refreshed'));
@@ -504,6 +517,9 @@
       if (!resp.ok) return false;
 
       var tokens = await resp.json();
+      // A manual logout could have cleared currentSession while this request
+      // was in flight — nothing left to update in that case.
+      if (!currentSession) return false;
       currentSession.accessToken = tokens.access_token;
       if (tokens.refresh_token) currentSession.refreshToken = tokens.refresh_token;
       if (tokens.expires_in) currentSession.expiresIn = tokens.expires_in;
@@ -517,8 +533,6 @@
   }
 
   function getAuthFetch() {
-    var refreshing = null;
-
     return async function authFetch(url, options, _isRetry) {
       if (!currentSession) return fetch(url, options);
 
@@ -557,15 +571,20 @@
       var resp = await fetch(url, Object.assign({}, options, { headers: headers }));
 
       if (resp.status === 401 && !_isRetry) {
+        // currentSession may already be null here if a concurrent request's
+        // 401 handling (e.g. from the same bulk sync) already cleared it.
+        if (!currentSession) return resp;
         if (currentSession.refreshToken) {
-          if (!refreshing) refreshing = refreshAccessToken().finally(function() { refreshing = null; });
-          var refreshed = await refreshing;
+          var refreshed = await refreshAccessTokenDeduped();
           if (refreshed) return authFetch(url, options, true);
         }
-        // Refresh failed or no refresh token — session is dead
-        console.error("[porter-solid-auth] Session expired, clearing");
-        solidLogoutUser();
-        window.dispatchEvent(new CustomEvent("porter-auth-expired"));
+        // Refresh failed or no refresh token — session is dead. Guard against
+        // a concurrent request having already torn it down (see above).
+        if (currentSession) {
+          console.error("[porter-solid-auth] Session expired, clearing");
+          solidLogoutUser();
+          window.dispatchEvent(new CustomEvent("porter-auth-expired"));
+        }
       }
 
       return resp;

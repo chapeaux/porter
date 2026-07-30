@@ -283,6 +283,13 @@ export function observationToTriples(
     finding: string;
     discoveredBy: string;
     severity?: string;
+    memoryType?: string;
+    supersedes?: string;
+    validFrom?: string;
+    validUntil?: string;
+    lessonTrigger?: string;
+    lessonAction?: string;
+    lessonSourceRun?: string;
   },
   store: GraphStore,
 ): string {
@@ -303,6 +310,27 @@ export function observationToTriples(
 
   if (obs.severity) {
     store.addLiteral(uri, PORTER.severity, obs.severity, g);
+  }
+  if (obs.memoryType) {
+    store.addLiteral(uri, PORTER.memoryType, obs.memoryType, g);
+  }
+  if (obs.supersedes) {
+    store.addTriple(uri, PORTER.supersedes, obs.supersedes, g);
+  }
+  if (obs.validFrom) {
+    store.addLiteral(uri, PORTER.validFrom, obs.validFrom, g);
+  }
+  if (obs.validUntil) {
+    store.addLiteral(uri, PORTER.validUntil, obs.validUntil, g);
+  }
+  if (obs.lessonTrigger) {
+    store.addLiteral(uri, PORTER.lessonTrigger, obs.lessonTrigger, g);
+  }
+  if (obs.lessonAction) {
+    store.addLiteral(uri, PORTER.lessonAction, obs.lessonAction, g);
+  }
+  if (obs.lessonSourceRun) {
+    store.addLiteral(uri, PORTER.lessonSourceRun, obs.lessonSourceRun, g);
   }
 
   return uri;

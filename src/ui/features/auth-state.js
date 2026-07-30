@@ -142,7 +142,66 @@ export function renderEmailIdentity(container, email) {
   });
 }
 
+// Module-level so it survives across renderSolidIdentity() calls (e.g. one
+// per login) — the window-level listeners below are registered exactly once
+// and always update whatever the *current* status element is, rather than
+// each render attaching its own copy that never gets cleaned up. With those
+// attached per-render instead, a long-lived session with a few login/logout
+// cycles ends up with N copies of each listener, each firing once per event.
+let _syncStatusEl = null;
+
+function updateSyncStatus(text, color, title) {
+  if (!_syncStatusEl) return;
+  _syncStatusEl.textContent = text;
+  _syncStatusEl.style.color = color;
+  _syncStatusEl.title = title;
+}
+
+/** Minimal auto-dismissing toast — for Pod sync issues that aren't a full
+ * session expiry (that gets the blocking relogin modal instead; see
+ * app.js's porter-auth-expired handler). A console line alone is invisible
+ * to anyone without devtools open. */
+function showToast(message, level) {
+  let container = document.getElementById('porter-toast-container');
+  if (!container) {
+    container = h('div', {
+      id: 'porter-toast-container',
+      style: 'position:fixed;bottom:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:0.4rem;max-width:22rem',
+    });
+    document.body.appendChild(container);
+  }
+  const borderColor = level === 'error' ? 'var(--status-error)' : 'var(--status-warn)';
+  const toast = h('div', {
+    style: `background:var(--bg-secondary);border:1px solid ${borderColor};color:var(--text-primary);padding:0.5rem 0.75rem;border-radius:4px;font-size:0.8rem;box-shadow:0 2px 8px rgba(0,0,0,0.3)`,
+  }, message);
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 8000);
+}
+
+let _globalPodListenersRegistered = false;
+function registerGlobalPodListeners() {
+  if (_globalPodListenersRegistered) return;
+  _globalPodListenersRegistered = true;
+
+  window.addEventListener('porter-pod-synced', () =>
+    updateSyncStatus('✓', 'var(--status-ok)', 'Pod synced'));
+  window.addEventListener('porter-pod-write-failed', (e) =>
+    updateSyncStatus('✗', 'var(--status-error)', `Pod write failed (${e.detail?.status || 'error'})`));
+  window.addEventListener('porter-auth-refreshed', () =>
+    updateSyncStatus('✓', 'var(--status-ok)', 'Session refreshed'));
+  window.addEventListener('porter-auth-expired', () =>
+    updateSyncStatus('⚠', 'var(--status-warn)', 'Session expired — re-login needed'));
+  window.addEventListener('porter-pod-sync-issue', (e) => {
+    const context = e.detail?.context || 'a resource';
+    const status = e.detail?.status;
+    updateSyncStatus('✗', 'var(--status-error)', `Pod sync issue: ${context} (${status ?? 'error'})`);
+    showToast(`Pod sync failed for ${context}${status ? ` (${status})` : ''}.`, 'error');
+  });
+}
+
 export function renderSolidIdentity(container, webId) {
+  registerGlobalPodListeners();
+
   const host = webId.replace(/^https?:\/\//, '').split('/')[0];
   const statusEl = h('span', { id: 'pod-sync-status', class: 'pod-sync-indicator', title: 'Pod sync status' }, '✓');
   const logoutBtn = h('button', { id: 'auth-solid-logout', class: 'auth-btn' }, 'Logout');
@@ -154,6 +213,8 @@ export function renderSolidIdentity(container, webId) {
     statusEl,
     logoutBtn
   );
+  _syncStatusEl = statusEl;
+
   logoutBtn.addEventListener('click', () => {
     if (window._podSync) {
       window._podSync.disconnect();
@@ -165,21 +226,6 @@ export function renderSolidIdentity(container, webId) {
     localStorage.removeItem('porter-pod-agents');
     window.location.href = '/auth/logout';
   });
-  const updateSyncStatus = (text, color, title) => {
-    if (!statusEl) return;
-    statusEl.textContent = text;
-    statusEl.style.color = color;
-    statusEl.title = title;
-  };
-
-  window.addEventListener('porter-pod-synced', () =>
-    updateSyncStatus('✓', 'var(--status-ok)', 'Pod synced'));
-  window.addEventListener('porter-pod-write-failed', (e) =>
-    updateSyncStatus('✗', 'var(--status-error)', `Pod write failed (${e.detail?.status || 'error'})`));
-  window.addEventListener('porter-auth-refreshed', () =>
-    updateSyncStatus('✓', 'var(--status-ok)', 'Session refreshed'));
-  window.addEventListener('porter-auth-expired', () =>
-    updateSyncStatus('⚠', 'var(--status-warn)', 'Session expired — re-login needed'));
 }
 
 function renderUserProfile(container, user) {

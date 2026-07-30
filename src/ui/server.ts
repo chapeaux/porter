@@ -86,6 +86,15 @@ export interface ManagedSession {
   bus: { publish(channel: string, content: string, from?: string): Promise<void> };
   busServer: { broadcast(msg: unknown): void };
   busPort: number;
+  graphStore: {
+    dump(graph?: string): string;
+    load(turtle: string, graph?: string): void;
+    query(sparql: string): Record<string, string>[];
+    update(sparql: string): void;
+    addTriple(subject: string, predicate: string, object: string, graph?: string): void;
+    addLiteral(subject: string, predicate: string, value: string | number | boolean, graph?: string): void;
+  };
+  teamName: string;
   startedAt: string;
   status: string;
   config: { agents: unknown[]; mcp_servers?: Record<string, unknown> };
@@ -1524,10 +1533,8 @@ export async function startUiServer(
       if (ownerErr) return ownerErr;
       const session = options.sessionManager.getSession(sessionName);
       if (session) {
-        const { getGraphStore: getGS } = await import("../graph/store.ts");
         const { GRAPHS } = await import("../graph/vocabulary.ts");
-        const store = getGS();
-        const turtle = store ? store.dump(GRAPHS.memory) : "";
+        const turtle = session.graphStore.dump(GRAPHS.memory);
         return new Response(turtle, { headers: { "Content-Type": "text/turtle" } });
       }
       // Not running — try loading from snapshot
@@ -1561,16 +1568,9 @@ export async function startUiServer(
           headers: { "Content-Type": "application/json" },
         });
       }
-      const { getGraphStore: getGS } = await import("../graph/store.ts");
       const { GRAPHS } = await import("../graph/vocabulary.ts");
-      const store = getGS();
-      if (!store) {
-        return new Response(JSON.stringify({ error: "Graph store not initialized" }), {
-          status: 501, headers: { "Content-Type": "application/json" },
-        });
-      }
       try {
-        store.load(turtle, GRAPHS.memory);
+        session.graphStore.load(turtle, GRAPHS.memory);
         return new Response(JSON.stringify({ ok: true }), {
           headers: { "Content-Type": "application/json" },
         });
@@ -1578,6 +1578,244 @@ export async function startUiServer(
         return new Response(JSON.stringify({ error: (err as Error).message }), {
           status: 400, headers: { "Content-Type": "application/json" },
         });
+      }
+    }
+
+    // --- Session-scoped SPARQL (memory browser) ---
+    // Distinct from the global /api/sparql: that endpoint queries the
+    // process-wide singleton graph store, which dynamic sessions no longer
+    // populate now that each session gets its own injected GraphStore (see
+    // session_manager.ts) — it only still applies to CLI/standalone mode.
+    const sparqlMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/sparql$/);
+    if (sparqlMatch && req.method === "GET") {
+      const sessionName = decodeURIComponent(sparqlMatch[1]);
+      if (!options?.sessionManager) {
+        return new Response(JSON.stringify({ error: "Session management not available" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const ownerErr = await checkSessionOwnership(req, sessionName, options.sessionManager);
+      if (ownerErr) return ownerErr;
+      const session = options.sessionManager.getSession(sessionName);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Session not running" }), {
+          status: 404, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const query = url.searchParams.get("query");
+      if (!query) {
+        return new Response(JSON.stringify({ error: "query parameter required" }),
+          { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      if (!query.trim().toUpperCase().startsWith("SELECT")) {
+        return new Response(JSON.stringify({ error: "Only SELECT queries allowed" }),
+          { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      try {
+        const { GRAPHS } = await import("../graph/vocabulary.ts");
+        const { loadDurableForTeam } = await import("../tools/memory_admin.ts");
+        // Best-effort: bring durable memory into this graph too, so browse
+        // queries can span both GRAPHS.memory and GRAPHS.durable if desired.
+        await loadDurableForTeam(session.graphStore, session.teamName).catch(() => {});
+        const results = session.graphStore.query(query);
+        return new Response(JSON.stringify({ results }),
+          { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }),
+          { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    // --- Session-scoped semantic memory search (memory browser) ---
+    const memorySearchMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/memory\/search$/);
+    if (memorySearchMatch && req.method === "GET") {
+      const sessionName = decodeURIComponent(memorySearchMatch[1]);
+      if (!options?.sessionManager) {
+        return new Response(JSON.stringify({ error: "Session management not available" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const ownerErr = await checkSessionOwnership(req, sessionName, options.sessionManager);
+      if (ownerErr) return ownerErr;
+      const session = options.sessionManager.getSession(sessionName);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Session not running" }), {
+          status: 404, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const q = url.searchParams.get("q");
+      if (!q) {
+        return new Response(JSON.stringify({ error: "q parameter required" }),
+          { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      const memType = url.searchParams.get("type") ?? undefined;
+      const scope = url.searchParams.get("scope") ?? undefined;
+      const limit = parseInt(url.searchParams.get("limit") ?? "10");
+      try {
+        const { COLLECTIONS, embedAndSearch, getVectorStore } = await import("../vector/mod.ts");
+        if (!getVectorStore()) {
+          return new Response(JSON.stringify({ error: "Vector store not available" }),
+            { status: 501, headers: { "Content-Type": "application/json" } });
+        }
+        const filter: Record<string, string> = {};
+        if (memType) filter.memoryType = memType;
+        if (scope) filter.scope = scope;
+        const collections = [COLLECTIONS.findings, COLLECTIONS.critiques, COLLECTIONS.observations];
+        const searches = await Promise.all(
+          collections.map((c) => embedAndSearch(c, q, Object.keys(filter).length ? filter : undefined, limit)),
+        );
+        const results = searches.flat().sort((a, b) => b.score - a.score).slice(0, limit);
+        return new Response(JSON.stringify({ results }),
+          { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }),
+          { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    // --- Session-scoped granular memory entry CRUD (memory browser) ---
+    const memoryEntriesMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/memory\/entries$/);
+    const memoryEntryMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/memory\/entries\/([^/]+)$/);
+
+    if (memoryEntriesMatch && req.method === "POST") {
+      const sessionName = decodeURIComponent(memoryEntriesMatch[1]);
+      if (!options?.sessionManager) {
+        return new Response(JSON.stringify({ error: "Session management not available" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const ownerErr = await checkSessionOwnership(req, sessionName, options.sessionManager);
+      if (ownerErr) return ownerErr;
+      const session = options.sessionManager.getSession(sessionName);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Session not running" }), {
+          status: 404, headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const body = await req.json();
+        const { about, finding, memoryType, severity, scope } = body;
+        if (!about || !finding) {
+          return new Response(JSON.stringify({ error: "'about' and 'finding' are required" }),
+            { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        const { observationToTriples } = await import("../graph/converters.ts");
+        const { GRAPHS } = await import("../graph/vocabulary.ts");
+        if (scope === "durable") {
+          const { loadDurableForTeam, persistDurableForTeam } = await import("../tools/memory_admin.ts");
+          await loadDurableForTeam(session.graphStore, session.teamName).catch(() => {});
+          // observationToTriples always targets GRAPHS.memory; write directly
+          // to GRAPHS.durable instead for a durable-scoped creation.
+          const { PORTER, RDF, PROV } = await import("../graph/vocabulary.ts");
+          const uri = `${PORTER.ns}durable/${crypto.randomUUID()}`;
+          session.graphStore.addTriple(uri, RDF.type, PORTER.Observation, GRAPHS.durable);
+          session.graphStore.addLiteral(uri, PORTER.about, about, GRAPHS.durable);
+          session.graphStore.addLiteral(uri, PORTER.finding, finding, GRAPHS.durable);
+          if (memoryType) session.graphStore.addLiteral(uri, PORTER.memoryType, memoryType, GRAPHS.durable);
+          session.graphStore.addLiteral(uri, PORTER.validFrom, new Date().toISOString(), GRAPHS.durable);
+          session.graphStore.addLiteral(uri, PROV.generatedAtTime, new Date().toISOString(), GRAPHS.durable);
+          await persistDurableForTeam(session.graphStore, session.teamName);
+          return new Response(JSON.stringify({ ok: true, id: uri, scope: "durable" }),
+            { headers: { "Content-Type": "application/json" } });
+        }
+        const uri = observationToTriples(
+          { about, finding, discoveredBy: "porter-ui", severity: severity ?? "info", memoryType },
+          session.graphStore as unknown as import("../graph/store.ts").GraphStore,
+        );
+        return new Response(JSON.stringify({ ok: true, id: uri, scope: "local" }),
+          { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }),
+          { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    if (memoryEntryMatch && req.method === "PATCH") {
+      const sessionName = decodeURIComponent(memoryEntryMatch[1]);
+      const entryId = decodeURIComponent(memoryEntryMatch[2]);
+      if (!options?.sessionManager) {
+        return new Response(JSON.stringify({ error: "Session management not available" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const ownerErr = await checkSessionOwnership(req, sessionName, options.sessionManager);
+      if (ownerErr) return ownerErr;
+      const session = options.sessionManager.getSession(sessionName);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Session not running" }), {
+          status: 404, headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const body = await req.json();
+        const scope = (url.searchParams.get("scope") ?? body.scope) as string | undefined;
+        const text = body.text as string | undefined;
+        if (!text) {
+          return new Response(JSON.stringify({ error: "'text' is required" }),
+            { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        const { GRAPHS, PORTER } = await import("../graph/vocabulary.ts");
+        const escaped = text.replace(/"/g, '\\"');
+        if (scope === "durable") {
+          const { loadDurableForTeam, persistDurableForTeam } = await import("../tools/memory_admin.ts");
+          await loadDurableForTeam(session.graphStore, session.teamName).catch(() => {});
+          const uri = entryId.startsWith("http") ? entryId : `${PORTER.ns}durable/${entryId}`;
+          session.graphStore.update(`
+            WITH <${GRAPHS.durable}>
+            DELETE { <${uri}> porter:finding ?f }
+            INSERT { <${uri}> porter:finding "${escaped}" }
+            WHERE { <${uri}> porter:finding ?f }
+          `);
+          await persistDurableForTeam(session.graphStore, session.teamName);
+          return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+        }
+        const uri = entryId.startsWith("http") ? entryId : `${PORTER.ns}obs/${entryId}`;
+        session.graphStore.update(`
+          WITH <${GRAPHS.memory}>
+          DELETE { <${uri}> porter:finding ?f }
+          INSERT { <${uri}> porter:finding "${escaped}" }
+          WHERE { <${uri}> porter:finding ?f }
+        `);
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }),
+          { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    if (memoryEntryMatch && req.method === "DELETE") {
+      const sessionName = decodeURIComponent(memoryEntryMatch[1]);
+      const entryId = decodeURIComponent(memoryEntryMatch[2]);
+      if (!options?.sessionManager) {
+        return new Response(JSON.stringify({ error: "Session management not available" }), {
+          status: 501, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const ownerErr = await checkSessionOwnership(req, sessionName, options.sessionManager);
+      if (ownerErr) return ownerErr;
+      const session = options.sessionManager.getSession(sessionName);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Session not running" }), {
+          status: 404, headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const scope = url.searchParams.get("scope") ?? undefined;
+        const { GRAPHS, PORTER } = await import("../graph/vocabulary.ts");
+        if (scope === "durable") {
+          const { loadDurableForTeam, persistDurableForTeam } = await import("../tools/memory_admin.ts");
+          await loadDurableForTeam(session.graphStore, session.teamName).catch(() => {});
+          const uri = entryId.startsWith("http") ? entryId : `${PORTER.ns}durable/${entryId}`;
+          session.graphStore.update(`WITH <${GRAPHS.durable}> DELETE { <${uri}> ?p ?o } WHERE { <${uri}> ?p ?o }`);
+          await persistDurableForTeam(session.graphStore, session.teamName);
+          return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+        }
+        const uri = entryId.startsWith("http") ? entryId : `${PORTER.ns}obs/${entryId}`;
+        session.graphStore.update(`WITH <${GRAPHS.memory}> DELETE { <${uri}> ?p ?o } WHERE { <${uri}> ?p ?o }`);
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }),
+          { status: 400, headers: { "Content-Type": "application/json" } });
       }
     }
 

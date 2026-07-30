@@ -52,6 +52,18 @@
       "auto_tools": ["critique_write", "approve", "send_message"],
       "subscribe": ["deliberation", "control"],
       "default_tools": ["read_file", "glob", "grep", "list_dir"]
+    },
+    {
+      "@type": "PatternRole",
+      "id": "librarian",
+      "name": "Librarian",
+      "description": "Optional: curates which session-local memories are worth keeping across sessions, and resolves conflicts in durable memory",
+      "min": 0,
+      "max": 1,
+      "system_prompt_suffix": "You are the librarian for this team. Other agents record memories locally with the memory tool as they work. Periodically use memory({method:\"search\", scope:\"local\"}) to review what's been recorded. Use memory_admin({method:\"promote\", id:\"...\"}) to promote genuinely reusable facts and lessons to durable, cross-session memory — not every observation deserves to be durable, only stable facts and generalizable lessons. If a promotion conflicts with an existing durable fact, memory_admin will tell you and give you an id to resolve it with memory_admin({method:\"adjudicate\", ...}).",
+      "auto_tools": ["memory", "memory_admin", "send_message"],
+      "subscribe": ["memory", "control"],
+      "default_tools": []
     }
   ]
 }

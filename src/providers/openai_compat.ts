@@ -48,6 +48,10 @@ interface OaiResponse {
       role: "assistant";
       content?: string | null;
       tool_calls?: OaiToolCall[];
+      // Reasoning-model servers (e.g. llama.cpp with Qwen3 "Thinking" models)
+      // return chain-of-thought separately from `content`, which can end up
+      // empty if generation is cut off by max_tokens mid-thought.
+      reasoning_content?: string | null;
     };
     finish_reason: "stop" | "tool_calls" | "length" | "content_filter";
   }[];
@@ -184,6 +188,21 @@ function fromOaiResponse(resp: OaiResponse): ChatResponse {
     }
   }
 
+  // A turn with neither content nor tool_calls (e.g. a reasoning model that
+  // hit max_tokens mid-thought, leaving `content` empty) produces an assistant
+  // history entry with nothing in it. Replayed on the next request, that
+  // becomes {role: "assistant"} with no content/tool_calls field at all,
+  // which OpenAI-compat servers reject with a 500 — and since the entry is
+  // permanent in history, every retry fails identically. Always leave
+  // something so the turn stays valid on replay.
+  if (content.length === 0) {
+    const fallback = choice.message.reasoning_content?.trim();
+    content.push({
+      type: "text",
+      text: fallback ? `[thinking, truncated before a response]\n${fallback}` : "[no response generated]",
+    });
+  }
+
   const stopMap: Record<string, ChatResponse["stop_reason"]> = {
     stop: "end_turn",
     tool_calls: "tool_use",
@@ -217,12 +236,26 @@ function extractHeaders(
 export class OpenAICompatProvider implements ModelProvider {
   readonly name = "openai_compat";
 
+  private chatEndpoint: string;
+
   constructor(
     baseUrl: string,
     private apiKey: string,
-    private chatEndpoint: string = "/v1/chat/completions",
+    chatEndpoint?: string,
   ) {
-    this.baseUrl = baseUrl.replace(/\/v1\/(chat\/)?completions\/?$|\/v1\/?$/, "");
+    // A default *parameter* only kicks in for `undefined` — an explicit ""
+    // (e.g. a stored model config with an empty chat_endpoint field) would
+    // silently bypass it and produce a request to the bare base URL with no
+    // path at all, which most OpenAI-compat servers (incl. llama.cpp) 404 on.
+    this.chatEndpoint = chatEndpoint || "/v1/chat/completions";
+
+    // Strip a known /v1... suffix first, then any leftover trailing slash(es) —
+    // otherwise a bare trailing slash on baseUrl (e.g. "http://host:port/")
+    // combines with the leading "/" on chatEndpoint into a double slash,
+    // which most OpenAI-compat servers (incl. llama.cpp) 404 on.
+    this.baseUrl = baseUrl
+      .replace(/\/v1\/(chat\/)?completions\/?$|\/v1\/?$/, "")
+      .replace(/\/+$/, "");
   }
 
   private baseUrl: string;
@@ -243,9 +276,14 @@ export class OpenAICompatProvider implements ModelProvider {
       }
     }
 
-    if (params.reasoning && this.chatEndpoint === "/v1/chat/completions" &&
-        /qwen/i.test(params.model)) {
-      body.chat_template_kwargs = { thinking: true };
+    // Extended-thinking opt-in via chat_template_kwargs is a vLLM convention,
+    // not OpenAI's — only applies on the default vLLM chat endpoint, not a
+    // shim endpoint override (e.g. Gemini's OpenAI-compat path). Qwen3 uses
+    // a distinct key ("enable_thinking") from every other vLLM-hosted family
+    // ("thinking") for the same mechanism.
+    if (params.reasoning && this.chatEndpoint === "/v1/chat/completions") {
+      const key = /qwen/i.test(params.model) ? "enable_thinking" : "thinking";
+      body.chat_template_kwargs = { [key]: true };
     }
 
     const { getHttpClient } = await import("./types.ts");

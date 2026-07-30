@@ -111,7 +111,7 @@ SPARQL query, and `result` contains the matching bindings:
   "summary": "Checking known dependencies",
   "object": {
     "type": "Note",
-    "content": "SELECT ?about ?finding WHERE { ?obs <https://porter.chapeaux.io/vocab#about> ?about ; <https://porter.chapeaux.io/vocab#finding> ?finding }"
+    "content": "SELECT ?about ?finding WHERE { GRAPH <https://porter.chapeaux.io/vocab#graph/memory> { ?obs <https://porter.chapeaux.io/vocab#about> ?about ; <https://porter.chapeaux.io/vocab#finding> ?finding } }"
   },
   "result": {
     "type": "Collection",
@@ -180,8 +180,8 @@ send and receive plain text via `send_message` and `read_messages`.
 | `send_message`   | `send_message({channel: "task:...", ...})`     | `Offer`              |
 | `send_message`   | `send_message({channel: "log", ...})`          | `Announce`           |
 | `read_messages`  | `read_messages()`                              | (internal drain)     |
-| `memory_write`   | `memory_write({about: "...", finding: "..."})`  | `Remember`           |
-| `memory_query`   | `memory_query({sparql: "..."})`                | `Recall`             |
+| `memory`         | `memory({method: "save", type: "...", text: "..."})` | `Remember`      |
+| `memory`         | `memory({method: "search", text: "..."})`       | `Recall`             |
 
 Agents call individual tools with flat schemas; the system records full AS2
 activities in the message log and knowledge graph.
@@ -280,7 +280,7 @@ activities in the message log and knowledge graph.
   "summary": "Checking API decisions",
   "object": {
     "type": "Note",
-    "content": "SELECT ?about ?finding WHERE { ?obs <https://porter.chapeaux.io/vocab#about> ?about ; <https://porter.chapeaux.io/vocab#finding> ?finding } LIMIT 10"
+    "content": "SELECT ?about ?finding WHERE { GRAPH <https://porter.chapeaux.io/vocab#graph/memory> { ?obs <https://porter.chapeaux.io/vocab#about> ?about ; <https://porter.chapeaux.io/vocab#finding> ?finding } } LIMIT 10"
   }
 }
 ```

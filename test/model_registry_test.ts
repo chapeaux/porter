@@ -149,6 +149,27 @@ Deno.test("ModelRegistry: resolveProvider returns first provider for unknown mod
   assertEquals(result!.base_url, "https://fallback.example.com");
 });
 
+Deno.test("ModelRegistry: resolveProvider passes through tier and models when building fallback config", () => {
+  const registry = ModelRegistry.fromModels([
+    makeModel({
+      id: "claude-sonnet-4-6",
+      provider_type: "vertex_claude",
+      base_url: "https://claude--apicast-production.example.com",
+      tier: "sonnet",
+    }),
+  ]);
+
+  const providers: ProviderConfig[] = [
+    { type: "openai_compat", base_url: "https://other.example.com" },
+  ];
+
+  const result = registry.resolveProvider("claude-sonnet-4-6", providers);
+  assertExists(result);
+  assertEquals(result!.type, "vertex_claude");
+  assertEquals(result!.tier, "sonnet");
+  assertEquals(result!.models, ["claude-sonnet-4-6"]);
+});
+
 Deno.test("ModelRegistry: register replaces existing model", () => {
   const registry = new ModelRegistry();
   registry.register(makeModel({ id: "m1", display_name: "V1" }));

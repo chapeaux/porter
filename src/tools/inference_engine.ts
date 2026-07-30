@@ -93,6 +93,15 @@ const INTENT_SIGNALS: [RegExp, string, number][] = [
   // plan_write / plan_query
   [/\bstep\s+\d+\b/i, "plan_write", 0.7],
   [/\bthe\s+plan\b/i, "plan_query", 0.65],
+
+  // memory (save)
+  [/\bremember\s+that\b/i, "memory", 0.85],
+  [/\brecord\s+(?:an?\s+)?(?:observation|memory|fact|lesson)\b/i, "memory", 0.85],
+  [/\bnote\s+that\b/i, "memory", 0.6],
+  // memory (search)
+  [/\bwhat\s+do\s+(?:we|i)\s+know\s+about\b/i, "memory", 0.8],
+  [/\bcheck\s+(?:the\s+)?memory\b/i, "memory", 0.85],
+  [/\brecall\b/i, "memory", 0.65],
 ];
 
 /** Common follow-up tool sequences. */
@@ -106,6 +115,7 @@ const FOLLOW_UP_MAP: Record<string, string[]> = {
   finding_write: ["finding_write", "send_message"],
   critique_write: ["critique_write", "send_message"],
   findings_query: ["send_message"],
+  memory: ["memory"],
 };
 
 /** Confidence boost when a tool appears in the follow-up chain. */
@@ -267,6 +277,27 @@ export function extractParamsFromText(
       return null;
     }
 
+    case "memory": {
+      // Search: "what do we know about X", "recall X", "check memory for X"
+      const searchMatch = text.match(
+        /(?:what\s+do\s+(?:we|i)\s+know\s+about|recall|check\s+(?:the\s+)?memory\s+for)\s+(.+)/i,
+      );
+      if (searchMatch) {
+        return { method: "search", text: searchMatch[1].trim() };
+      }
+      // Save: "remember that X", "record ...: X", "note that X"
+      const saveMatch = text.match(
+        /(?:remember\s+that|note\s+that|record\s+(?:an?\s+)?(?:observation|memory|fact|lesson)(?:\s+that)?)\s*[:\-]?\s*(.+)/i,
+      );
+      if (saveMatch) {
+        // Type can't be reliably inferred from prose — default to episodic
+        // (the general "something worth noting" bucket); the model can
+        // correct it on retry if the recovery nudge shows otherwise.
+        return { method: "save", type: "episodic", text: saveMatch[1].trim() };
+      }
+      return null;
+    }
+
     default:
       return null;
   }
@@ -284,7 +315,7 @@ const ROLE_TOOL_PRIORITY: Record<string, string[]> = {
   ],
   specialist: [
     "read_file", "grep", "glob", "list_dir", "send_message",
-    "finding_write", "findings_query", "memory_query",
+    "finding_write", "findings_query", "memory",
   ],
   reflector: [
     "read_file", "grep", "glob", "list_dir", "critique_write",
@@ -296,11 +327,11 @@ const ROLE_TOOL_PRIORITY: Record<string, string[]> = {
   ],
   synthesizer: [
     "read_file", "findings_query", "critiques_query", "send_message",
-    "plan_query", "memory_query", "grep", "list_dir",
+    "plan_query", "memory", "grep", "list_dir",
   ],
   admin: [
     "send_message", "read_messages", "plan_write", "plan_query",
-    "bash", "read_file", "memory_write", "memory_query",
+    "bash", "read_file", "memory",
   ],
 };
 

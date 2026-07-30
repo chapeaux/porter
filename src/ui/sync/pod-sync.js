@@ -41,6 +41,8 @@ export class PorterPodSync {
     this._clientId = 'porter-' + Math.random().toString(36).slice(2, 10);
     this._retryDelay = 1000;
     this._connected = false;
+    this._reconnectTimer = null;
+    this._disposed = false;
     this._browserMode = document.querySelector('meta[name="porter-mode"]')?.content === 'browser';
   }
 
@@ -152,9 +154,14 @@ export class PorterPodSync {
   }
 
   disconnect() {
+    this._disposed = true;
     if (this._eventSource) {
       this._eventSource.close();
       this._eventSource = null;
+    }
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
     }
     this._connected = false;
   }
@@ -383,6 +390,7 @@ export class PorterPodSync {
   }
 
   async _subscribeNotifications() {
+    if (this._disposed) return;
     try {
       const headResp = await this._fetch(this._resourceUrl, { method: 'HEAD' });
       const linkHeader = headResp.headers.get('link') || '';
@@ -392,7 +400,11 @@ export class PorterPodSync {
       this._eventSource = new EventSource(match[1]);
       this._eventSource.onmessage = () => this._onNotification();
       this._eventSource.onerror = () => {
-        setTimeout(() => this._subscribeNotifications(), this._retryDelay);
+        if (this._disposed) return;
+        this._reconnectTimer = setTimeout(() => {
+          this._reconnectTimer = null;
+          this._subscribeNotifications();
+        }, this._retryDelay);
       };
     } catch (e) { console.error('[porter-pod] Notifications setup failed:', e); }
   }

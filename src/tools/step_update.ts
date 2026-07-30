@@ -1,5 +1,6 @@
 import type { ToolEntry } from "./mod.ts";
 import { getGraphStore } from "../graph/store.ts";
+import { GRAPHS } from "../graph/vocabulary.ts";
 
 const entry: ToolEntry = {
   definition: {
@@ -50,9 +51,13 @@ const entry: ToolEntry = {
     }
 
     try {
-      // Update the stepState for the matching PlanStep
+      // Update the stepState for the matching PlanStep. WITH scopes the whole
+      // operation to the memory graph — without it, DELETE/INSERT/WHERE only
+      // ever sees the (empty) default graph and silently matches nothing,
+      // since plan_write() writes PlanStep triples into GRAPHS.memory.
       store.update(
-        `DELETE { ?s porter:stepState ?old }
+        `WITH <${GRAPHS.memory}>
+DELETE { ?s porter:stepState ?old }
 INSERT { ?s porter:stepState "${state}" }
 WHERE {
   ?s a porter:PlanStep ;
@@ -64,7 +69,8 @@ WHERE {
       // If notes provided, add them as a finding on the step
       if (notes) {
         store.update(
-          `INSERT {
+          `WITH <${GRAPHS.memory}>
+INSERT {
   ?s porter:addresses "${notes.replace(/"/g, '\\"')}"
 }
 WHERE {

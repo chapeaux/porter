@@ -15,7 +15,9 @@ import type {
 } from "../providers/mod.ts";
 import { ProviderError } from "../providers/mod.ts";
 import { parseToolCalls } from "../providers/tool_shim.ts";
+import { detectSmallModel } from "../core/config.ts";
 import type { AgentConfig } from "../core/config.ts";
+import { simplifySchemas } from "../tools/inference_engine.ts";
 import {
   buildRegistry,
   ToolRegistry,
@@ -35,7 +37,7 @@ export function applyRoleFilter(
   role: string,
 ): ToolRegistry {
   const allowedByRole: Record<string, Set<string>> = {
-    admin: new Set(["send_message", "read_messages", "memory_write", "memory_query"]),
+    admin: new Set(["send_message", "read_messages", "memory"]),
   };
   const allowed = allowedByRole[role];
   if (!allowed || allowed.size === 0) return registry;
@@ -189,6 +191,7 @@ export async function runAgent(
   const registry = applyRoleFilter(innerRegistry, config.role);
 
   const model = config.model ?? "ibm-granite/granite-3.3-8b-instruct";
+  const isSmallModel = config.small_model ?? detectSmallModel(model);
 
   // Derive a clean directory name from the model ID (e.g. "ibm-granite/granite-4.0-h-small" → "granite-4.0-h-small")
   const modelSlug = model.includes("/") ? model.split("/").pop()! : model;
@@ -307,7 +310,10 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
       // Check for tool augmentation control messages before each API call
       await processToolControlMessages(innerRegistry, config.name);
 
-      const currentToolDefs = registry.getDefinitions();
+      const rawToolDefs = registry.getDefinitions();
+      const currentToolDefs = isSmallModel
+        ? simplifySchemas(rawToolDefs, true, config.role)
+        : rawToolDefs;
 
       const compressed = compressOldToolResults(state.history);
       const contextMessages = trimHistory(compressed, config.max_turns, config.max_context_tokens, charsPerToken);
@@ -402,7 +408,7 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
                 onOutput?.(config.name, { type: "tool_call", name: "bash", params: { command } });
                 const result = await executeTool(registry, "bash", {
                   command,
-                }, config.name, config.working_dir, innerRegistry);
+                }, config.name, config.working_dir, innerRegistry, undefined, isSmallModel);
                 onOutput?.(config.name, { type: "tool_result", name: "bash", result });
                 autoExtractedResults.push(`[auto-executed] $ ${command}\n${result.content}`);
                 autoExecCount++;
@@ -424,6 +430,8 @@ Channels: 'log' (status updates), 'task' (broadcast to workers), 'task:<agent-na
             config.name,
             config.working_dir,
             innerRegistry,
+            undefined,
+            isSmallModel,
           );
 
           onOutput?.(config.name, {
@@ -583,6 +591,7 @@ async function executeTool(
   workingDir?: string,
   fullRegistry?: ToolRegistry,
   allAgents?: Array<{ name: string; role: string; tools: string[] }>,
+  isSmallModel?: boolean,
 ): Promise<ToolResult> {
   let tool = registry.get(name);
   if (!tool) {
@@ -612,6 +621,18 @@ async function executeTool(
             is_error: true,
           };
         }
+      }
+      // For small models, a nudge showing the exact call shape recovers far
+      // more reliably than a generic error (proven out on plan_write/step_update
+      // in the distillation pattern) — fuzzy-match the attempted name to the
+      // closest real tool and show its schema.
+      if (isSmallModel) {
+        const { buildRecoveryNudge } = await import("../tools/inference_engine.ts");
+        const closest = registry.findClosest(name);
+        return {
+          content: buildRecoveryNudge(name, closest?.definition.name ?? null, closest?.definition.input_schema ?? null),
+          is_error: true,
+        };
       }
       return {
         content: validation.violations.length > 0
@@ -676,9 +697,14 @@ async function executeTool(
   if (result.is_error && fullRegistry) {
     const content = result.content;
     if (content.includes("not found") || content.includes("No such file or directory")) {
-      const memTool = fullRegistry.get("memory_write");
+      const memTool = fullRegistry.get("memory");
       if (memTool) {
-        await memTool.execute({ about: `error:${name}:${agentName}`, finding: content.slice(0, 200), severity: "info" }).catch(() => {});
+        await memTool.execute({
+          method: "save",
+          type: "episodic",
+          text: `error:${name}:${agentName}: ${content.slice(0, 200)}`,
+          agent_name: agentName,
+        }).catch(() => {});
       }
     }
   }

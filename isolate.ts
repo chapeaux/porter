@@ -8,7 +8,7 @@
  * accessed via postMessage proxies injected before `runAgent()` starts.
  *
  * Wire protocol (Main → Worker):
- *   { type: "start",  agentConfig, initialPrompt, model, providerConfig, resumeFrom? }
+ *   { type: "start",  agentConfig, initialPrompt, model, providerConfig, resumeFrom?, sessionName?, teamName? }
  *   { type: "cancel" }
  *   { type: "bus_drain_response",  id, messages: BusMessage[] }
  *   { type: "rate_limit_acquired", id }
@@ -29,7 +29,7 @@ import type { MessageBus } from "./src/runtime/bus.ts";
 import { setCoordinator } from "./src/runtime/rate_limiter.ts";
 import type { RateLimitCoordinator } from "./src/runtime/rate_limiter.ts";
 import { createProvider } from "./src/providers/mod.ts";
-import type { ProviderConfig } from "./src/providers/mod.ts";
+import type { ModelProvider, ProviderConfig } from "./src/providers/mod.ts";
 import {
   runAgent,
   serializeState,
@@ -55,7 +55,7 @@ function rpc(msg: Record<string, unknown>): Promise<unknown> {
 }
 
 // ---------------------------------------------------------------------------
-// GraphStoreProxy — proxies memory_write / memory_query to the main thread
+// GraphStoreProxy — proxies the memory tool's graph operations to the main thread
 // ---------------------------------------------------------------------------
 
 class GraphStoreProxy {
@@ -213,9 +213,23 @@ self.onmessage = async (evt: MessageEvent) => {
       setBus(busProxy as unknown as MessageBus);
       setCoordinator(coordinatorProxy as unknown as RateLimitCoordinator);
 
-      // Create the ModelProvider from the serialized ProviderConfig
+      // Create the ModelProvider from the serialized ProviderConfig.
+      // Config errors (e.g. missing API key) must be reported in-band, not
+      // thrown — an uncaught exception here happens before the try/catch
+      // around runAgent() below and escapes as an unhandled worker error,
+      // which crashes the whole `porter serve` process, not just this agent.
       const providerConfig = data.providerConfig as ProviderConfig;
-      const provider = createProvider(providerConfig);
+      let provider: ModelProvider;
+      try {
+        provider = createProvider(providerConfig);
+      } catch (err) {
+        self.postMessage({
+          type: "error",
+          agentName: (data.agentConfig as AgentConfig)?.name,
+          message: (err as Error).message,
+        });
+        break;
+      }
 
       // Deserialize resume state if provided
       const resumeState = data.resumeFrom
@@ -234,9 +248,17 @@ self.onmessage = async (evt: MessageEvent) => {
 
       const teamRoster = data.teamRoster as Array<{ name: string; role: string }> | undefined;
 
-      // Install graph store proxy so memory_write/memory_query work in isolates
+      // Install graph store proxy so the memory tool works in isolates
       const { setGraphStore } = await import("./src/graph/store.ts");
       setGraphStore(new GraphStoreProxy() as unknown as import("./src/graph/store.ts").GraphStore);
+
+      // Scope the memory tool's "local" search to this session
+      const { setMemorySessionId } = await import("./src/tools/memory.ts");
+      setMemorySessionId((data.sessionName as string) ?? null);
+
+      // Scope durable (cross-session) memory to the team's stable identity
+      const { setMemoryTeamName } = await import("./src/tools/memory_admin.ts");
+      setMemoryTeamName((data.teamName as string) ?? null);
 
       // Install vector store proxy if main thread has vector store enabled
       if (data.vectorEnabled) {

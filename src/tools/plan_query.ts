@@ -1,5 +1,6 @@
 import type { ToolEntry } from "./mod.ts";
 import { getGraphStore } from "../graph/store.ts";
+import { GRAPHS } from "../graph/vocabulary.ts";
 
 const entry: ToolEntry = {
   definition: {
@@ -25,11 +26,13 @@ const entry: ToolEntry = {
 
     try {
       const sparql = `SELECT ?step ?order ?outcome WHERE {
-  ?s a porter:PlanStep ;
-     porter:finding ?step ;
-     porter:stepOrder ?order ;
-     porter:stepState "pending" .
-  OPTIONAL { ?s porter:about ?outcome }
+  GRAPH <${GRAPHS.memory}> {
+    ?s a porter:PlanStep ;
+       porter:finding ?step ;
+       porter:stepOrder ?order ;
+       porter:stepState "pending" .
+    OPTIONAL { ?s porter:about ?outcome }
+  }
 } ORDER BY ?order`;
 
       const results = await Promise.resolve(store.query(sparql));

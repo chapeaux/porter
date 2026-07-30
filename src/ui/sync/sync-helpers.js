@@ -28,6 +28,22 @@ export function syncToPod(key, value) {
   window._podSync.save(key, value);
 }
 
+/**
+ * Log + surface a Pod sync failure. A 401 means the session is dead —
+ * that's handled by solid-auth.js's authFetch (which already disconnects
+ * window._podSync and triggers the relogin prompt via the porter-auth-expired
+ * listener in app.js), so batch loops just need to stop rather than plow
+ * through every remaining item with a doomed request. Non-401 failures
+ * (a transient network blip, a 5xx from the Pod) are resource-specific, not
+ * session-wide, so those loops keep going — but this still surfaces the
+ * failure as an event instead of only a console line nobody but a developer
+ * would ever see.
+ */
+function reportPodSyncFailure(context, status) {
+  console.error(`[porter-pod] ${context} failed: ${status}`);
+  window.dispatchEvent(new CustomEvent('porter-pod-sync-issue', { detail: { context, status } }));
+}
+
 export async function syncAgentsToPod(agents) {
   if (!window._podSync) {
     // Pod sync not initialized — skip silently
@@ -42,6 +58,7 @@ export async function syncAgentsToPod(agents) {
 
   // Write each agent as a Turtle file
   for (const agent of agents) {
+    if (!window._podSync) break; // session died partway through this batch
     const name = agent.name;
     if (!name) continue;
     const url = `${podRoot}porter/agents/${encodeURIComponent(name)}.ttl`;
@@ -53,11 +70,12 @@ export async function syncAgentsToPod(agents) {
         body: turtle,
       });
       if (!resp.ok) {
+        if (resp.status === 401) { reportPodSyncFailure(`agent "${name}" sync`, 401); break; }
         const body = await resp.text().catch(() => '');
-        console.error(`[porter-pod] PUT failed: ${resp.status} ${body}`);
+        reportPodSyncFailure(`agent "${name}" sync`, `${resp.status} ${body}`);
       }
     } catch (err) {
-      console.error(`[porter-pod] PUT error:`, err);
+      reportPodSyncFailure(`agent "${name}" sync`, err.message || 'network error');
     }
   }
 
@@ -94,14 +112,19 @@ export async function syncTeamsToPod() {
 
     // Write each team as a Turtle file
     for (const team of teams) {
+      if (!window._podSync) break; // session died partway through this batch
       if (!team.name) continue;
       const url = `${podRoot}porter/teams/${encodeURIComponent(team.name)}.ttl`;
       const turtle = teamToTurtle(team, url);
-      await authFetch(url, {
+      const resp = await authFetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'text/turtle' },
         body: turtle,
       });
+      if (!resp.ok) {
+        if (resp.status === 401) { reportPodSyncFailure(`team "${team.name}" sync`, 401); break; }
+        reportPodSyncFailure(`team "${team.name}" sync`, resp.status);
+      }
     }
 
     // Don't delete orphans — same reason as agents
@@ -117,6 +140,7 @@ export async function syncModelsToPod(models) {
   await ensureContainer(authFetch, containerUrl);
 
   for (const model of (models || [])) {
+    if (!window._podSync) break; // session died partway through this batch
     const id = model.id || model.model_id;
     if (!id) continue;
     // Replace / with -- for safe filenames (ibm-granite/granite-3b → ibm-granite--granite-3b)
@@ -130,11 +154,12 @@ export async function syncModelsToPod(models) {
         body: turtle,
       });
       if (!resp.ok) {
+        if (resp.status === 401) { reportPodSyncFailure(`model "${id}" sync`, 401); break; }
         const body = await resp.text().catch(() => '');
-        console.error(`[porter-pod] PUT model failed: ${resp.status} ${body}`);
+        reportPodSyncFailure(`model "${id}" sync`, `${resp.status} ${body}`);
       }
     } catch (err) {
-      console.error(`[porter-pod] PUT model error:`, err);
+      reportPodSyncFailure(`model "${id}" sync`, err.message || 'network error');
     }
   }
 }
@@ -163,6 +188,7 @@ export async function syncMcpToPod() {
   await ensureContainer(authFetch, containerUrl);
 
   for (const [name, cfg] of Object.entries(servers)) {
+    if (!window._podSync) break; // session died partway through this batch
     if (!name) continue;
     const url = `${containerUrl}${encodeURIComponent(name)}.ttl`;
     const turtle = mcpToTurtle({ name, ...cfg }, url);
@@ -173,11 +199,12 @@ export async function syncMcpToPod() {
         body: turtle,
       });
       if (!resp.ok) {
+        if (resp.status === 401) { reportPodSyncFailure(`MCP "${name}" sync`, 401); break; }
         const body = await resp.text().catch(() => '');
-        console.error(`[porter-pod] PUT mcp failed: ${resp.status} ${body}`);
+        reportPodSyncFailure(`MCP "${name}" sync`, `${resp.status} ${body}`);
       }
     } catch (err) {
-      console.error(`[porter-pod] PUT mcp error:`, err);
+      reportPodSyncFailure(`MCP "${name}" sync`, err.message || 'network error');
     }
   }
 }

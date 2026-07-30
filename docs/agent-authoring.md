@@ -233,8 +233,7 @@ by the collaboration pattern and do not need to be listed.
 
 | Tool | Description | When to Use |
 |------|-------------|-------------|
-| `memory_write` | Write a fact or observation to the session's shared memory (RDF graph). | Agents that discover reusable knowledge during their work -- naming conventions, architectural decisions, environment details. |
-| `memory_query` | Query the session's shared memory via SPARQL. | Agents that should check shared knowledge before starting work to avoid redundant discovery. |
+| `memory` | Save (`method: "save"`) or semantically search (`method: "search"`) the session's shared memory (RDF graph + vector index), typed as `semantic`/`episodic`/`procedural`. | Agents that discover reusable knowledge during their work, or that should check shared knowledge before starting to avoid redundant discovery. |
 
 ### Pattern-Specific Tools
 
@@ -252,6 +251,7 @@ on the agent's role.
 | `plan_write` | Distillation | Expert | Write ordered plan steps with expected outcomes. |
 | `plan_query` | Distillation | Learner | Query the next pending plan step. |
 | `step_update` | Distillation | Learner | Mark a plan step as completed or failed. |
+| `memory_admin` | Any (optional) | Librarian | Promote local memories to durable cross-session memory, adjudicate conflicts, edit/delete durable entries. |
 
 ### ActivityPub Tools
 
@@ -274,7 +274,7 @@ reviewers): `read_file`, `glob`, `grep`, `list_dir`. No write tools, no
 modify.
 
 **Knowledge workers** (researchers, analysts): `read_file`, `glob`, `grep`,
-`list_dir`, `memory_write`, `memory_query`.
+`list_dir`, `memory`.
 
 Grant the minimum set of tools needed for the agent's job. An agent with
 `bash` can do almost anything, which means it can also do almost anything
@@ -301,6 +301,7 @@ different roles in different teams.
 | `reflector` | Critiques and iterates in a Deliberation team. Reviews worker output and requests revisions. |
 | `expert` | Plans and reasons in a Distillation team. Creates step-by-step plans for the learner. |
 | `learner` | Executes plans in a Distillation team. Follows expert guidance step by step. |
+| `librarian` | Optional, addable to any pattern. Curates which session-local memories are promoted to durable cross-session memory and resolves conflicts there. See [Knowledge Tools](#knowledge-tools) above. |
 
 ### How Patterns Use Roles
 

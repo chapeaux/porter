@@ -1,5 +1,6 @@
 import type { ToolEntry } from "./mod.ts";
 import { getGraphStore } from "../graph/store.ts";
+import { GRAPHS } from "../graph/vocabulary.ts";
 
 const entry: ToolEntry = {
   definition: {
@@ -37,8 +38,10 @@ const entry: ToolEntry = {
       if (round === undefined) {
         const maxRoundResult = store.query(
           `SELECT (MAX(?r) AS ?maxRound) WHERE {
-  ?c a porter:Critique ;
-     porter:round ?r .
+  GRAPH <${GRAPHS.memory}> {
+    ?c a porter:Critique ;
+       porter:round ?r .
+  }
 }`,
         );
         if (maxRoundResult.length > 0 && maxRoundResult[0].maxRound) {
@@ -49,15 +52,17 @@ const entry: ToolEntry = {
       }
 
       const sparql = `SELECT ?issue ?suggestion ?discoveredBy ?time WHERE {
-  ?c a porter:Critique ;
-     porter:finding ?issue ;
-     porter:about ?suggestion ;
-     porter:round ?round ;
-     porter:discoveredBy ?discoveredBy ;
-     porter:approved ?approved ;
-     prov:generatedAtTime ?time .
-  FILTER(?round = ${round})
-  FILTER(?approved = false)
+  GRAPH <${GRAPHS.memory}> {
+    ?c a porter:Critique ;
+       porter:finding ?issue ;
+       porter:about ?suggestion ;
+       porter:round ?round ;
+       porter:discoveredBy ?discoveredBy ;
+       porter:approved ?approved ;
+       prov:generatedAtTime ?time .
+    FILTER(?round = ${round})
+    FILTER(?approved = false)
+  }
 } ORDER BY ?time`;
 
       const results = await Promise.resolve(store.query(sparql));

@@ -17,8 +17,8 @@ export type ToolName =
   | "send_message"
   | "read_messages"
   | "git"
-  | "memory_write"
-  | "memory_query"
+  | "memory"
+  | "memory_admin"
   | "ap_post"
   | "ap_reply"
   | "finding_write"
@@ -28,8 +28,7 @@ export type ToolName =
   | "approve"
   | "plan_write"
   | "plan_query"
-  | "step_update"
-  | "semantic_search";
+  | "step_update";
 
 /** Agent role for organizational purposes. */
 export type AgentRole =
@@ -40,7 +39,8 @@ export type AgentRole =
   | "synthesizer"
   | "reflector"
   | "expert"
-  | "learner";
+  | "learner"
+  | "librarian";
 
 /** Collaboration pattern for the team. */
 export type CollaborationPattern = "sequential" | "mixture" | "deliberation" | "distillation";
@@ -205,6 +205,24 @@ const DEFAULTS = {
   max_turns: 30,
   max_context_tokens: 32_000,
 } as const;
+
+/**
+ * Heuristic detection of "small" models (roughly <=8B parameters, or known
+ * small-model families) that benefit from simplified tool schemas and the
+ * tool inference engine (see src/tools/inference_engine.ts). Not exhaustive —
+ * agents can always set `small_model` explicitly to override this.
+ */
+export function detectSmallModel(modelId: string | undefined): boolean {
+  if (!modelId) return false;
+  const id = modelId.toLowerCase();
+  if (/granite|phi-?\d|gemma/.test(id)) return true;
+  const paramMatch = id.match(/(\d+(?:\.\d+)?)\s*b\b/);
+  if (paramMatch) {
+    const params = parseFloat(paramMatch[1]);
+    if (params > 0 && params <= 8) return true;
+  }
+  return false;
+}
 
 /** Replace ${VAR_NAME} patterns with environment variable values. */
 function interpolateEnv(text: string): string {

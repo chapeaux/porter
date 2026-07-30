@@ -50,10 +50,10 @@ async function loadTool(name: ToolName): Promise<ToolEntry> {
       return (await import("./read_messages.ts")).default;
     case "git":
       return (await import("./git.ts")).default;
-    case "memory_write":
-      return (await import("./memory_write.ts")).default;
-    case "memory_query":
-      return (await import("./memory_query.ts")).default;
+    case "memory":
+      return (await import("./memory.ts")).default;
+    case "memory_admin":
+      return (await import("./memory_admin.ts")).default;
     case "ap_post":
       return (await import("./ap_post.ts")).default;
     case "ap_reply":
@@ -74,8 +74,6 @@ async function loadTool(name: ToolName): Promise<ToolEntry> {
       return (await import("./plan_query.ts")).default;
     case "step_update":
       return (await import("./step_update.ts")).default;
-    case "semantic_search":
-      return (await import("./semantic_search.ts")).default;
   }
 }
 

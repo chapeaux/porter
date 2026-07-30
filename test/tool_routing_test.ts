@@ -52,8 +52,7 @@ function buildMockRegistry(calls: CallRecord[]): ToolRegistry {
     "git",
     "send_message",
     "read_messages",
-    "memory_write",
-    "memory_query",
+    "memory",
   ]) {
     reg.addTool(name, mockToolEntry(name, calls));
   }
@@ -65,14 +64,14 @@ function buildMockRegistry(calls: CallRecord[]): ToolRegistry {
 // ---------------------------------------------------------------------------
 
 describe("applyRoleFilter", () => {
-  it("admin gets only send_message, read_messages, memory_write, memory_query", () => {
+  it("admin gets only send_message, read_messages, memory", () => {
     const calls: CallRecord[] = [];
     const full = buildMockRegistry(calls);
     const filtered = applyRoleFilter(full, "admin");
 
     const names = filtered.names().sort();
-    assertEquals(names, ["memory_query", "memory_write", "read_messages", "send_message"]);
-    assertEquals(filtered.size, 4);
+    assertEquals(names, ["memory", "read_messages", "send_message"]);
+    assertEquals(filtered.size, 3);
   });
 
   it("worker gets all tools (no filtering)", () => {
@@ -292,7 +291,7 @@ describe("delegation hints for role-filtered tools", () => {
     const name = "bash";
     const agentName = "admin-1";
     const allAgents = [
-      { name: "admin-1", role: "admin", tools: ["send_message", "read_messages", "memory_write", "memory_query"] },
+      { name: "admin-1", role: "admin", tools: ["send_message", "read_messages", "memory"] },
       { name: "worker-1", role: "worker", tools: ["bash", "read_file", "write_file", "send_message", "read_messages"] },
       { name: "worker-2", role: "worker", tools: ["bash", "read_file", "write_file", "send_message", "read_messages"] },
     ];
@@ -350,7 +349,7 @@ describe("delegation hints for role-filtered tools", () => {
 // ---------------------------------------------------------------------------
 
 describe("error enhancement for 'not found' errors", () => {
-  it("logs 'not found' errors to memory_write via fullRegistry", async () => {
+  it("logs 'not found' errors to memory via fullRegistry", async () => {
     const calls: CallRecord[] = [];
     const full = buildMockRegistry(calls);
 
@@ -365,18 +364,23 @@ describe("error enhancement for 'not found' errors", () => {
     if (result.is_error) {
       const content = result.content;
       if (content.includes("not found") || content.includes("No such file or directory")) {
-        const memTool = full.get("memory_write");
+        const memTool = full.get("memory");
         if (memTool) {
-          await memTool.execute({ about: `error:${name}:${agentName}`, finding: content.slice(0, 200), severity: "info" }).catch(() => {});
+          await memTool.execute({
+            method: "save",
+            type: "episodic",
+            text: `error:${name}:${agentName}: ${content.slice(0, 200)}`,
+            agent_name: agentName,
+          }).catch(() => {});
         }
       }
     }
 
-    // memory_write should have been called
-    const memCalls = calls.filter(c => c.tool === "memory_write");
+    // memory should have been called
+    const memCalls = calls.filter(c => c.tool === "memory");
     assertEquals(memCalls.length, 1);
-    assertEquals(memCalls[0].params.about, "error:read_file:worker-1");
-    assertStringIncludes(memCalls[0].params.finding as string, "file not found");
+    assertStringIncludes(memCalls[0].params.text as string, "error:read_file:worker-1");
+    assertStringIncludes(memCalls[0].params.text as string, "file not found");
   });
 
   it("does not log non-'not found' errors to memory", async () => {
@@ -391,14 +395,19 @@ describe("error enhancement for 'not found' errors", () => {
     if (result.is_error) {
       const content = result.content;
       if (content.includes("not found") || content.includes("No such file or directory")) {
-        const memTool = full.get("memory_write");
+        const memTool = full.get("memory");
         if (memTool) {
-          await memTool.execute({ about: `error:bash:worker-1`, finding: content.slice(0, 200), severity: "info" }).catch(() => {});
+          await memTool.execute({
+            method: "save",
+            type: "episodic",
+            text: `error:bash:worker-1: ${content.slice(0, 200)}`,
+            agent_name: "worker-1",
+          }).catch(() => {});
         }
       }
     }
 
-    const memCalls = calls.filter(c => c.tool === "memory_write");
+    const memCalls = calls.filter(c => c.tool === "memory");
     assertEquals(memCalls.length, 0);
   });
 });

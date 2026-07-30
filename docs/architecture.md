@@ -32,7 +32,7 @@ orchestrator (main thread)
   |     +-- WebSocket proxy   routes /ws?session=X to session bus
   |     +-- Static assets     HTML, JS, CSS, SVG
   |
-  +-- GraphStore              Oxigraph WASM, SPARQL, SHACL
+  +-- GraphStore              Sparq WASM, SPARQL, SHACL
 ```
 
 ### Benefits of Isolation
@@ -214,8 +214,9 @@ Teams and sessions are decoupled:
 
 ## Graph Store
 
-Porter includes an in-memory RDF graph store powered by Oxigraph (WASM). It
-serves three purposes:
+Porter includes an in-memory RDF graph store powered by Sparq (WASM),
+partitioned into named graphs (`src/graph/vocabulary.ts`'s `GRAPHS`
+constants). It serves three purposes:
 
 ### SPARQL Query Access
 
@@ -241,9 +242,20 @@ Content-Type: application/json
 
 ### Agent Memory
 
-The `memory` gateway tool writes to and queries from the graph store. This
-gives agents persistent, shared knowledge within a session. A planner can
-record architectural decisions; workers can query them later.
+The `memory` gateway tool saves to and semantically searches the graph
+store, typed as `semantic` (stable facts), `episodic` (things that
+happened), or `procedural` (reusable lessons). This gives agents persistent,
+shared knowledge within a session — a planner can record architectural
+decisions; workers can recall them later.
+
+Memory has two layers: session-local (the default, discarded when the
+session ends) and durable/cross-session (`GRAPHS.durable`, persisted to
+`~/.porter/durable-memory/{team}.ttl`). An optional `librarian` role,
+addable to any collaboration pattern, curates the promotion from local to
+durable memory and adjudicates conflicts via the librarian-exclusive
+`memory_admin` tool. See `docs/tool-gateway.md` for the full tool interface
+and `docs/ontology.md` for the `porter:Observation` memory-taxonomy
+predicates.
 
 ## UI Server
 

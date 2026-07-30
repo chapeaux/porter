@@ -17,7 +17,7 @@ continue to coordinate through the SPARQL knowledge graph alone.
                 | Pattern tools   |
                 | finding_write   |
                 | critique_write  |
-                | memory_write    |
+                | memory (save)   |
                 +--------+--------+
                          |
               embedAndUpsert(collection, id, text, payload)
@@ -45,7 +45,7 @@ Source files:
 | `src/vector/mod.ts` | `VectorStore` and `EmbeddingProvider` interfaces, collection names, singleton management, `embedAndUpsert` / `embedAndSearch` helpers |
 | `src/vector/qdrant.ts` | `QdrantVectorStore` REST client implementing `VectorStore` |
 | `src/vector/embeddings.ts` | Auto-detection of embedding providers (Ollama, OpenAI, custom) |
-| `src/tools/semantic_search.ts` | `semantic_search` MCP tool exposed to agents |
+| `src/tools/memory.ts` | `memory` tool exposed to agents (`method: "search"` uses `embedAndSearch` across all collections) |
 
 ## Setup
 
@@ -106,7 +106,7 @@ Porter maintains three Qdrant collections, one per pattern-tool output type:
 |-----------------|-------------|----------------|
 | `porter-findings` | `finding_write` | `about`, `finding`, `domain`, `confidence`, `discoveredBy` |
 | `porter-critiques` | `critique_write` | `issue`, `suggestion`, `round`, `discoveredBy` |
-| `porter-observations` | `memory_write` | `about`, `finding`, `severity`, `discoveredBy` |
+| `porter-observations` | `memory` (`method: "save"`) | `about`, `finding`, `discoveredBy`, `memoryType`, `sessionId` |
 
 Collections are created automatically on startup via `ensureCollection()` with
 the vector size matching the detected embedding provider (768 for Ollama
@@ -115,8 +115,8 @@ the vector size matching the detected embedding provider (768 for Ollama
 
 ## How Pattern Tools Embed Automatically
 
-Each write tool (`finding_write`, `critique_write`, `memory_write`) follows
-the same pattern:
+Each write tool (`finding_write`, `critique_write`, `memory` on `method:
+"save"`) follows the same pattern:
 
 1. Write the structured data to the SPARQL knowledge graph (triples).
 2. Call `embedAndUpsert(collection, id, text, payload)` with a concatenated
@@ -136,27 +136,32 @@ fields:
 
 - **finding_write**: `"{about}: {finding}"`
 - **critique_write**: `"{issue}: {suggestion}"`
-- **memory_write**: `"{about}: {finding}"`
+- **memory**: `"{about}: {text}"` (`about` derived server-side from `text`)
 
-## semantic_search Tool
+## memory Tool (search)
 
-The `semantic_search` tool is exposed to agents as an MCP tool. It lets any
-agent in the mixture search past findings, critiques, and observations by
-natural-language similarity.
+The `memory` tool's `method: "search"` is exposed to agents as a single,
+minimal semantic-recall interface — it replaces the older, separate
+`semantic_search` tool. It lets any agent search past findings, critiques,
+and observations by natural-language similarity, deliberately without a
+raw-query mode, so weaker models don't have to write SPARQL to recall
+anything.
 
 ### Parameters
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | string | Yes | -- | Natural language search query |
-| `collection` | string | No | `"all"` | One of `findings`, `critiques`, `observations`, or `all` |
+| `method` | string | Yes | -- | `"search"` |
+| `text` | string | Yes | -- | Natural language search query |
+| `type` | string | No | -- | Optional filter: `semantic`, `episodic`, or `procedural` |
+| `scope` | string | No | `"both"` | `"local"` (this session), `"durable"` (cross-session), or `"both"` |
 | `limit` | number | No | `5` | Maximum results to return |
 
 ### Behavior
 
-- When `collection` is `"all"`, the tool searches all three collections in
-  parallel, merges results, sorts by score descending, and returns the top
-  `limit` results.
+- Always searches all three collections (findings, critiques, observations)
+  in parallel, merges results, sorts by score descending, and returns the
+  top `limit` results.
 - Each result is formatted as a single line:
   `- [{source}] (score: {score}, by: {agent}) {text}`
 - Returns an error message if the vector store is not available, prompting the
@@ -165,7 +170,7 @@ natural-language similarity.
 ### Example
 
 ```
-semantic_search({ query: "authentication bypass", collection: "findings", limit: 3 })
+memory({ method: "search", text: "authentication bypass", limit: 3 })
 
 3 result(s) for "authentication bypass":
 
@@ -261,5 +266,5 @@ Subsequent calls to `initVectorStore()` are no-ops (idempotent).
 | `QDRANT_URL set but no embedding provider found` | No Ollama/OpenAI/custom endpoint available | Pull `nomic-embed-text` in Ollama, or set `OPENAI_API_KEY`, or configure `EMBEDDING_API` + `EMBEDDING_MODEL` |
 | `Qdrant at ... not reachable` | Qdrant not running or wrong URL | Verify the Qdrant container is up and the URL is correct |
 | `failed to create collection` | Qdrant permissions or version mismatch | Check Qdrant logs; verify API key if authentication is enabled |
-| `Vector store not available` (from `semantic_search`) | Vector store did not initialize | Check startup logs for the reason; ensure `QDRANT_URL` and an embedding provider are configured |
+| `Vector store not available` (from `memory` search) | Vector store did not initialize | Check startup logs for the reason; ensure `QDRANT_URL` and an embedding provider are configured |
 | `embed+upsert failed` / `embed+search failed` | Embedding provider error | Check Ollama/OpenAI connectivity and model availability |

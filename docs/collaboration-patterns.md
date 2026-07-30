@@ -200,9 +200,10 @@ Traditional admin/worker/reviewer pipeline. An admin plans and coordinates, work
 
 | Role | Min | Max | Auto Tools | Default Tools | Subscribe |
 |------|-----|-----|------------|---------------|-----------|
-| Admin | 0 | 1 | `send_message`, `read_messages` | `read_file`, `glob`, `grep`, `list_dir`, `memory_write`, `memory_query` | `log` |
+| Admin | 0 | 1 | `send_message`, `read_messages` | `read_file`, `glob`, `grep`, `list_dir`, `memory` | `log` |
 | Worker | 1 | 8 | `send_message`, `read_messages` | `read_file`, `write_file`, `edit_file`, `bash`, `glob`, `grep`, `list_dir`, `git` | `task`, `control` |
 | Reviewer | 0 | 2 | `send_message`, `read_messages` | `read_file`, `bash`, `glob`, `grep`, `list_dir` | `review` |
+| Librarian | 0 | 1 | `memory`, `memory_admin`, `send_message` | (none) | `memory`, `control` |
 
 **Bus flow:** `task -> role:admin -> task -> role:worker* -> log -> role:reviewer -> response`
 
@@ -220,6 +221,7 @@ Parallel domain specialists analyze a problem independently, then a synthesizer 
 |------|-----|-----|------------|---------------|-----------|
 | Specialist | 2 | 8 | `finding_write`, `send_message` | `read_file`, `glob`, `grep`, `list_dir` | `task`, `control` |
 | Synthesizer | 1 | 1 | `findings_query`, `send_message` | (none) | (dynamic: `specialist:{name}`) |
+| Librarian | 0 | 1 | `memory`, `memory_admin`, `send_message` | (none) | `memory`, `control` |
 
 **Bus flow:** `task -> [role:specialist*] -> graph -> role:synthesizer -> response`
 
@@ -237,6 +239,7 @@ A reflector iteratively critiques a worker's output, triggering corrections unti
 |------|-----|-----|------------|---------------|-----------|
 | Worker | 1 | 1 | `critiques_query`, `send_message` | `read_file`, `write_file`, `edit_file`, `bash`, `glob`, `grep`, `list_dir`, `git` | `task`, `revision`, `control` |
 | Reflector | 1 | 1 | `critique_write`, `approve`, `send_message` | `read_file`, `glob`, `grep`, `list_dir` | `deliberation`, `control` |
+| Librarian | 0 | 1 | `memory`, `memory_admin`, `send_message` | (none) | `memory`, `control` |
 
 **Bus flow:** `task -> role:worker -> deliberation -> role:reflector -> (approve -> response | revision -> role:worker)`
 
@@ -258,6 +261,7 @@ A larger/stronger expert model reasons and creates a step-by-step plan, which a 
 |------|-----|-----|------------|---------------|-----------|
 | Expert | 1 | 1 | `plan_write`, `send_message` | `read_file`, `glob`, `grep`, `list_dir` | `task`, `clarify`, `control` |
 | Learner | 1 | 1 | `plan_query`, `step_update`, `send_message` | `read_file`, `write_file`, `edit_file`, `bash`, `git` | `guidance`, `control` |
+| Librarian | 0 | 1 | `memory`, `memory_admin`, `send_message` | (none) | `memory`, `control` |
 
 **Bus flow:** `task -> role:expert -> graph -> role:learner -> response ; role:learner -> clarify -> role:expert`
 
@@ -266,6 +270,12 @@ A larger/stronger expert model reasons and creates a step-by-step plan, which a 
 **Definition:** `src/orchestration/patterns/distillation.jsonld`
 
 ---
+
+### Librarian (optional, addable to any pattern)
+
+Unlike the other roles above, `librarian` is not pattern-specific — the same role definition is repeated identically in all four built-in pattern files, since roles are resolved strictly per-pattern (there's no cross-pattern role mechanism). Add `{"role": "librarian", "name": "..."}` to any team's agent list, in any pattern, to get one.
+
+The librarian periodically reviews session-local memory (written by other agents via the `memory` tool) and promotes genuinely reusable facts/lessons into durable, cross-session memory via `memory_admin`, adjudicating conflicts when a promotion contradicts an existing durable fact. It's the only role with access to `memory_admin` — see `docs/tool-gateway.md` for the tool's full interface and `docs/ontology.md` for the underlying `porter:Observation` memory-taxonomy predicates (`memoryType`, `supersedes`, `lessonTrigger`, `lessonAction`).
 
 ## bus_flow Formal Syntax
 
@@ -397,7 +407,7 @@ Reorders the tool list based on recent usage. If the model last used `grep`, `re
 
 ### Configuration
 
-The inference engine activates automatically for models classified as `small` by the model registry. The `small_model` flag on a model's configuration determines whether simplification and intent classification apply. Set `small_model: true` on an agent to enable it explicitly, or let Porter auto-detect from the model name (names containing "1b", "3b", "7b" are treated as small).
+The inference engine activates automatically for models classified as `small` by the model registry. The `small_model` flag on a model's configuration determines whether simplification and intent classification apply. Set `small_model: true` on an agent to enable it explicitly, or let Porter auto-detect (`detectSmallModel()` in `src/core/config.ts`): known small-model families (Granite, Phi, Gemma) are always treated as small regardless of size; otherwise the model id's parameter count (e.g. `...-7b-...`) is extracted and anything &le;8B is treated as small.
 
 ```json
 {

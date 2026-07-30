@@ -66,7 +66,11 @@ export function createProvider(config: ProviderConfig): ModelProvider {
     case "groq":
     case "ollama":
     case "azure_openai": {
-      const apiKey = config.type === "ollama" ? (tryResolveApiKey(config) ?? "ollama") : resolveApiKey(config);
+      // Local/self-hosted servers (Ollama, vLLM, llama.cpp, LM Studio, ...) typically
+      // don't enforce auth at all, so a missing key shouldn't be fatal for them —
+      // only real hosted APIs (OpenAI, Groq, Azure) require a genuine key.
+      const isLocalStyle = config.type === "ollama" || config.type === "openai_compat";
+      const apiKey = isLocalStyle ? (tryResolveApiKey(config) ?? "not-needed") : resolveApiKey(config);
       return new OpenAICompatProvider(config.base_url, apiKey, config.chat_endpoint);
     }
 
@@ -86,9 +90,14 @@ export function createProvider(config: ProviderConfig): ModelProvider {
     }
 
     case "vertex_ai": {
+      // "vertex_ai" is a legacy/best-effort auto-detect type that guesses
+      // Claude vs. Gemini from the model id / hostname — prefer the explicit
+      // "vertex_claude"/"vertex_gemini" types below when configuring a model
+      // directly, since they don't depend on this heuristic matching.
       const models = config.models ?? [];
       const isClaude = models.some(m => m.startsWith("claude")) ||
-        config.base_url?.includes("anthropic");
+        config.base_url?.includes("anthropic") ||
+        config.base_url?.includes("claude");
       if (isClaude) {
         const baseUrl = resolveVertexClaudeUrl(config.base_url);
         const tier = config.tier ?? "";

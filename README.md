@@ -119,12 +119,11 @@ Agents get individual, purpose-specific tools based on their role. Pattern-speci
 | `git` | Run git commands |
 | `send_message` | Send a message to a channel or agent |
 | `read_messages` | Read pending messages from the bus |
-| `memory_write` | Store a finding in the knowledge graph |
-| `memory_query` | Query the knowledge graph with SPARQL |
+| `memory` | Save or semantically search team memory (`method: "save"\|"search"`) |
 
 ### Model Configuration
 
-Models support Anthropic, Vertex AI, and OpenAI-compatible providers (vLLM, Ollama). Porter auto-detects small models (1B-7B) and enables simplified tool schemas with a tool inference engine. Credentials are stored per-user with AES-256-GCM encryption and managed via the dashboard.
+Models support Anthropic, Vertex AI (native or Claude/Gemini via a proxy gateway), and OpenAI-compatible providers (vLLM, Ollama). Porter auto-detects small models (known small-model families, or roughly &le;8B parameters) and enables simplified tool schemas with a tool inference engine. Credentials are stored per-user with AES-256-GCM encryption and managed via the dashboard. See [Providers](docs/providers.md) for provider-type selection guidance, especially when a model sits behind a proxy gateway.
 
 ### MCP Integration
 
@@ -160,6 +159,7 @@ Agents, teams, and patterns are modeled as linked data resources with stable URI
 | [Agent Authoring](docs/agent-authoring.md) | Guide to creating, configuring, and sharing agents |
 | [Collaboration Patterns](docs/collaboration-patterns.md) | Pattern design, schema reference, and the visual pattern editor |
 | [Tool Gateway](docs/tool-gateway.md) | Tool system specification and MCP integration |
+| [Providers](docs/providers.md) | Model provider types, proxy-gateway configuration, and reasoning/thinking opt-in |
 | [Tools](docs/tools.md) | Runtime tool injection (Python, Node.js, curl) for pods |
 | [AS2 Agent Protocol](docs/as2-agent-protocol.md) | ActivityStreams 2.0 wire format for inter-agent messages |
 | [Federation](docs/federation.md) | ActivityPub federation setup, DM interface, and approval modes |
@@ -238,7 +238,7 @@ Agents, teams, and patterns are modeled as linked data resources with stable URI
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `name` | yes | | Agent name (unique within session) |
-| `role` | yes | | `"admin"`, `"worker"`, `"reviewer"`, `"specialist"`, `"synthesizer"`, `"reflector"`, `"expert"`, or `"learner"` |
+| `role` | yes | | `"admin"`, `"worker"`, `"reviewer"`, `"specialist"`, `"synthesizer"`, `"reflector"`, `"expert"`, `"learner"`, or `"librarian"` |
 | `system_prompt` | yes | | System prompt for the agent |
 | `tools` | yes | | Tools this agent can use |
 | `model` | no | session default | Override model for this agent |

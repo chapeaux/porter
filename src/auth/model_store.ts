@@ -23,6 +23,8 @@ export interface ModelConfig {
 
   auth: "bearer" | "adc" | "aws_iam";
   chat_endpoint?: string;
+  /** Claude only (vertex_claude): tier name mapping to URL path segment ("sonnet", "haiku", "opus"). */
+  tier?: string;
 
   default_params?: {
     temperature?: number;
@@ -55,6 +57,8 @@ export type ProviderType =
   | "anthropic"
   | "aws_bedrock"
   | "vertex_ai"
+  | "vertex_claude"
+  | "vertex_gemini"
   | "groq"
   | "ollama";
 

@@ -5,6 +5,16 @@
  *
  * Endpoint: ${base_url}/v1/models/${MODEL_ID}:generateContent
  * Auth:     Authorization: Bearer ${api_key}
+ *
+ * This is the *native* Vertex AI request/response shape and only works
+ * against real GCP Vertex AI endpoints. Some internal gateways (e.g. Red
+ * Hat's models-corp) proxy Gemini through Google's own OpenAI-compatibility
+ * shim instead (`POST {base}/v1beta/openai/chat/completions`, standard
+ * OpenAI request/response bodies) — pointing this provider at one of those
+ * will hard-fail with a shape mismatch. For that case, use
+ * `provider_type: "openai_compat"` with
+ * `chat_endpoint: "/v1beta/openai/chat/completions"` instead; see
+ * `OpenAICompatProvider`'s `chatEndpoint` override in openai_compat.ts.
  */
 
 import type {

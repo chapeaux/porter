@@ -39,6 +39,12 @@ export class ModelRegistry {
   }
 
   resolveProvider(modelId: string, providers: ProviderConfig[]): ProviderConfig | null {
+    // A provider explicitly configured for this model wins outright, regardless
+    // of what other models/providers are also configured.
+    for (const p of providers) {
+      if (p.models?.includes(modelId)) return p;
+    }
+
     const model = this.lookup(modelId);
     if (!model) return providers[0] ?? null;
 
@@ -52,6 +58,8 @@ export class ModelRegistry {
       api_key_env: model.api_key_env,
       auth: model.auth === "adc" ? "adc" : "bearer",
       chat_endpoint: model.chat_endpoint,
+      tier: model.tier,
+      models: [model.id],
     };
   }
 

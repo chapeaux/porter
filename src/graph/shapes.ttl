@@ -61,8 +61,8 @@ porter:AgentSlotShape a sh:NodeShape ;
     sh:minCount 1 ;
     sh:maxCount 1 ;
     sh:in ( "admin" "worker" "reviewer" "specialist" "synthesizer"
-            "reflector" "expert" "learner" ) ;
-    sh:message "role must be one of: admin, worker, reviewer, specialist, synthesizer, reflector, expert, learner"
+            "reflector" "expert" "learner" "librarian" ) ;
+    sh:message "role must be one of: admin, worker, reviewer, specialist, synthesizer, reflector, expert, learner, librarian"
   ] ;
   sh:property [
     sh:path porter:maxTokens ;
@@ -91,8 +91,8 @@ porter:AgentShape a sh:NodeShape ;
     sh:minCount 1 ;
     sh:maxCount 1 ;
     sh:in ( "admin" "worker" "reviewer" "specialist" "synthesizer"
-            "reflector" "expert" "learner" ) ;
-    sh:message "role must be one of: admin, worker, reviewer, specialist, synthesizer, reflector, expert, learner"
+            "reflector" "expert" "learner" "librarian" ) ;
+    sh:message "role must be one of: admin, worker, reviewer, specialist, synthesizer, reflector, expert, learner, librarian"
   ] ;
   sh:property [
     sh:path porter:agentExpertise ;
@@ -103,10 +103,10 @@ porter:AgentShape a sh:NodeShape ;
     sh:path porter:hasTool ;
     sh:in ( "read_file" "write_file" "edit_file" "bash" "glob"
             "grep" "list_dir" "send_message" "read_messages" "git"
-            "memory_write" "memory_query" "finding_write" "findings_query"
+            "memory" "memory_admin" "finding_write" "findings_query"
             "critique_write" "critiques_query" "approve"
             "plan_write" "plan_query" "step_update"
-            "ap_post" "ap_reply" "semantic_search" ) ;
+            "ap_post" "ap_reply" ) ;
     sh:message "Unknown tool name"
   ] ;
   sh:property [
@@ -277,6 +277,42 @@ porter:ObservationShape a sh:NodeShape ;
     sh:maxCount 1 ;
     sh:in ( "info" "low" "medium" "high" "critical" ) ;
     sh:message "severity must be one of: info, low, medium, high, critical"
+  ] ;
+  sh:property [
+    sh:path porter:memoryType ;
+    sh:maxCount 1 ;
+    sh:in ( "semantic" "episodic" "procedural" ) ;
+    sh:message "memoryType must be one of: semantic, episodic, procedural"
+  ] ;
+  sh:property [
+    sh:path porter:supersedes ;
+    sh:maxCount 1 ;
+    sh:message "supersedes must reference at most one prior observation"
+  ] ;
+  sh:property [
+    sh:path porter:validFrom ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:dateTime ;
+  ] ;
+  sh:property [
+    sh:path porter:validUntil ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:dateTime ;
+  ] ;
+  sh:property [
+    sh:path porter:lessonTrigger ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+  ] ;
+  sh:property [
+    sh:path porter:lessonAction ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+  ] ;
+  sh:property [
+    sh:path porter:lessonSourceRun ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
   ] .
 
 # =============================================================================

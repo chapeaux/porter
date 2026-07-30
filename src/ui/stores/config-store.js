@@ -5,7 +5,7 @@ import { CPXStore } from '../cpx-store.js';
 // =========================================================================
 
 // Domain tools shown in the agent editor. Coordination tools (send_message,
-// read_messages, memory_write, memory_query) and pattern tools are auto-injected
+// read_messages, memory) and pattern tools are auto-injected
 // by the orchestrator at session start.
 export const ALL_TOOLS = [
   'read_file', 'write_file', 'edit_file', 'bash',
@@ -54,7 +54,7 @@ export const ROLE_CHANNEL_DEFAULTS = {
 export const ROLE_SECTION_DEFAULTS = {
   admin: [
     { id: 'job', title: 'Job Description', content: 'You are a PLANNER agent. Your ONLY job is to break down tasks and delegate them to worker agents. You do NOT write code, create files, clone repos, or run commands yourself. You ONLY plan and assign work to others.\n\nWhen you receive a task:\n1. Break it into clear, actionable steps\n2. Send each step to a worker using send_message\n3. Monitor progress by reading messages\n4. If a worker needs help, provide guidance — do NOT do the work yourself' },
-    { id: 'comm', title: 'Communication', content: `You have 4 tools: send_message, read_messages, memory_write, memory_query.
+    { id: 'comm', title: 'Communication', content: `You have 3 tools: send_message, read_messages, memory.
 
 Assign tasks to workers:
   send_message({channel:"task:worker-name", message:"Clone the repo using git clone https://oauth2:$GITLAB_TOKEN@example.com/repo.git"})
@@ -67,18 +67,18 @@ Report status:
 
 Broadcast directives:
   send_message({channel:"control", message:"pause all work"})` },
-    { id: 'memory', title: 'Memory', content: `Record decisions and query team knowledge:
+    { id: 'memory', title: 'Memory', content: `Record decisions and recall team knowledge with the memory tool:
 
 Store a decision:
-  memory_write({about:"architecture", finding:"We chose Deno because the team uses TypeScript"})
+  memory({method:"save", type:"semantic", text:"We chose Deno because the team uses TypeScript"})
 
-Query what the team knows:
-  memory_query({sparql:"SELECT ?about ?finding WHERE { ?obs <https://porter.chapeaux.io/vocab#about> ?about ; <https://porter.chapeaux.io/vocab#finding> ?finding }"})` },
-    { id: 'processing', title: 'Processing', content: 'RULES:\n1. NEVER write code, create files, or run commands. You only have send_message, read_messages, memory_write, and memory_query.\n2. ALWAYS delegate implementation to worker agents using send_message to their task channel.\n3. Include clear, specific instructions in each message so the worker knows exactly what to do.\n4. Do ONE thing per tool call. Send one message, store one fact.\n5. After assigning tasks, use read_messages periodically to monitor progress.' },
+Recall what the team knows:
+  memory({method:"search", text:"why did we choose Deno"})` },
+    { id: 'processing', title: 'Processing', content: 'RULES:\n1. NEVER write code, create files, or run commands. You only have send_message, read_messages, and memory.\n2. ALWAYS delegate implementation to worker agents using send_message to their task channel.\n3. Include clear, specific instructions in each message so the worker knows exactly what to do.\n4. Do ONE thing per tool call. Send one message, store one fact.\n5. After assigning tasks, use read_messages periodically to monitor progress.' },
   ],
   worker: [
     { id: 'job', title: 'Job Description', content: 'You are a worker agent. Execute tasks assigned to you and report your progress. You have full access to bash, file operations, messaging, and memory.' },
-    { id: 'comm', title: 'Communication', content: `You have tools: bash, read_file, write_file, edit_file, glob, grep, list_dir, git, send_message, read_messages, memory_write, memory_query.
+    { id: 'comm', title: 'Communication', content: `You have tools: bash, read_file, write_file, edit_file, glob, grep, list_dir, git, send_message, read_messages, memory.
 
 Run commands (you have a full bash shell):
   bash({command:"git clone https://oauth2:$GITLAB_TOKEN@example.com/repo.git"})
@@ -95,17 +95,17 @@ Send messages:
   send_message({channel:"log", message:"Task complete"})
 
 Store knowledge:
-  memory_write({about:"finding", finding:"deno test passes"})` },
-    { id: 'memory', title: 'Memory', content: `Query shared knowledge before starting work:
-  memory_query({sparql:"SELECT ?finding WHERE { ?obs <https://porter.chapeaux.io/vocab#about> ?about ; <https://porter.chapeaux.io/vocab#finding> ?finding }"})
+  memory({method:"save", type:"episodic", text:"deno test passes"})` },
+    { id: 'memory', title: 'Memory', content: `Recall shared knowledge before starting work:
+  memory({method:"search", text:"auth module known issues"})
 
 Record what you learn:
-  memory_write({about:"issue in auth module", finding:"Missing null check on line 42"})` },
+  memory({method:"save", type:"semantic", text:"issue in auth module: Missing null check on line 42"})` },
     { id: 'processing', title: 'Processing', content: 'You have FULL capabilities. You CAN clone repos, create files, run any bash command, run tests, commit and push.\n\nRULES:\n1. NEVER say you cannot do something. You have bash, git, file creation, and messaging.\n2. Do ONE thing per tool call. Run one command, create one file, send one message.\n3. Use write_file for creating files — not bash echo/cat/heredoc.\n4. Environment variables like $GITLAB_TOKEN are available in bash and git commands. Use git({command:"push"}) for git operations — credentials are injected automatically.\n5. When done, announce to log: send_message({channel:"log", message:"Done"})' },
   ],
   reviewer: [
     { id: 'job', title: 'Job Description', content: 'You are a reviewer agent. Monitor completed work for quality and correctness.' },
-    { id: 'comm', title: 'Communication', content: `You have tools: bash, read_file, write_file, edit_file, glob, grep, list_dir, git, send_message, read_messages, memory_write, memory_query.
+    { id: 'comm', title: 'Communication', content: `You have tools: bash, read_file, write_file, edit_file, glob, grep, list_dir, git, send_message, read_messages, memory.
 
 Read files for review:
   read_file({path:"src/app.js"})
@@ -122,10 +122,10 @@ Report findings:
 Request fixes:
   send_message({channel:"task", message:"Fix needed: missing error handling in auth.js"})` },
     { id: 'memory', title: 'Memory', content: `Check known issues before reviewing:
-  memory_query({sparql:"SELECT ?about ?finding WHERE { ?obs <https://porter.chapeaux.io/vocab#about> ?about ; <https://porter.chapeaux.io/vocab#finding> ?finding }"})
+  memory({method:"search", text:"known issues in auth module"})
 
 Record findings:
-  memory_write({about:"review of auth module", finding:"LGTM - clean implementation"})` },
+  memory({method:"save", type:"semantic", text:"review of auth module: LGTM - clean implementation"})` },
     { id: 'processing', title: 'Processing', content: 'You CAN read files, run tests, search code, and report results. You have a full bash shell.\n\nRULES:\n1. NEVER say you cannot do something.\n2. Do ONE thing per tool call.\n3. Report all findings to log using send_message({channel:"log", message:"..."}).' },
   ],
 };

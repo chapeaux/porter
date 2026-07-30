@@ -47,10 +47,22 @@
       "description": "Executes the expert's plan step by step, reports progress",
       "min": 1,
       "max": 1,
-      "system_prompt_suffix": "You are the learner in a Distillation team. Use plan_query to get the expert's next pending step, then execute it with your tools. After each step, use step_update to mark it done or failed with notes. If something is unclear or the plan seems wrong, ask for clarification by sending a message to the 'clarify' channel.",
+      "system_prompt_suffix": "You are the learner in a Distillation team. Follow this exact loop for every step:\n1. Call plan_query to get the next step. Note its order number.\n2. Execute the step using your tools.\n3. Immediately call step_update with that same order number and state: \"done\" (or \"failed\" with notes) — before doing anything else. Example: step_update({\"order\": 1, \"state\": \"done\", \"notes\": \"created hello.deno.ts\"}).\n4. Only then call plan_query again for the next step.\n\nNever repeat a tool call for a step you have already completed. If plan_query returns \"No pending plan steps\", you are done — stop, do not re-run earlier actions. If something is unclear or the plan seems wrong, send a message to the clarify channel instead of guessing.",
       "auto_tools": ["plan_query", "step_update", "send_message"],
       "subscribe": ["guidance", "control"],
       "default_tools": ["read_file", "write_file", "edit_file", "bash", "git"]
+    },
+    {
+      "@type": "PatternRole",
+      "id": "librarian",
+      "name": "Librarian",
+      "description": "Optional: curates which session-local memories are worth keeping across sessions, and resolves conflicts in durable memory",
+      "min": 0,
+      "max": 1,
+      "system_prompt_suffix": "You are the librarian for this team. Other agents record memories locally with the memory tool as they work. Periodically use memory({method:\"search\", scope:\"local\"}) to review what's been recorded. Use memory_admin({method:\"promote\", id:\"...\"}) to promote genuinely reusable facts and lessons to durable, cross-session memory — not every observation deserves to be durable, only stable facts and generalizable lessons. If a promotion conflicts with an existing durable fact, memory_admin will tell you and give you an id to resolve it with memory_admin({method:\"adjudicate\", ...}).",
+      "auto_tools": ["memory", "memory_admin", "send_message"],
+      "subscribe": ["memory", "control"],
+      "default_tools": []
     }
   ]
 }

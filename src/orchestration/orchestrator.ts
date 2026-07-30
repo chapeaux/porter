@@ -147,6 +147,20 @@ export async function start(
      * multi-session mode so each session has independent rate limiting.
      */
     coordinator?: RateLimitCoordinator;
+    /**
+     * Per-session GraphStore instance. When provided, this store is used
+     * instead of the global singleton — required for multi-session mode so
+     * sessions don't share one memory graph (the global singleton, unlike
+     * bus/coordinator, previously had no per-session injection point at all).
+     */
+    graphStore?: import("../graph/store.ts").GraphStore;
+    /**
+     * Stable team identity (config.session before any per-launch uniquified
+     * override — see session_manager.ts createSession()). Used to key durable
+     * (cross-session) memory, since the running session's own name may be
+     * disposable/uniquified while the team it was launched from is not.
+     */
+    teamName?: string;
   },
 ): Promise<Porter> {
   // Provision repo and resolve working_dir before anything else
@@ -197,7 +211,7 @@ export async function start(
   try {
     const { initGraphStore } = await import("../graph/store.ts");
     const { porterConfigToTriples, seedTeamMemory } = await import("../graph/converters.ts");
-    const graphStore = await initGraphStore();
+    const graphStore = options?.graphStore ?? await initGraphStore();
     porterConfigToTriples(config, graphStore);
     seedTeamMemory(config.agents, graphStore);
     graphStoreRef = graphStore;
@@ -358,13 +372,14 @@ export async function start(
       agentConfig.system_prompt = `${agentConfig.system_prompt}\n\n## Environment\nThe following runtimes and tools are available in your environment via the bash tool:\n${envRuntimes.map(r => `- ${r}`).join("\n")}`;
     }
 
-    // Auto-inject semantic_search when vector store is available
+    // Auto-inject the memory tool when a vector store is available, so every
+    // agent can recall relevant memories even if not explicitly configured.
     try {
       const { getVectorStore } = await import("../vector/mod.ts");
       if (getVectorStore()) {
         const tools = agentConfig.tools ?? [];
-        if (!tools.includes("semantic_search")) {
-          tools.push("semantic_search" as import("../core/config.ts").ToolName);
+        if (!tools.includes("memory")) {
+          tools.push("memory" as import("../core/config.ts").ToolName);
           agentConfig.tools = tools;
         }
       }
@@ -660,6 +675,10 @@ export async function start(
     };
 
     worker.onerror = (err) => {
+      // Without preventDefault(), an uncaught error in a worker propagates
+      // as an unhandled error in the parent thread too, crashing the whole
+      // `porter serve` process instead of just this one agent's isolate.
+      err.preventDefault();
       console.error(`[porter] Agent '${agentConfig.name}' isolate crashed: ${err.message}`);
       heartbeat.unregister(agentConfig.name);
     };
@@ -683,6 +702,8 @@ export async function start(
       resumeFrom: resumeState ? serializeState(resumeState) : undefined,
       teamRoster: config.agents.map(a => ({ name: a.name, role: a.role })),
       sessionEnv: config.env,
+      sessionName: config.session,
+      teamName: options?.teamName ?? config.session,
       sandboxContainerName: (sandboxExecutor as import("../sandbox/mod.ts").ContainerSandbox | null)?.containerName,
       sandboxRuntime: sandboxExecutor?.runtime,
       sandboxWorkingDir: sandboxExecutor ? workingDir : undefined,
@@ -974,6 +995,8 @@ function resolveDefaultProviderConfig(config: PorterConfig): ProviderConfig {
       type: m.provider_type as ProviderConfig["type"],
       base_url: m.base_url,
       api_key_env: m.api_key_env ?? config.api_key_env,
+      tier: m.tier,
+      models: [m.id],
       ...(m.auth === "adc" ? { auth: "adc" as const } : {}),
     };
   }

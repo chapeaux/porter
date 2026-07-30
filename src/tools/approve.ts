@@ -1,5 +1,6 @@
 import type { ToolEntry } from "./mod.ts";
 import { getGraphStore } from "../graph/store.ts";
+import { GRAPHS } from "../graph/vocabulary.ts";
 import { getBus } from "../runtime/bus.ts";
 
 const entry: ToolEntry = {
@@ -36,8 +37,10 @@ const entry: ToolEntry = {
       // Find the latest round
       const maxRoundResult = store.query(
         `SELECT (MAX(?r) AS ?maxRound) WHERE {
-  ?c a porter:Critique ;
-     porter:round ?r .
+  GRAPH <${GRAPHS.memory}> {
+    ?c a porter:Critique ;
+       porter:round ?r .
+  }
 }`,
       );
 
@@ -48,7 +51,8 @@ const entry: ToolEntry = {
 
       // Mark all critiques from this round as approved
       store.update(
-        `DELETE { ?c porter:approved ?old }
+        `WITH <${GRAPHS.memory}>
+DELETE { ?c porter:approved ?old }
 INSERT { ?c porter:approved true }
 WHERE {
   ?c a porter:Critique ;

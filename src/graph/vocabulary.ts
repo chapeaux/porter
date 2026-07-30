@@ -162,6 +162,15 @@ export const PORTER = {
   discoveredBy: `${NS}discoveredBy`,
   severity: `${NS}severity`,
 
+  // Memory taxonomy (semantic/episodic/procedural)
+  memoryType: `${NS}memoryType`,
+  supersedes: `${NS}supersedes`,
+  validFrom: `${NS}validFrom`,
+  validUntil: `${NS}validUntil`,
+  lessonTrigger: `${NS}lessonTrigger`,
+  lessonAction: `${NS}lessonAction`,
+  lessonSourceRun: `${NS}lessonSourceRun`,
+
   // Collaboration patterns
   Finding: `${NS}Finding`,
   Critique: `${NS}Critique`,
@@ -233,4 +242,11 @@ export const GRAPHS = {
   metrics: `${NS}graph/metrics`,
   shapes: `${NS}graph/shapes`,
   patterns: `${NS}graph/patterns`,
+  /**
+   * Durable, cross-session memory promoted by a team's librarian (see
+   * src/tools/memory_admin.ts). Loaded into a session's GraphStore on demand
+   * and persisted to disk keyed by team identity — distinct from `memory`,
+   * which is session-local and discarded when the session ends.
+   */
+  durable: `${NS}graph/durable`,
 } as const;

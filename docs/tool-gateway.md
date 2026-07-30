@@ -147,30 +147,62 @@ read_messages({channel: "task"})
 |-------|----------|-------------|
 | `channel` | no | Filter to a specific channel |
 
-### memory_write
+### memory
 
-Store an observation in the shared knowledge graph.
-
-```
-memory_write({about: "architecture", finding: "Using Deno + Oak for the API"})
-```
-
-| Param | Required | Description |
-|-------|----------|-------------|
-| `about` | yes | Topic or subject |
-| `finding` | yes | Fact or observation to store |
-
-### memory_query
-
-Query the shared knowledge graph using SPARQL.
+Save or semantically search team memory. Replaces the older `memory_write`/
+`memory_query`/`semantic_search` tools with a single minimal interface —
+deliberately small so weaker models don't have to first decide *which* tool
+to use before even getting to parameters.
 
 ```
-memory_query({sparql: "SELECT ?about ?finding WHERE { ?obs <https://porter.chapeaux.io/vocab#about> ?about ; <https://porter.chapeaux.io/vocab#finding> ?finding }"})
+memory({method: "save", type: "semantic", text: "Using Deno + Oak for the API"})
+memory({method: "search", text: "what API framework are we using"})
 ```
 
 | Param | Required | Description |
 |-------|----------|-------------|
-| `sparql` | yes | SPARQL query string |
+| `method` | yes | `"save"` to record a memory, `"search"` to recall relevant ones |
+| `type` | yes | `"semantic"` (stable fact), `"episodic"` (something that happened), or `"procedural"` (a reusable lesson). Required for save; an optional filter for search |
+| `text` | yes | For save: the memory to record. For search: what you're looking for |
+| `scope` | no | `"local"` (this session only, default for save), `"durable"` (shared across sessions), or `"both"` (default for search) |
+| `limit` | no | Max results for search (default 5) |
+
+`search` is semantic (vector similarity via Qdrant), not SPARQL — there's no
+raw query mode on this tool. `about` is not a model-facing field; it's
+derived server-side from `text` so agents don't have to think about it.
+
+### memory_admin
+
+Librarian-only (see the optional `librarian` role, addable to any pattern).
+Promotes local memories to durable, cross-session memory, adjudicates
+conflicts there, and edits/deletes durable entries directly. Kept as a
+separate tool from `memory` so the common path every other agent uses stays
+minimal — only the librarian needs this extra surface.
+
+```
+memory_admin({method: "promote", id: "<local-memory-id>"})
+memory_admin({method: "adjudicate", id: "<local-memory-id>", resolution: "supersede", supersedes_id: "<durable-id>"})
+memory_admin({method: "edit", id: "<durable-id>", text: "corrected text"})
+memory_admin({method: "delete", id: "<durable-id>"})
+```
+
+| Param | Required | Description |
+|-------|----------|-------------|
+| `method` | yes | `"promote"`, `"adjudicate"`, `"edit"`, or `"delete"` |
+| `id` | yes | Local memory id for promote/adjudicate; durable entry id for edit/delete |
+| `resolution` | for adjudicate | `"supersede"`, `"merge"`, or `"reject"` |
+| `supersedes_id` | for adjudicate supersede/merge | The existing durable entry being resolved against |
+| `text` | for edit, optional for merge | New/merged content |
+
+Only `semantic`-typed promotions are checked for conflicts (episodic and
+procedural entries are additive by nature). Durable memory is keyed by team
+identity — `config.session` as originally saved via `/api/teams`, not the
+per-launch uniquified session name — and persisted to
+`~/.porter/durable-memory/{team}.ttl`, so it survives session restarts and is
+visible to any future session launched from the same team. It is not yet
+synced to the user's Solid Pod the way models/agents/teams are — see
+`docs/vector-store.md` and the durable-memory design notes for the open
+follow-up.
 
 ## Role-Based Access
 
@@ -179,7 +211,7 @@ access based on the agent's role:
 
 | Role | Available Tools | Rationale |
 |------|-----------------|-----------|
-| `admin` | `send_message`, `read_messages`, `memory_write`, `memory_query` | Admins plan and delegate; they do not execute directly |
+| `admin` | `send_message`, `read_messages`, `memory` | Admins plan and delegate; they do not execute directly |
 | `worker` | all 12 tools | Workers have full capabilities |
 | `reviewer` | all 12 tools | Reviewers can read code and run tests |
 
@@ -187,7 +219,7 @@ When an agent attempts to use a tool outside its role, the error includes
 the names of other agents that have the required capability:
 
 ```
-You (admin-1) cannot use 'bash'. Your available tools are: send_message, read_messages, memory_write, memory_query.
+You (admin-1) cannot use 'bash'. Your available tools are: send_message, read_messages, memory.
 To use 'bash', delegate to: worker-1, worker-2.
 Example: send_message({channel: "task:worker-1", message: "Please run: ..."})
 ```
@@ -213,8 +245,9 @@ Agents never see or construct AS2 JSON. They send and receive plain text.
 
 When a tool call produces a "not found" or "No such file or directory"
 error, the `executeTool()` function automatically stores the error in the
-shared memory graph via `memory_write`. Other agents can query the graph
-to discover known failures before attempting similar operations.
+shared memory graph via the `memory` tool (as an `episodic` entry). Other
+agents can search memory to discover known failures before attempting
+similar operations.
 
 ## Path Resolution
 
@@ -272,4 +305,4 @@ request path instead of the default `/v1/messages` (Anthropic) or
 At session startup, the orchestrator seeds the shared knowledge graph with
 observations about each team member (`team:<name>` with role and tools) and
 a `team:porter-ui` entry identifying the human dashboard user. Agents can
-query this via `memory_query` with a SPARQL filter on `team:` subjects.
+recall this via `memory({method: "search", text: "team roster"})`.
