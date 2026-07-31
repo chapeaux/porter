@@ -1,6 +1,6 @@
 {
   "name": "@chapeaux/porter",
-  "version": "0.17.2",
+  "version": "0.17.3",
   "exports": "./mod.ts",
   "tasks": {
     "init": "deno run --allow-all cli.ts init",
@@ -14,7 +14,7 @@
     "ui:standalone": "deno run --allow-all src/ui/server.ts",
     "check": "deno check mod.ts cli.ts worker.ts isolate.ts src/ui/server.ts src/orchestration/registry.ts src/core/model_registry.ts src/auth/model_store.ts src/mcp/mcp_client.ts src/mcp/mcp_server.ts src/auth/mod.ts",
     "test": "deno test --allow-all test/",
-    "compile": "deno compile --allow-all --include src/ui/ --include src/graph/shapes.ttl --include src/orchestration/patterns/ --include isolate.ts --include worker.ts --output porter cli.ts",
+    "compile": "deno compile --allow-all --include src/ui/ --include src/graph/shapes.ttl --include src/orchestration/patterns/ --include src/activitypub/sparq/wasm/ --include isolate.ts --include worker.ts --output porter cli.ts",
     "build:static": "deno run --allow-all tools/build-static.ts"
   },
   "lint": {

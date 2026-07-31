@@ -334,6 +334,8 @@ deno run --allow-all cli.ts serve     # run without installing
 deno run --allow-all src/ui/server.ts # standalone dashboard
 ```
 
+The `compile` task's `--include` flags list every runtime asset that's read from disk via a dynamic path (`import.meta.url`-relative WASM/JSON-LD/Turtle files) rather than a static `import` statement — `deno compile` can't discover those on its own, and a missing entry fails silently until that code path actually runs (e.g. patterns only fail when listing them, the RDF store's WASM only fails when a session actually starts). `.github/workflows/release.yml` duplicates this list for its per-target builds since `deno task compile` bakes in a fixed `--output`/entrypoint that can't be overridden with `--target`; keep both in sync when adding a new on-disk asset dependency.
+
 ---
 
 ## License

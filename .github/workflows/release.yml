@@ -33,6 +33,11 @@ jobs:
         with:
           deno-version: v2.x
 
+      # Keep this --include list in sync with the "compile" task in deno.json —
+      # `deno task compile` bakes in --output/entrypoint so it can't be reused
+      # here with a --target override. Two omissions already shipped broken
+      # releases (missing patterns/, then missing the sparq wasm blob) because
+      # this list silently drifted from deno.json's.
       - name: Build binary
         run: |
           deno compile \
@@ -40,6 +45,7 @@ jobs:
             --include src/ui/ \
             --include src/graph/shapes.ttl \
             --include src/orchestration/patterns/ \
+            --include src/activitypub/sparq/wasm/ \
             --include isolate.ts \
             --include worker.ts \
             --target ${{ matrix.target }} \
