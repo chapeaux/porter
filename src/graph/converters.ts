@@ -193,7 +193,14 @@ export function porterConfigToTriples(
 
   store.addTriple(tUri, RDF.type, PORTER.Team, g);
   store.addLiteral(tUri, AS.name, config.session, g);
-  store.addLiteral(tUri, PORTER.defaultModel, config.model, g);
+
+  // config.model is typed as required, but teams built entirely from a
+  // `models[]` array (or per-agent model overrides) legitimately omit it —
+  // the type isn't runtime-validated for configs arriving as JSON over
+  // /api/sessions/launch, so guard rather than trust the type.
+  if (config.model) {
+    store.addLiteral(tUri, PORTER.defaultModel, config.model, g);
+  }
 
   if (config.working_dir) {
     store.addLiteral(tUri, PORTER.workingDir, config.working_dir, g);
